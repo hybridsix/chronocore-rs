@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PRS Spectator — Live</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    /* --- Theme: professional dark with subtle neon accents --- */
+    :root{
+      --bg:#111418;
+      --panel:#171b20;
+      --text:#e6ebf0;
+      --muted:#aab4bf;
+      --accent:#00b4ff;      /* Tron-ish cyan */
+      --accent-dim:#007fb8;
+      --ok:#22c55e;
+      --warn:#f59e0b;
+      --error:#ef4444;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      --sans: Inter, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+    * { box-sizing: border-box }
+    html, body { height:100% }
+    body{
+      margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
+      display:flex; flex-direction:column;
+    }
+    header{
+      display:flex; align-items:center; gap:16px; padding:14px 18px;
+      background:linear-gradient(180deg, #0e1216, #0d1115);
+      border-bottom:1px solid #0b0f13;
+      box-shadow: 0 1px 0 #0b0f13 inset, 0 0 0 1px #0c1116;
+    }
+    .logo{
+      width:160px; height:40px; border:1px dashed var(--accent-dim); border-radius:6px;
+      display:flex; align-items:center; justify-content:center; color:var(--muted); font-weight:600;
+      letter-spacing:.3px;
+    }
+    .title{ font-size:18px; font-weight:700 }
+    .pill{
+      margin-left:auto; padding:6px 10px; border:1px solid #0b2230; border-radius:999px;
+      font-family:var(--mono); color:#bfefff; background:rgba(0,180,255,0.08);
+    }
+    main{ display:grid; grid-template-columns: 1.2fr .8fr; gap:16px; padding:16px; }
+    .card{
+      background:var(--panel); border:1px solid #0b0f13; border-radius:12px; overflow:hidden;
+      box-shadow: 0 0 0 1px #0c1116, 0 8px 24px rgba(0,0,0,.35);
+    }
+    .card h2{
+      margin:0; padding:10px 12px; font-size:14px; font-weight:700; letter-spacing:.4px; color:#bfefff;
+      background:linear-gradient(180deg, rgba(0,180,255,.12), rgba(0,180,255,.04));
+      border-bottom:1px solid #0b2230;
+    }
+    table{ width:100%; border-collapse:collapse; font-size:14px; }
+    thead th{
+      text-align:left; padding:8px 10px; color:#bfefff; font-weight:700; border-bottom:1px solid #0b2230;
+    }
+    tbody tr{ border-bottom:1px solid #0f141a }
+    tbody td{ padding:8px 10px; color:var(--text) }
+    tbody tr:nth-child(odd){ background:#151a20 }
+    .right{ text-align:right; font-family:var(--mono); color:#d7e9ff }
+    .muted{ color:var(--muted) }
+    .delta-up::after{ content:"▲"; color:var(--ok); margin-left:6px; font-size:12px }
+    .delta-down::after{ content:"▼"; color:var(--error); margin-left:6px; font-size:12px }
+
+    footer{
+      padding:10px 16px; color:var(--muted); font-size:12px; display:flex; gap:16px; align-items:center;
+      border-top:1px solid #0b0f13; background:#0f1317;
+    }
+    .status-dot{ width:8px; height:8px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 2px #0a1a24 }
+    .link{ color:#8addff; text-decoration:none }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">PRS LOGO</div>
+    <div class="title">Live Timing — Spectator</div>
+    <div class="pill" id="clock">--:--:--</div>
+  </header>
+
+  <main>
+    <section class="card">
+      <h2>Leaderboard (in-page aggregate)</h2>
+      <table>
+        <thead><tr>
+          <th style="width:56px;">Pos</th>
+          <th>Tag</th>
+          <th class="right">Laps</th>
+          <th class="right">Last Lap</th>
+          <th class="right">Best Lap</th>
+        </tr></thead>
+        <tbody id="leaderboard"></tbody>
+      </table>
+    </section>
+
+    <section class="card">
+      <h2>Recent Passes (last 200 from API)</h2>
+      <table>
+        <thead><tr>
+          <th>ID</th>
+          <th>Tag</th>
+          <th class="right">T (s)</th>
+          <th class="muted">Decoder</th>
+          <th class="muted">Port</th>
+        </tr></thead>
+        <tbody id="recent"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <footer>
+    <div class="status-dot" id="netDot" title="API connection"></div>
+    <div id="netMsg">Connecting…</div>
+    <div style="margin-left:auto">Source: <a class="link" href="/laps?limit=5" target="_blank">/laps</a></div>
+  </footer>
+
+  <script>
+    // -------------------------------
+    // Minimal polling client:
+    //  - Polls /laps?limit=200 every 1s
+    //  - Builds a local aggregate by tag to compute laps/last/best
+    //  - Renders two tables: Leaderboard (aggregate) and Recent (raw)
+    // -------------------------------
+
+    const API = location.origin;           // e.g. http://localhost:8000
+    const LIMIT = 200;                     // how many recent rows to request each poll
+    const POLL_MS = 1000;
+
+    /** Per-tag running state we compute locally */
+    const state = new Map(); // tag -> {laps, lastT, lastLap, bestLap}
+
+    /** Given a pass row (decoder_secs, tag_id), update local aggregates. */
+    function applyPass(row) {
+      const tag = row.tag_id;
+      const t = Number(row.decoder_secs);
+
+      let s = state.get(tag);
+      if (!s) { s = { laps:0, lastT:null, lastLap:null, bestLap:null }; state.set(tag, s); }
+
+      // If we already saw a time for this tag, compute a lap delta.
+      if (s.lastT != null) {
+        const dt = t - s.lastT;
+        s.lastLap = dt;
+        if (s.bestLap == null || dt < s.bestLap) s.bestLap = dt;
+      }
+
+      s.lastT = t;
+      s.laps += 1;
+    }
+
+    /** Recompute aggregate state from a list of pass rows. */
+    function recomputeAggregate(items) {
+      state.clear();
+      // Important: sort by (tag, time asc) so last/best lap calculations are correct.
+      const sorted = [...items].sort((a,b) => a.tag_id - b.tag_id || a.decoder_secs - b.decoder_secs);
+      for (const row of sorted) applyPass(row);
+    }
+
+    /** Render Leaderboard from aggregate state (laps desc, then lastT asc). */
+    function renderLeaderboard() {
+      const rows = [];
+      for (const [tag, s] of state.entries()) {
+        rows.push({ tag, ...s });
+      }
+      rows.sort((a,b)=> (b.laps - a.laps) || (a.lastT - b.lastT));
+
+      const tbody = document.getElementById("leaderboard");
+      tbody.innerHTML = rows.map((r, i) => `
+        <tr>
+          <td class="right">${String(i+1).padStart(2," ")}</td>
+          <td>${r.tag}</td>
+          <td class="right">${r.laps}</td>
+          <td class="right">${r.lastLap ? r.lastLap.toFixed(3) : "—"}</td>
+          <td class="right">${r.bestLap ? r.bestLap.toFixed(3) : "—"}</td>
+        </tr>
+      `).join("");
+    }
+
+    /** Render recent passes table (raw). */
+    function renderRecent(items) {
+      const tbody = document.getElementById("recent");
+      tbody.innerHTML = items.map(row => `
+        <tr>
+          <td class="muted">${row.id}</td>
+          <td>${row.tag_id}</td>
+          <td class="right">${Number(row.decoder_secs).toFixed(3)}</td>
+          <td class="muted">${row.decoder_id}</td>
+          <td class="muted">${row.port}</td>
+        </tr>
+      `).join("");
+    }
+
+    async function poll() {
+      try {
+        const res = await fetch(`${API}/laps?limit=${LIMIT}`, {cache:"no-store"});
+        const data = await res.json();
+        document.getElementById("netDot").style.background = "var(--ok)";
+        document.getElementById("netMsg").textContent = `OK — ${data.count} rows`;
+
+        // Because /laps returns newest-first, reverse so time increases for local math.
+        const items = (data.items || []).slice().reverse();
+
+        // Build aggregate and render
+        recomputeAggregate(items);
+        renderLeaderboard();
+        renderRecent(items);
+      } catch (e) {
+        document.getElementById("netDot").style.background = "var(--error)";
+        document.getElementById("netMsg").textContent = "Disconnected — retrying…";
+        console.error(e);
+      }
+    }
+
+    // clock + poll loop
+    setInterval(()=> {
+      const now = new Date();
+      document.getElementById("clock").textContent = now.toLocaleTimeString();
+    }, 500);
+
+    poll(); // initial
+    setInterval(poll, POLL_MS);
+  </script>
+</body>
+</html>
