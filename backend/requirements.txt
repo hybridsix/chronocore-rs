@@ -3,3 +3,5 @@ uvicorn[standard]
 pyserial
 aiosqlite
 pyyaml
+pandas
+openpyxl

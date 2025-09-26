@@ -52,6 +52,7 @@ async def health() -> Dict[str, Any]:
 async def laps(
     limit: int = Query(10, ge=1, le=1000),
     race_id: Optional[int] = Query(None, description="Optional race filter (only if column exists)"),
+    tag_id: Optional[int] = Query(None, description="Optional tag filter"),
 ) -> Dict[str, Any]:
     if not DB_PATH.exists():
         raise HTTPException(status_code=404, detail="Database not found")
@@ -75,6 +76,11 @@ async def laps(
         if has_race_id and race_id is not None:
             query += " WHERE race_id = ?"
             params.append(race_id)
+
+        if tag_id is not None:
+            query += " WHERE " if "WHERE" not in query else " AND "
+            query += " tag_id = ?"
+            params.append(tag_id)
 
         query += " ORDER BY id DESC LIMIT ?"
         params.append(limit)
