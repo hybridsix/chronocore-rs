@@ -2,66 +2,74 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>PRS Spectator — Live</title>
+  <title>PRS — Spectator Leaderboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <style>
-    /* --- Theme: professional dark with subtle neon accents --- */
     :root{
-      --bg:#111418;
-      --panel:#171b20;
-      --text:#e6ebf0;
-      --muted:#aab4bf;
-      --accent:#00b4ff;      /* Tron-ish cyan */
-      --accent-dim:#007fb8;
-      --ok:#22c55e;
-      --warn:#f59e0b;
-      --error:#ef4444;
-      --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+      --bg:#111418; --panel:#171b20; --text:#e6ebf0; --muted:#aab4bf;
+      --accent:#00b4ff; --accent-dim:#007fb8; --ok:#22c55e; --error:#ef4444;
+      --mono: ui-monospace, Menlo, Consolas, monospace;
       --sans: Inter, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+      --rowH: 58px;                   /* tighter rows */
+      --fs-base: 22px;                /* larger text overall */
+      --fs-small: 18px;
+      --fs-large: 22px;
     }
+
     * { box-sizing: border-box }
     html, body { height:100% }
-    body{
-      margin:0; background:var(--bg); color:var(--text); font-family:var(--sans);
-      display:flex; flex-direction:column;
-    }
+    body { margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); font-size:var(--fs-base); }
     header{
       display:flex; align-items:center; gap:16px; padding:14px 18px;
-      background:linear-gradient(180deg, #0e1216, #0d1115);
-      border-bottom:1px solid #0b0f13;
+      background:linear-gradient(180deg, #0e1216, #0d1115); border-bottom:1px solid #0b0f13;
       box-shadow: 0 1px 0 #0b0f13 inset, 0 0 0 1px #0c1116;
     }
-    .logo{
-      width:160px; height:40px; border:1px dashed var(--accent-dim); border-radius:6px;
-      display:flex; align-items:center; justify-content:center; color:var(--muted); font-weight:600;
-      letter-spacing:.3px;
-    }
-    .title{ font-size:18px; font-weight:700 }
-    .pill{
-      margin-left:auto; padding:6px 10px; border:1px solid #0b2230; border-radius:999px;
-      font-family:var(--mono); color:#bfefff; background:rgba(0,180,255,0.08);
-    }
-    main{ display:grid; grid-template-columns: 1.2fr .8fr; gap:16px; padding:16px; }
+    .logo{ width:160px; height:40px; border:1px dashed var(--accent-dim); border-radius:6px;
+           display:flex; align-items:center; justify-content:center; color:var(--muted); font-weight:600; }
+    .title{ font-size:22px; font-weight:700 }
+    .pill{ margin-left:auto; padding:6px 10px; border:1px solid #0b2230; border-radius:999px;
+           font-family:var(--mono); color:#bfefff; background:rgba(0,180,255,0.08); }
+    main{ padding:16px; }
     .card{
       background:var(--panel); border:1px solid #0b0f13; border-radius:12px; overflow:hidden;
       box-shadow: 0 0 0 1px #0c1116, 0 8px 24px rgba(0,0,0,.35);
+      max-width: 1200px; margin: 0 auto;
     }
-    .card h2{
-      margin:0; padding:10px 12px; font-size:14px; font-weight:700; letter-spacing:.4px; color:#bfefff;
-      background:linear-gradient(180deg, rgba(0,180,255,.12), rgba(0,180,255,.04));
-      border-bottom:1px solid #0b2230;
+    .card h2{ margin:0; padding:10px 12px; font-size:16px; font-weight:700; letter-spacing:.4px; color:#bfefff;
+              background:linear-gradient(180deg, rgba(0,180,255,.12), rgba(0,180,255,.04)); border-bottom:1px solid #0b2230;}
+    .table{ width:100%; }
+
+    /* Position | Car # | Team | Laps | Last | Best */
+    .thead, .row{
+      display:grid; grid-template-columns: 100px 90px 1fr 110px 120px 120px; align-items:center;
     }
-    table{ width:100%; border-collapse:collapse; font-size:14px; }
-    thead th{
-      text-align:left; padding:8px 10px; color:#bfefff; font-weight:700; border-bottom:1px solid #0b2230;
+    .thead > :nth-child(2){ text-align:right; padding-right:10px; }  /* Car # header aligned */
+    .car{ padding-right:10px; }                                      /* tiny gap before Team */
+
+    .thead{ height:48px; padding:0 12px; color:#bfefff; font-weight:700; border-bottom:1px solid #0b2230; font-size:var(--fs-base); }
+    .rows{ position:relative; }
+    .row{
+      height:var(--rowH); padding:0 12px; border-bottom:1px solid #0f141a;
+      transition: transform 0.8s cubic-bezier(.22,.61,.36,1), background-color .4s ease;
+      will-change: transform;
     }
-    tbody tr{ border-bottom:1px solid #0f141a }
-    tbody td{ padding:8px 10px; color:var(--text) }
-    tbody tr:nth-child(odd){ background:#151a20 }
-    .right{ text-align:right; font-family:var(--mono); color:#d7e9ff }
+    .row:nth-child(odd){ background:#151a20; }
+    .name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-base); }
+    .right{ text-align:right; font-family:var(--mono); color:#d7e9ff; font-size:var(--fs-base); }
     .muted{ color:var(--muted) }
-    .delta-up::after{ content:"▲"; color:var(--ok); margin-left:6px; font-size:12px }
-    .delta-down::after{ content:"▼"; color:var(--error); margin-left:6px; font-size:12px }
+
+    .delta { margin-left:8px; font-size:14px; opacity:.9; transition: opacity 1.5s ease 0.6s; }
+    .up { color: var(--ok) }
+    .down { color: var(--error) }
+
+    @keyframes pbCell {
+      0%{ background: transparent; }
+      25%{ background: rgba(34,197,94,.18); }
+      50%{ background: transparent; }
+      75%{ background: rgba(34,197,94,.14); }
+      100%{ background: transparent; }
+    }
+    .best.pb { animation: pbCell 2.2s ease-out 1; border-radius:4px; }
 
     footer{
       padding:10px 16px; color:var(--muted); font-size:12px; display:flex; gap:16px; align-items:center;
@@ -80,145 +88,241 @@
 
   <main>
     <section class="card">
-      <h2>Leaderboard (in-page aggregate)</h2>
-      <table>
-        <thead><tr>
-          <th style="width:56px;">Pos</th>
-          <th>Tag</th>
-          <th class="right">Laps</th>
-          <th class="right">Last Lap</th>
-          <th class="right">Best Lap</th>
-        </tr></thead>
-        <tbody id="leaderboard"></tbody>
-      </table>
-    </section>
-
-    <section class="card">
-      <h2>Recent Passes (last 200 from API)</h2>
-      <table>
-        <thead><tr>
-          <th>ID</th>
-          <th>Tag</th>
-          <th class="right">T (s)</th>
-          <th class="muted">Decoder</th>
-          <th class="muted">Port</th>
-        </tr></thead>
-        <tbody id="recent"></tbody>
-      </table>
+      <h2>Leaderboard</h2>
+      <div class="table">
+        <div class="thead">
+          <div>Position</div>
+          <div>Car #</div>
+          <div>Team</div>
+          <div class="right">Laps</div>
+          <div class="right">Last Lap</div>
+          <div class="right">Best Lap</div>
+        </div>
+        <div class="rows" id="rows"></div>
+      </div>
     </section>
   </main>
 
   <footer>
-    <div class="status-dot" id="netDot" title="API connection"></div>
+    <div class="status-dot" id="netDot"></div>
     <div id="netMsg">Connecting…</div>
-    <div style="margin-left:auto">Source: <a class="link" href="/laps?limit=5" target="_blank">/laps</a></div>
+    <div style="margin-left:auto">API: <a class="link" href="/laps?limit=5" target="_blank">/laps</a></div>
   </footer>
 
   <script>
-    // -------------------------------
-    // Minimal polling client:
-    //  - Polls /laps?limit=200 every 1s
-    //  - Builds a local aggregate by tag to compute laps/last/best
-    //  - Renders two tables: Leaderboard (aggregate) and Recent (raw)
-    // -------------------------------
-
-    const API = location.origin;           // e.g. http://localhost:8000
-    const LIMIT = 200;                     // how many recent rows to request each poll
+    const API = location.origin;
     const POLL_MS = 1000;
+    const LIMIT = 200;
+    const DEMO = new URLSearchParams(location.search).get('demo') === '1';
 
-    /** Per-tag running state we compute locally */
-    const state = new Map(); // tag -> {laps, lastT, lastLap, bestLap}
+    const urlParams = new URLSearchParams(location.search);
+    const rowsParam = urlParams.get('rows');                    // "all", "12", etc.
 
-    /** Given a pass row (decoder_secs, tag_id), update local aggregates. */
-    function applyPass(row) {
-      const tag = row.tag_id;
-      const t = Number(row.decoder_secs);
+    function fitRowsToViewport(){
+      const rowH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rowH')) || 54;
+      const header = 70;     // page header area
+      const cardPad = 40;    // card paddings/margins
+      const tableHead = 48;  // “Leaderboard” header + column head
+      const footer = 40;     // page footer
+      const available = window.innerHeight - (header + cardPad + tableHead + footer);
+      return Math.max(4, Math.floor(available / rowH));
+    }
 
-      let s = state.get(tag);
-      if (!s) { s = { laps:0, lastT:null, lastLap:null, bestLap:null }; state.set(tag, s); }
+    function rowsLimit(){
+      if (rowsParam === 'all') return Infinity;
+      if (rowsParam && !Number.isNaN(Number(rowsParam))) return Number(rowsParam);
+      return 12; // default
+    }
+    window.addEventListener('resize', ()=> render(sortRows()));  // recompute fit on resize
 
-      // If we already saw a time for this tag, compute a lap delta.
-      if (s.lastT != null) {
-        const dt = t - s.lastT;
-        s.lastLap = dt;
-        if (s.bestLap == null || dt < s.bestLap) s.bestLap = dt;
+
+    let teamMap = {};
+    const agg = new Map();
+    let lastOrder = [];
+    let teamMap = {};
+    let carMap = {};
+
+    function carNumberFromTag(tag){
+      return ((Number(tag) % 900) + 100); // 100–999, stable per tag
+    }
+
+    async function loadTeams(){
+      const res = await fetch(`${API}/teams`, {cache:"no-store"});
+      const data = await res.json();
+      teamMap = data.name_map || {};
+      carMap = data.car_map || {};
+    }
+
+    function recomputeAggregate(items){
+      agg.clear();
+      const sorted = items.slice().sort((a,b) => a.tag_id - b.tag_id || a.decoder_secs - b.decoder_secs);
+      for(const row of sorted){
+        const tag = row.tag_id;
+        const t   = Number(row.decoder_secs);
+        const name = teamMap[tag] || `Tag ${tag}`;
+        let s = agg.get(tag);
+        if(!s){ s = { name, laps:0, lastT:null, lastLap:null, bestLap:null }; agg.set(tag, s); }
+        if(s.lastT != null){
+          const dt = t - s.lastT;
+          s.lastLap = dt;
+          if(s.bestLap == null || dt < s.bestLap) s.bestLap = dt;
+        }
+        s.lastT = t;
+        s.laps++;
       }
-
-      s.lastT = t;
-      s.laps += 1;
     }
 
-    /** Recompute aggregate state from a list of pass rows. */
-    function recomputeAggregate(items) {
-      state.clear();
-      // Important: sort by (tag, time asc) so last/best lap calculations are correct.
-      const sorted = [...items].sort((a,b) => a.tag_id - b.tag_id || a.decoder_secs - b.decoder_secs);
-      for (const row of sorted) applyPass(row);
-    }
-
-    /** Render Leaderboard from aggregate state (laps desc, then lastT asc). */
-    function renderLeaderboard() {
+    function sortRows(){
       const rows = [];
-      for (const [tag, s] of state.entries()) {
+      for(const [tag, s] of agg.entries()){
         rows.push({ tag, ...s });
       }
       rows.sort((a,b)=> (b.laps - a.laps) || (a.lastT - b.lastT));
-
-      const tbody = document.getElementById("leaderboard");
-      tbody.innerHTML = rows.map((r, i) => `
-        <tr>
-          <td class="right">${String(i+1).padStart(2," ")}</td>
-          <td>${r.tag}</td>
-          <td class="right">${r.laps}</td>
-          <td class="right">${r.lastLap ? r.lastLap.toFixed(3) : "—"}</td>
-          <td class="right">${r.bestLap ? r.bestLap.toFixed(3) : "—"}</td>
-        </tr>
-      `).join("");
+      return rows;
     }
 
-    /** Render recent passes table (raw). */
-    function renderRecent(items) {
-      const tbody = document.getElementById("recent");
-      tbody.innerHTML = items.map(row => `
-        <tr>
-          <td class="muted">${row.id}</td>
-          <td>${row.tag_id}</td>
-          <td class="right">${Number(row.decoder_secs).toFixed(3)}</td>
-          <td class="muted">${row.decoder_id}</td>
-          <td class="muted">${row.port}</td>
-        </tr>
-      `).join("");
+    function render(rows){
+      const container = document.getElementById("rows");
+      const newOrder = rows.map(r => r.tag);
+      const deltas = new Map();
+      if(lastOrder.length){
+        const posPrev = new Map(lastOrder.map((t,i)=>[t,i]));
+        for(let i=0;i<newOrder.length;i++){
+          const tag = newOrder[i];
+          if(!posPrev.has(tag)) { deltas.set(tag, 0); continue; }
+          const diff = posPrev.get(tag) - i;
+          deltas.set(tag, diff===0 ? 0 : (diff>0 ? +1 : -1));
+        }
+      }
+      lastOrder = newOrder;
+
+      // 1) FIRST: measure current positions
+      const firstPos = new Map();
+      for (const el of container.children) {
+        firstPos.set(Number(el.dataset.tag), el.getBoundingClientRect().top);
+      }
+
+      // Ensure each row element exists
+      const existing = new Map([...container.children].map(el=>[Number(el.dataset.tag), el]));
+      for (const r of rows) {
+        if (!existing.has(r.tag)) {
+          const el = document.createElement('div');
+          el.className = 'row';
+          el.dataset.tag = r.tag;
+          el.innerHTML = `
+            <div class="pos"></div>
+            <div class="right car"></div>
+            <div class="name"></div>
+            <div class="right laps"></div>
+            <div class="right last"></div>
+            <div class="right best"></div>
+          `;
+          container.appendChild(el);
+          existing.set(r.tag, el);
+        }
+      }
+
+      // 2) Reorder DOM to match new order (no animation yet)
+      for (const r of rows) container.appendChild(existing.get(r.tag));
+
+      // 3) LAST: measure new positions, invert, then play
+      for (const r of rows) {
+        const el = existing.get(r.tag);
+        const lastTop  = el.getBoundingClientRect().top;
+        const firstTop = firstPos.get(r.tag) ?? lastTop;
+        const deltaY   = firstTop - lastTop;
+
+        // Invert
+        el.style.transition = 'transform 0s';
+        el.style.transform = `translateY(${deltaY}px)`;
+
+        // Play to identity
+        requestAnimationFrame(()=>{
+          el.style.transition = 'transform 800ms cubic-bezier(0.2,0,0,1)'; // no mid “pause”
+          el.style.transform = 'translateY(0)';
+        });
+
+        // Populate cells AFTER we’ve arranged DOM
+        el.querySelector('.pos').textContent  = String(rows.indexOf(r)+1);
+        el.querySelector('.car').textContent  = (carMap[r.tag] ?? ((Number(r.tag)%900)+100));
+        el.querySelector('.name').textContent = r.name;
+        el.querySelector('.laps').textContent = r.laps;
+        el.querySelector('.last').textContent = r.lastLap ? r.lastLap.toFixed(3) : "—";
+
+        const bestCell = el.querySelector('.best');
+        const prevBest = el._bestLap;
+        const curBest  = r.bestLap;
+        bestCell.textContent = curBest ? curBest.toFixed(3) : "—";
+        if (curBest && (!prevBest || curBest < prevBest)) {
+          bestCell.classList.remove('pb'); void bestCell.offsetWidth; bestCell.classList.add('pb');
+        }
+        el._bestLap = curBest || null;
+
+        // delta arrows (keep your existing logic)
+        const d = (deltas.get(r.tag) || 0);
+        let bubble = el._bubble;
+        if(!bubble){
+          bubble = document.createElement('span');
+          bubble.className = 'delta';
+          el.querySelector('.pos').appendChild(bubble);
+          el._bubble = bubble;
+        }
+        if(d>0){ bubble.textContent = '▲'; bubble.className = 'delta up'; bubble.style.opacity = '0.95'; }
+        else if(d<0){ bubble.textContent = '▼'; bubble.className = 'delta down'; bubble.style.opacity = '0.95'; }
+        else { bubble.textContent = ''; bubble.style.opacity = '0'; }
+      }
+
+      // Remove rows no longer present
+      for(const el of [...container.children]){
+        const tag = Number(el.dataset.tag);
+        if(!rows.find(r=>r.tag===tag)) el.remove();
+      }
     }
 
-    async function poll() {
-      try {
+    async function poll(){
+      try{
         const res = await fetch(`${API}/laps?limit=${LIMIT}`, {cache:"no-store"});
         const data = await res.json();
-        document.getElementById("netDot").style.background = "var(--ok)";
-        document.getElementById("netMsg").textContent = `OK — ${data.count} rows`;
-
-        // Because /laps returns newest-first, reverse so time increases for local math.
+        document.getElementById('netDot').style.background = 'var(--ok)';
+        document.getElementById('netMsg').textContent = `OK — ${data.count} rows`;
         const items = (data.items || []).slice().reverse();
-
-        // Build aggregate and render
         recomputeAggregate(items);
-        renderLeaderboard();
-        renderRecent(items);
-      } catch (e) {
-        document.getElementById("netDot").style.background = "var(--error)";
-        document.getElementById("netMsg").textContent = "Disconnected — retrying…";
+        let rows = sortRows();
+        const maxFit = fitRowsToViewport();
+        const limit  = Math.min(rows.length, Math.min(rowsLimit(), maxFit));
+        rows = rows.slice(0, limit);
+        render(rows);
+
+        if (DEMO && Math.random() < 0.15 && rows.length > 2) {
+          const i = Math.floor(Math.random() * (rows.length - 1));
+          const j = (i === 0) ? 1 : (Math.random() < 0.5 ? i - 1 : i + 1);
+          [rows[i], rows[j]] = [rows[j], rows[i]];
+        }
+
+        render(rows);
+      }catch(e){
+        document.getElementById('netDot').style.background = 'var(--error)';
+        document.getElementById('netMsg').textContent = 'Disconnected — retrying…';
         console.error(e);
       }
     }
 
-    // clock + poll loop
-    setInterval(()=> {
-      const now = new Date();
-      document.getElementById("clock").textContent = now.toLocaleTimeString();
-    }, 500);
+    window.addEventListener('keydown', (e)=>{
+      if (e.key.toLowerCase() === 's') { const r = sortRows().sort(()=>Math.random()-0.5); render(r); }
+      if (e.key.toLowerCase() === 'p') {
+        const r = sortRows(); if(!r.length) return;
+        const k = Math.floor(Math.random() * r.length);
+        r[k].bestLap = (r[k].bestLap || r[k].lastLap || 25) - 0.15;
+        render(r);
+      }
+    });
 
-    poll(); // initial
-    setInterval(poll, POLL_MS);
+    (async ()=>{
+      await loadTeams();
+      poll();
+      setInterval(poll, POLL_MS);
+      setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }, 500);
+    })();
   </script>
 </body>
 </html>

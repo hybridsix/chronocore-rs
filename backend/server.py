@@ -91,3 +91,33 @@ async def laps(
                 items.append(row_to_dict(row, keys))
 
     return {"count": len(items), "items": items}
+
+# ADD: read team map from DB
+async def fetch_team_map() -> Dict[int, str]:
+    """
+    Returns {tag_id: team_name} from the 'transponders' table if present.
+    If the table doesn't exist yet, returns {}.
+    """
+    if not DB_PATH.exists():
+        return {}
+    rows: Dict[int, str] = {}
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Check if table exists
+        async with db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='transponders'") as cur:
+            row = await cur.fetchone()
+            if not row:
+                return {}
+        # Fetch mapping
+        async with db.execute("SELECT tag_id, team FROM transponders") as cur:
+            async for tag_id, team in cur:
+                rows[int(tag_id)] = str(team)
+    return rows
+
+@APP.get("/teams")
+async def teams() -> Dict[str, Dict[int, str]]:
+    """
+    Returns the transponder mapping so UIs can display names instead of tag IDs.
+    Response: { "map": { 3000001: "BatMobile", ... } }
+    """
+    return {"map": await fetch_team_map()}
+

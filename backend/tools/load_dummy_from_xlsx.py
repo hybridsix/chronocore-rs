@@ -36,6 +36,11 @@ CREATE TABLE IF NOT EXISTS passes (
     decoder_secs  REAL    NOT NULL,
     raw_line      TEXT    NOT NULL
 );
+CREATE TABLE IF NOT EXISTS transponders (
+    tag_id INTEGER PRIMARY KEY,
+    team   TEXT NOT NULL,
+    car_num INTEGER
+);
 CREATE INDEX IF NOT EXISTS idx_passes_tag_time ON passes(tag_id, decoder_secs);
 CREATE INDEX IF NOT EXISTS idx_passes_time ON passes(decoder_secs);
 """
@@ -83,6 +88,40 @@ def main():
     conn = ensure_db()
     cur = conn.cursor()
 
+    # UPSERT team ↔ tag_id mapping for UI
+    cur = conn.cursor()  # reuse the existing connection
+    for team, tag in uids.items():
+        cur.execute(
+            "INSERT INTO transponders(tag_id, team) VALUES(?, ?) "
+            "ON CONFLICT(tag_id) DO UPDATE SET team=excluded.team",
+            (tag, team),
+        )
+    cur.connection.commit()
+
+    # --- UPSERT team ↔ tag_id ↔ car_num mapping for UI ---
+    # Demo car numbers: 101.. (stable order); replace with real values in a future import
+    demo_car_nums = {}
+    for i, team in enumerate([c for c in df.columns if c != "Lap"]):
+        demo_car_nums[team] = 101 + i  # 101..999 safe range
+
+    cur.execute(
+        "CREATE TABLE IF NOT EXISTS transponders ("
+        " tag_id INTEGER PRIMARY KEY,"
+        " team   TEXT NOT NULL,"
+        " car_num INTEGER"
+        ")"
+    )
+
+    for team, tag in uids.items():
+        car = demo_car_nums.get(team)
+        cur.execute(
+            "INSERT INTO transponders(tag_id, team, car_num) VALUES(?, ?, ?) "
+            "ON CONFLICT(tag_id) DO UPDATE SET team=excluded.team, car_num=COALESCE(excluded.car_num, transponders.car_num)",
+            (tag, team, car),
+        )
+    conn.commit()
+
+   
     if args.clear:
         cur.execute("DELETE FROM passes")
         conn.commit()
