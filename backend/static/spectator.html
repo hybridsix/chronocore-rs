@@ -24,8 +24,16 @@
       background:linear-gradient(180deg, #0e1216, #0d1115); border-bottom:1px solid #0b0f13;
       box-shadow: 0 1px 0 #0b0f13 inset, 0 0 0 1px #0c1116;
     }
-    .logo{ width:160px; height:40px; border:1px dashed var(--accent-dim); border-radius:6px;
-           display:flex; align-items:center; justify-content:center; color:var(--muted); font-weight:600; }
+    .logo {
+    width: 200px;   /* or whatever width looks balanced */
+    height: auto;
+    display: flex;
+    align-items: center;
+    }
+    .logo img {
+      width: 100%;
+      height: auto;
+    }
     .title{ font-size:22px; font-weight:700 }
     .pill{ margin-left:auto; padding:6px 10px; border:1px solid #0b2230; border-radius:999px;
            font-family:var(--mono); color:#bfefff; background:rgba(0,180,255,0.08); }
@@ -81,7 +89,9 @@
 </head>
 <body>
   <header>
-    <div class="logo">PRS LOGO</div>
+    <div class="logo">
+      <img src="/static/img/PRS_Logo.svg" alt="PRS Logo" />
+    </div>
     <div class="title">Live Timing — Spectator</div>
     <div class="pill" id="clock">--:--:--</div>
   </header>
