@@ -1,0 +1,152 @@
+/* ===========================
+   Spectator-specific styles
+   (requires base.css first)
+   =========================== */
+
+/* Header: position the race clock block to the right */
+.raceclock-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.raceclock-label {
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #8fb6c9;
+  padding: 0 8px;
+}
+
+/* Leaderboard table grid: Position | Car # | Team | Laps | Last | Best */
+.table {
+  width: 100%;
+}
+
+.thead,
+.row {
+  display: grid;
+  grid-template-columns: 100px 120px 1fr 110px 120px 120px;
+  align-items: center;
+}
+
+.thead {
+  height: 48px;
+  padding: 0 12px;
+  color: #bfefff;
+  font-weight: 700;
+  border-bottom: 1px solid #0b2230;
+  font-size: var(--fs-base);
+}
+
+.thead > :nth-child(2) {
+  text-align: center;
+  padding-right: 24px;
+}
+
+.rows {
+  position: relative;
+}
+
+.row {
+  height: var(--rowH);
+  padding: 0 12px;
+  border-bottom: 1px solid #0f141a;
+  transition:
+    transform .8s cubic-bezier(.2, 0, 0, 1),
+    background-color .4s ease;
+  will-change: transform;
+}
+
+.row:nth-child(odd) {
+  background: #151a20;
+}
+
+.name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--fs-base);
+}
+
+.right {
+  text-align: right;
+  font-family: var(--mono);
+  color: #d7e9ff;
+  font-size: var(--fs-base);
+}
+
+.car {
+  text-align: center;
+  padding-right: 24px;
+}
+
+.delta {
+  margin-left: 8px;
+  font-size: 14px;
+  opacity: .9;
+  transition: opacity 1.4s ease .6s;
+}
+
+.up {
+  color: var(--ok);
+}
+
+.down {
+  color: var(--error);
+}
+
+/* PB flash effect on best lap cell */
+@keyframes pbCell {
+  0%   { background: transparent; }
+  25%  { background: rgba(34, 197, 94, .18); }
+  50%  { background: transparent; }
+  75%  { background: rgba(34, 197, 94, .14); }
+  100% { background: transparent; }
+}
+
+.best.pb {
+  animation: pbCell 2.2s ease-out 1;
+  border-radius: 4px;
+}
+
+/* Flag color themes for spectator page */
+.flag--green {
+  background: rgba(34, 197, 94, .12);
+  border-color: rgba(34, 197, 94, .4);
+}
+
+.flag--yellow {
+  background: rgba(250, 204, 21, .14);
+  border-color: rgba(250, 204, 21, .45);
+}
+
+.flag--red {
+  background: rgba(239, 68, 68, .14);
+  border-color: rgba(239, 68, 68, .45);
+}
+
+.flag--white {
+  background: rgba(226, 232, 240, .10);
+  border-color: rgba(226, 232, 240, .35);
+}
+
+.flag--blue {
+  background: rgba(59, 130, 246, .14);
+  border-color: rgba(59, 130, 246, .45);
+}
+
+.flag--checkered {
+  background: rgba(148, 163, 184, .14);
+  border-color: rgba(148, 163, 184, .45);
+}
+
+.flag--yellow,
+.flag--red,
+.flag--white,
+.flag--blue,
+.flag--checkered {
+  animation: flagPulse 2.2s ease-in-out infinite;
+}

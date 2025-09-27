@@ -4,109 +4,34 @@
   <meta charset="utf-8" />
   <title>PRS — Spectator Leaderboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <style>
-    :root{
-      --bg:#111418; --panel:#171b20; --text:#e6ebf0; --muted:#aab4bf;
-      --accent:#00b4ff; --accent-dim:#007fb8; --ok:#22c55e; --error:#ef4444;
-      --mono: ui-monospace, Menlo, Consolas, monospace;
-      --sans: Inter, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-      --rowH: 58px;             /* tighter rows */
-      --fs-base: 22px;          /* larger text overall */
-      --fs-small: 18px;
-      --headerH: 96px;          /* total header height */
-      --headerPadY: 16px;       /* vertical padding inside header */
-    }
 
-    *{ box-sizing:border-box }
-    html,body{ height:100% }
-    body{ margin:0; background:var(--bg); color:var(--text); font-family:var(--sans); font-size:var(--fs-base) }
+<!-- CSS Styles-->
+<link rel="stylesheet" href="/ui/css/base.css?v=1">  
+<link rel="stylesheet" href="/ui/css/spectator.css?v=1">
 
-    header{
-      display:flex;
-      align-items:center;
-      gap:20px;
-      padding: var(--headerPadY) 20px;
-      min-height: var(--headerH);
-      background:linear-gradient(180deg,#0e1216,#0d1115);
-      border-bottom:1px solid #0b0f13;
-      box-shadow:0 1px 0 #0b0f13 inset, 0 0 0 1px #0c1116;
-    }
+<!-- Base Javascript Helpers-->
+<script src="/ui/js/base.js?v=1"></script>
 
-    .logo{
-      height: calc(var(--headerH) - 2*var(--headerPadY));
-      display:flex;
-      align-items:center;
-    }
-    .logo img{
-      height: 100%;
-      width: auto;         /* preserve aspect ratio */
-      display:block;
-    }
-
-    .title{
-    font-size: 26px;      /* was ~22px; adjust to taste */
-    font-weight: 700;
-    } 
-
-    .pill{ margin-left:auto; padding:6px 10px; border:1px solid #0b2230; border-radius:999px;
-           font-family:var(--mono); color:#bfefff; background:rgba(0,180,255,.08) }
-
-    main{ padding:16px }
-    .card{
-      background:var(--panel); border:1px solid #0b0f13; border-radius:12px; overflow:hidden;
-      box-shadow:0 0 0 1px #0c1116, 0 8px 24px rgba(0,0,0,.35);
-      max-width:1200px; margin:0 auto;
-    }
-    .card h2{
-      margin:0; padding:10px 12px; font-size:16px; font-weight:700; letter-spacing:.4px; color:#bfefff;
-      background:linear-gradient(180deg, rgba(0,180,255,.12), rgba(0,180,255,.04)); border-bottom:1px solid #0b2230;
-    }
-
-    .table{ width:100% }
-
-    /* grid: Position | Car # | Team | Laps | Last | Best */
-    .thead, .row{
-      display:grid; grid-template-columns:100px 120px 1fr 110px 120px 120px; align-items:center;
-    }
-    .thead{ height:48px; padding:0 12px; color:#bfefff; font-weight:700; border-bottom:1px solid #0b2230; font-size:var(--fs-base) }
-    .thead > :nth-child(2){ text-align:center; padding-right:24px } /* Car # header */
-
-    .rows{ position:relative }
-    .row{
-      height:var(--rowH); padding:0 12px; border-bottom:1px solid #0f141a;
-      transition: transform .8s cubic-bezier(.2,0,0,1), background-color .4s ease;
-      will-change: transform;
-    }
-    .row:nth-child(odd){ background:#151a20 }
-    .name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:var(--fs-base) }
-    .right{ text-align:right; font-family:var(--mono); color:#d7e9ff; font-size:var(--fs-base) }
-    .car{ text-align:center; padding-right:24px }
-
-    .delta{ margin-left:8px; font-size:14px; opacity:.9; transition:opacity 1.4s ease .6s }
-    .up{ color:var(--ok) } .down{ color:var(--error) }
-
-    @keyframes pbCell{
-      0%{ background:transparent } 25%{ background:rgba(34,197,94,.18) }
-      50%{ background:transparent } 75%{ background:rgba(34,197,94,.14) } 100%{ background:transparent }
-    }
-    .best.pb{ animation:pbCell 2.2s ease-out 1; border-radius:4px }
-
-    footer{
-      padding:10px 16px; color:var(--muted); font-size:12px; display:flex; gap:16px; align-items:center;
-      border-top:1px solid #0b0f13; background:#0f1317;
-    }
-    .status-dot{ width:8px; height:8px; border-radius:50%; background:var(--ok); box-shadow:0 0 0 2px #0a1a24 }
-    .link{ color:#8addff; text-decoration:none }
-  </style>
 </head>
 <body>
   <header>
     <div class="logo"><img src="img/PRS_Logo.svg" alt="PRS Logo" /></div>
     <div class="title">Live Timing — Spectator</div>
-    <div class="pill" id="clock">--:--:--</div>
+    <div class="raceclock-wrap">
+      <div class="raceclock-label">Race&nbsp;Clock</div>
+      <div class="pill pill-xl" id="raceClock" aria-live="polite" aria-label="Race clock">--:--</div>
+    </div>
+
   </header>
 
   <main>
+
+    <!-- Flag banner -->
+    <div id="flagBanner" class="flag hidden" aria-live="polite">
+      <div class="flag__icon" id="flagIcon" aria-hidden="true"></div>
+      <div class="flag__label" id="flagLabel">Green Flag</div>
+    </div>
+
     <section class="card">
       <h2>Leaderboard</h2>
       <div class="table">
@@ -120,292 +45,97 @@
   </main>
 
   <footer>
-    <div class="status-dot" id="netDot"></div>
-    <div id="netMsg">Connecting…</div>
-    <div style="margin-left:auto">API: <a class="link" href="/laps?limit=5" target="_blank">/laps</a></div>
+    <div class="footer-left">
+      <div class="status-dot" id="netDot"></div>
+      <div id="netMsg">Connecting…</div>
+    </div>
+        
+      <div id="wallClock" class="pill">--:--:--</div>
+    <div class="footer-right">
+      <div style="margin-left:auto">API: <a class="link" href="/laps?limit=5" target="_blank">/laps</a></div>
+    </div>
   </footer>
 
   <script>
-    /* ---------- runtime config ---------- */
-    const API     = location.origin;
-    const POLL_MS = 1000;
-    const LIMIT   = 200;
+  const { $, fetchJSON, makePoller, setNetStatus, startWallClock, fmtClock } = window.PRS;
 
-    const qp = new URLSearchParams(location.search);
-    const DEMO = qp.get('demo') === '1';
-    const rowsParam = qp.get('rows'); // "all", "12", etc.
-    let demoFreezeUntil = 0;
-    let demoCursor = 0; // how many items to include
+  /* ----------- Wall clock ----------- */
+  const stopWallClock = startWallClock("#wallClock");
 
-    function rowsLimit(){
-      if (rowsParam === 'all') return Infinity;
-      if (rowsParam && !Number.isNaN(Number(rowsParam))) return Number(rowsParam);
-      return 12; // default
-    }
-    function fitRowsToViewport(){
-      const rowH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rowH')) || 54;
-      const header = 70, cardPad = 40, tableHead = 48, footer = 40;
-      const available = window.innerHeight - (header + cardPad + tableHead + footer);
-      return Math.max(4, Math.floor(available / rowH));
-    }
-    window.addEventListener('resize', () => { if(lastRows) render(lastRows) });
+  /* ----------- Update leaderboard table ----------- */
+  function updateTable(data) {
+    const rowsEl = $(".rows");
+    if (!rowsEl) return;
 
-    /* ---------- data state ---------- */
-    let teamMap = {}; // tag_id -> team name
-    let carMap  = {}; // tag_id -> car number
-    const agg   = new Map(); // tag_id -> {name,laps,lastLap,bestLap,lastT}
-    let lastOrder = [];
-    let firstPaintDone = false;
-    let lastRows = null; // keep the most recently rendered rows
+    rowsEl.innerHTML = "";
 
-    /* ---------- helpers ---------- */
-    function carNumberFromTag(tag){ return ((Number(tag) % 900) + 100) } // 100–999
+    if (!data || !Array.isArray(data.rows)) return;
 
-    async function loadTeams(){
-      const res = await fetch(`${API}/teams`, {cache:'no-store'});
-      const data = await res.json();
+    data.rows.forEach((row, idx) => {
+      const el = document.createElement("div");
+      el.className = "row";
 
-      teamMap = {};
-      carMap  = {};
+      const pos = idx + 1;
+      const carNum = row.car || "";
+      const teamName = row.team || `Tag ${row.tag}`;
+      const laps = row.laps ?? 0;
+      const last = row.last ? row.last.toFixed(3) : "—";
+      const best = row.best ? row.best.toFixed(3) : "—";
 
-      // Shape 0: legacy { map: { tag_id: teamName } }
-      if (data && data.map && typeof data.map === 'object'){
-        for (const [k, v] of Object.entries(data.map)){
-          teamMap[String(k)] = v;
-        }
-      }
-
-      // Shape 1: { name_map, car_map }
-      if (data && (data.name_map || data.car_map)) {
-        for (const [k, v] of Object.entries(data.name_map || {})) {
-          teamMap[String(k)] = v;
-        }
-        for (const [k, v] of Object.entries(data.car_map || {})) {
-          carMap[String(k)] = v;
-        }
-      }
-
-      // Shape 2: { rows: [{tag_id, team, car_num}, ...] }
-      if (Array.isArray(data.rows)) {
-        for (const r of data.rows) {
-          if (r && r.tag_id != null) {
-            const k = String(r.tag_id);
-            teamMap[k] = r.team ?? teamMap[k] ?? `Tag ${k}`;
-            if (r.car_num != null) carMap[k] = r.car_num;
-          }
-        }
-      }
-    }
-
-    function recomputeAggregate(items){
-      // items are newest-first from /laps
-      for (const it of items) {
-        const tag = String(it.tag_id ?? it.tag ?? it.transponder ?? '');
-        if (!tag) continue;
-
-        let s = agg.get(tag);
-        if (!s){
-          s = { name: teamMap[tag] || `Tag ${tag}`, laps:0, lastLap:null, bestLap:null, lastT:0 };
-          agg.set(tag, s);
-        }
-        s.laps += 1;
-
-        const t = Number(it.decoder_secs ?? it.t ?? 0);
-        if (!Number.isNaN(t) && t > 0) {
-          if (s.lastT > 0) {
-            const lap = t - s.lastT;
-            s.lastLap = lap;
-            if (lap > 0 && (!s.bestLap || lap < s.bestLap)) s.bestLap = lap;
-          }
-          s.lastT = t;
-        }
-        // refresh name when /teams arrives
-        s.name = teamMap[tag] || s.name;
-      }
-    }
-
-    function buildRowsFromAgg(){
-      const out = [];
-      for (const [tag,s] of agg){
-        out.push({
-          tag: Number(tag), name: s.name, laps: s.laps,
-          lastLap: s.lastLap, bestLap: s.bestLap
-        });
-      }
-      out.sort((a,b) =>
-        (b.laps - a.laps) ||
-        ((a.bestLap ?? Infinity) - (b.bestLap ?? Infinity)) ||
-        ((a.lastLap ?? Infinity) - (b.lastLap ?? Infinity))
-      );
-      return out;
-    }
-
-    /* ---------- rendering ---------- */
-    function render(rows){
-      lastRows = rows; // keep a copy for freeze/resize
-      const container = document.getElementById('rows');
-      const newOrder = rows.map(r => r.tag);
-      const deltas = new Map();
-
-      if (lastOrder.length){
-        const posPrev = new Map(lastOrder.map((t,i)=>[t,i]));
-        for (let i=0;i<newOrder.length;i++){
-          const tag = newOrder[i];
-          if(!posPrev.has(tag)) { deltas.set(tag, 0); continue; }
-          const diff = posPrev.get(tag) - i;
-          deltas.set(tag, diff===0 ? 0 : (diff>0 ? +1 : -1));
-        }
-      }
-      lastOrder = newOrder;
-
-      // 1) measure original positions
-      const firstPos = new Map();
-      for (const el of container.children) {
-        firstPos.set(Number(el.dataset.tag), el.getBoundingClientRect().top);
-      }
-
-      // ensure each row element exists
-      const existing = new Map([...container.children].map(el=>[Number(el.dataset.tag), el]));
-      for (const r of rows){
-        if (!existing.has(r.tag)){
-          const el = document.createElement('div');
-          el.className = 'row'; el.dataset.tag = r.tag;
-          el.innerHTML = `
-            <div class="pos"></div>
-            <div class="right car"></div>
-            <div class="name"></div>
-            <div class="right laps"></div>
-            <div class="right last"></div>
-            <div class="right best"></div>`;
-          container.appendChild(el);
-          existing.set(r.tag, el);
-        }
-      }
-
-      // DOM order = new order (no animation yet)
-      for (const r of rows) container.appendChild(existing.get(r.tag));
-
-      // 3) invert-then-play
-      for (const r of rows){
-        const el = existing.get(r.tag);
-        const lastTop  = el.getBoundingClientRect().top;
-        const firstTop = firstPos.get(r.tag) ?? lastTop;
-        const deltaY   = firstTop - lastTop;
-
-        el.style.transition = 'transform 0s';
-        el.style.transform  = `translateY(${deltaY}px)`;
-        requestAnimationFrame(()=>{
-          el.style.transition = 'transform 800ms cubic-bezier(0.2,0,0,1)';
-          el.style.transform  = 'translateY(0)';
-        });
-
-        // populate cells
-        el.querySelector('.pos').textContent = String(rows.indexOf(r)+1);
-        el.querySelector('.car').textContent = (carMap[String(r.tag)] ?? carNumberFromTag(r.tag));
-        el.querySelector('.name').textContent = r.name;
-        el.querySelector('.laps').textContent = r.laps;
-        el.querySelector('.last').textContent = (r.lastLap!=null ? r.lastLap.toFixed(3) : '—');
-
-        const bestCell = el.querySelector('.best');
-        const prevBest = el._bestLap;
-        const curBest  = r.bestLap;
-        bestCell.textContent = (curBest!=null ? curBest.toFixed(3) : '—');
-        if (firstPaintDone && prevBest!=null && curBest!=null && curBest < prevBest){
-          bestCell.classList.remove('pb'); void bestCell.offsetWidth; bestCell.classList.add('pb');
-        }
-        el._bestLap = (curBest!=null ? curBest : null);
-
-        // delta bubble
-        const d = (deltas.get(r.tag) || 0);
-        let bubble = el._bubble;
-        if (!bubble){
-          bubble = document.createElement('span');
-          bubble.className = 'delta';
-          el.querySelector('.pos').appendChild(bubble);
-          el._bubble = bubble;
-        }
-        if (d>0){ bubble.textContent='▲'; bubble.className='delta up';   bubble.style.opacity='0.95'; }
-        else if (d<0){ bubble.textContent='▼'; bubble.className='delta down'; bubble.style.opacity='0.95'; }
-        else { bubble.textContent=''; bubble.style.opacity='0'; }
-      }
-
-      // remove disappeared rows
-      for (const el of [...container.children]){
-        const tag = Number(el.dataset.tag);
-        if (!rows.find(r=>r.tag===tag)) el.remove();
-      }
-
-      firstPaintDone = true;
-    }
-
-    /* ---------- polling ---------- */
-    async function poll(){
-      // During demo freeze, keep showing the last rendered rows (no flicker)
-      if (DEMO && Date.now() < demoFreezeUntil){
-        if (lastRows) render(lastRows);
-        return;
-      }
-
-      try {
-        const res = await fetch(`${API}/laps?limit=${LIMIT}`, {cache:'no-store'});
-        const data = await res.json();
-        const items = (data.items || []).slice().reverse(); // oldest->newest
-
-        if (DEMO) {
-          // reveal items over time: ~2 laps per second (tweak as you like)
-          demoCursor = Math.min(items.length, demoCursor + 1);
-          items.splice(demoCursor); // only include first N oldest->newest
-        }
-
-        document.getElementById('netDot').style.background = 'var(--ok)';
-        document.getElementById('netMsg').textContent = `OK — ${data.count} rows`;
-
-
-        // Reset aggregate so we don't add the same laps each poll
-        agg.clear();
-
-        recomputeAggregate(items);
-        let rows = buildRowsFromAgg();
-
-        // demo shuffle + brief freeze so it doesn't immediately snap back
-        if (DEMO && Math.random() < 0.18 && rows.length > 2){
-          const i = Math.floor(Math.random() * (rows.length - 1));
-          const j = (i===0) ? 1 : (Math.random()<0.5 ? i-1 : i+1);
-          [rows[i], rows[j]] = [rows[j], rows[i]];
-          demoFreezeUntil = Date.now() + 4000;
-        }
-
-        // respect row limits and viewport
-        const maxFit = fitRowsToViewport();
-        const limit  = Math.min(rows.length, Math.min(rowsLimit(), maxFit));
-        rows = rows.slice(0, limit);
-
-        render(rows);
-      } catch (e){
-        document.getElementById('netDot').style.background = 'var(--error)';
-        document.getElementById('netMsg').textContent = 'Disconnected — retrying…';
-        console.error(e);
-      }
-    }
-
-    /* ---------- boot ---------- */
-    window.addEventListener('keydown', (e)=>{
-      if (e.key.toLowerCase()==='s' && lastRows){ // manual shuffle demo
-        const r = lastRows.slice();
-        r.sort(()=>Math.random()-0.5); demoFreezeUntil = Date.now() + 3000; render(r);
-      }
-      if (e.key.toLowerCase()==='p' && lastRows){
-        const r = lastRows.slice(); const k = Math.floor(Math.random()*r.length);
-        r[k].bestLap = (r[k].bestLap || r[k].lastLap || 25) - 0.15; render(r);
-      }
+      el.innerHTML = `
+        <div>${pos}</div>
+        <div class="car">${carNum}</div>
+        <div class="name">${teamName}</div>
+        <div class="right">${laps}</div>
+        <div class="right">${last}</div>
+        <div class="right best">${best}</div>
+      `;
+      rowsEl.appendChild(el);
     });
+  }
 
-    (async ()=>{
-      await loadTeams();           // load team/car maps first
-      await poll();                // kick one poll so names resolve immediately
-      setInterval(poll, POLL_MS);  // then poll
-      setInterval(()=>{ document.getElementById('clock').textContent = new Date().toLocaleTimeString(); }, 500);
-    })();
-  </script>
-</body>
+  /* ----------- Flag banner ----------- */
+  function updateFlagBanner(flag) {
+    const banner = $(".flag");
+    const label = $(".flag__label");
+    if (!banner || !label) return;
+
+    banner.className = "flag"; // reset classes
+    if (!flag) {
+      banner.classList.add("hidden");
+      label.textContent = "";
+      return;
+    }
+    banner.classList.remove("hidden");
+    banner.classList.add(`flag--${flag}`);
+    label.textContent = flag.toUpperCase();
+  }
+
+  /* ----------- Pollers ----------- */
+
+  // Laps/leaderboard
+  const lapsPoller = makePoller(async () => {
+    const data = await fetchJSON("/laps?limit=200");
+    updateTable(data);
+    const rows = Array.isArray(data?.rows) ? data.rows.length : (data?.length ?? 0);
+    setNetStatus(true, `OK — ${rows} rows`);
+  }, 1000, () => setNetStatus(false, "Disconnected — retrying..."));
+
+  // Race state (flag + race clock)
+  const racePoller = makePoller(async () => {
+    const s = await fetchJSON("/race/state");
+    updateFlagBanner(s.flag);
+    const el = $("#raceClock");
+    el.textContent = s.clock_ms == null ? "--:--" : fmtClock(s.clock_ms);
+  }, 1000, () => {
+    const el = $("#raceClock");
+    if (el) el.textContent = "--:--";
+  });
+
+  /* ----------- Start polling ----------- */
+  lapsPoller.start();
+  racePoller.start();
+</script>
+  
+ </body>
 </html>
