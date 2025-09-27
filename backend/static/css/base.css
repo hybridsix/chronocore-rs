@@ -212,3 +212,7 @@ footer {
   50%  { filter: brightness(1.12); }
   100% { filter: none; }
 }
+
+:root { --fs-base: 16px; }
+html { font-size: var(--fs-base); }
+body { font-size: 1rem; line-height: 1.4; }

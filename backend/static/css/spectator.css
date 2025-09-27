@@ -143,10 +143,155 @@
   border-color: rgba(148, 163, 184, .45);
 }
 
-.flag--yellow,
-.flag--red,
-.flag--white,
-.flag--blue,
-.flag--checkered {
-  animation: flagPulse 2.2s ease-in-out infinite;
+
+/* --- Spectator Guard Styles --- */
+.flagbar {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  position: sticky;
+  top: 0;
+  z-index: 1000;
+}
+
+#leaderboard { table-layout: fixed; width: 100%; border-collapse: collapse; }
+#leaderboard th, #leaderboard td { padding: 6px 10px; white-space: nowrap; }
+
+/* Status/connection font normalization */
+#apiStatus, #connStatus, .statusbar, .footer {
+  font-size: 0.875rem;
+  line-height: 1.25;
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}
+
+/* Best-lap flash: keep pulsing until the next lap for that kart */
+/* PB pulse — no outline, subtle green backer; stops when JS removes .pb-live */
+.best.pb-live {
+  animation: pbPulse 0.7s ease-in-out infinite;
+  background: rgba(34, 197, 94, 0.16);
+}
+@keyframes pbPulse {
+  0%   { transform: scale(1);   filter: brightness(1.0) saturate(1.0); }
+  50%  { transform: scale(1.03); filter: brightness(1.25) saturate(1.25); }
+  100% { transform: scale(1);   filter: brightness(1.0) saturate(1.0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .best.pb-live { animation: none; }
+}
+
+/* Stronger caution pulse for yellow flag */
+.flag.flag--yellow {
+  --caution-base: #facc15;                    /* amber */
+  --caution-glow: rgba(250, 204, 21, 0.55);   /* glow */
+  background: var(--caution-base);
+  color: #0b0f13;
+  box-shadow:
+    0 0 0 0 var(--caution-glow),
+    0 0 24px 8px var(--caution-glow);
+  animation: cautionPulse 0.9s ease-out infinite;
+}
+@keyframes cautionPulse {
+  0% {
+    box-shadow:
+      0 0 0 0 var(--caution-glow),
+      0 0 24px 8px var(--caution-glow);
+    filter: brightness(1.25) saturate(1.3);
+    transform: scale(1);
+  }
+  55% {
+    box-shadow:
+      0 0 0 14px rgba(250, 204, 21, 0),
+      0 0 12px 4px var(--caution-glow);
+    filter: brightness(1.0) saturate(1.0);
+    transform: scale(1.01);
+  }
+  100% {
+    box-shadow:
+      0 0 0 0 rgba(250, 204, 21, 0),
+      0 0 24px 8px var(--caution-glow);
+    transform: scale(1);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flag.flag--yellow { animation: none; }
+}
+
+/* Short celebratory flash when Green appears (auto-stops) */
+.flag.flag--green.flash {
+  animation: greenFlash 0.32s ease-in-out 4; /* ~4 pulses, tweak count/speed to taste */
+}
+@keyframes greenFlash {
+  0%   { filter: brightness(1.0) saturate(1.0); box-shadow: 0 0 0 0 rgba(34,197,94,0.0); }
+  50%  { filter: brightness(1.45) saturate(1.3); box-shadow: 0 0 28px 8px rgba(34,197,94,0.35); }
+  100% { filter: brightness(1.0) saturate(1.0); box-shadow: 0 0 0 0 rgba(34,197,94,0.0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .flag.flag--green.flash { animation: none; }
+}
+/* === Generic flag pulse (used by yellow, red, blue, checkered, final) === */
+.flag.is-pulsing {
+  animation: flagPulse 0.9s ease-out infinite;
+  box-shadow:
+    0 0 0 0 var(--pulse-glow, rgba(255,255,255,0.0)),
+    0 0 24px 8px var(--pulse-glow, rgba(255,255,255,0.0));
+  position: relative;
+}
+.flag.is-pulsing::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border: 4px solid var(--pulse-glow, rgba(255,255,255,0.35));
+  border-radius: 10px;
+  animation: flagRing 0.9s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes flagPulse {
+  0%   { filter: brightness(1.25) saturate(1.2); transform: scale(1); }
+  55%  { filter: brightness(1.0)  saturate(1.0); transform: scale(1.01); }
+  100% { filter: brightness(1.25) saturate(1.2); transform: scale(1); }
+}
+@keyframes flagRing {
+  0%   { opacity: 1;   transform: scale(0.96); }
+  60%  { opacity: 0.2; transform: scale(1.04); }
+  100% { opacity: 0;   transform: scale(1.06); }
+}
+
+/* Wire colors per state (variables drive the pulse/glow) */
+.flag.flag--yellow { --pulse-base:#facc15; --pulse-glow:rgba(250,204,21,0.55); background: var(--pulse-base); color:#0b0f13; }
+.flag.flag--red    { --pulse-base:#ef4444; --pulse-glow:rgba(239,68,68,0.55);  background: var(--pulse-base); color:#0b0f13; }
+.flag.flag--blue   { --pulse-base:#3b82f6; --pulse-glow:rgba(59,130,246,0.45); background: var(--pulse-base); color:#0b0f13; }
+.flag.flag--white  { --pulse-base:#e2e8f0; --pulse-glow:rgba(226,232,240,0.55); background: var(--pulse-base); color:#0b0f13; }
+.flag.flag--checkered { --pulse-base:#d1d5db; --pulse-glow:rgba(209,213,219,0.55); background: var(--pulse-base); color:#0b0f13; }
+
+/* Pre-race: calm neutral “standby” */
+.flag.flag--pre {
+  background:#64748b; color:#0b0f13;
+  animation: preBreath 2.2s ease-in-out infinite;
+}
+@keyframes preBreath {
+  0%,100% { filter: brightness(1.0); }
+  50%     { filter: brightness(1.12); }
+}
+
+/* Green one-shot flash you already added (kept as-is) */
+.flag.flag--green.flash { animation: greenFlash 0.32s ease-in-out 4; }
+@keyframes greenFlash {
+  0% { filter: brightness(1.0) saturate(1.0); box-shadow: 0 0 0 0 rgba(34,197,94,0.0); }
+  50%{ filter: brightness(1.45) saturate(1.3); box-shadow: 0 0 28px 8px rgba(34,197,94,0.35); }
+  100%{filter: brightness(1.0) saturate(1.0); box-shadow: 0 0 0 0 rgba(34,197,94,0.0); }
+}
+
+/* PB pulse refinement (no outline) */
+.best.pb-live { animation: pbPulse 0.7s ease-in-out infinite; background: rgba(34,197,94,0.16); }
+@keyframes pbPulse { 0%{transform:scale(1)} 50%{transform:scale(1.03)} 100%{transform:scale(1)} }
+
+@media (prefers-reduced-motion: reduce) {
+  .flag.is-pulsing,
+  .flag.flag--green.flash,
+  .flag.flag--pre,
+  .best.pb-live { animation: none; }
+  .flag.is-pulsing::after { display:none; }
 }

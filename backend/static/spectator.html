@@ -29,7 +29,7 @@
     <!-- Flag banner -->
     <div id="flagBanner" class="flag hidden" aria-live="polite">
       <div class="flag__icon" id="flagIcon" aria-hidden="true"></div>
-      <div class="flag__label" id="flagLabel">Green Flag</div>
+      <div class="flag__label" id="flagLabel">Pre-Grid</div>
     </div>
 
     <section class="card">
@@ -56,86 +56,557 @@
     </div>
   </footer>
 
-  <script>
-  const { $, fetchJSON, makePoller, setNetStatus, startWallClock, fmtClock } = window.PRS;
+ <script>
+  // pull what we need from the shared namespace
+  const { $, $$, fetchJSON, makePoller, setNetStatus, startWallClock, fmtClock } = window.PRS;
 
-  /* ----------- Wall clock ----------- */
-  const stopWallClock = startWallClock("#wallClock");
+  // start footer wall clock (no need to keep a stopper ref)
+  startWallClock("#wallClock");
 
-  /* ----------- Update leaderboard table ----------- */
-  function updateTable(data) {
-    const rowsEl = $(".rows");
-    if (!rowsEl) return;
+  /* ---------- runtime config ---------- */
+  const API     = location.origin;
+  const POLL_MS = 1000;
+  const LIMIT   = 200;
 
-    rowsEl.innerHTML = "";
+  const qp = new URLSearchParams(location.search);
+  const DEMO = qp.get('demo') === '1';
+  const rowsParam = qp.get('rows'); // "all", "12", etc.
+  let demoFreezeUntil = 0;
+  let demoCursor = 0; // how many items to include
 
-    if (!data || !Array.isArray(data.rows)) return;
+  // ---- Race state (spectator-only) ----
+  let raceState = {
+    mode: "time",       // "time" | "laps"
+    duration_s: 1800,   // only for time mode
+    start_ms: null,     // epoch ms when race started
+    paused_ms: 0,       // accumulated paused time
+    running: false,     // true = clock runs
+    flag: "pre",         // "pre","green","yellow","red","white","blue","checkered"
+  };
 
-    data.rows.forEach((row, idx) => {
-      const el = document.createElement("div");
-      el.className = "row";
+  function rowsLimit(){
+    if (rowsParam === 'all') return Infinity;
+    if (rowsParam && !Number.isNaN(Number(rowsParam))) return Number(rowsParam);
+    return 12; // default
+  }
+  function fitRowsToViewport(){
+    const rowH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rowH')) || 54;
+    const header = 70, cardPad = 40, tableHead = 48, footer = 40;
+    const available = window.innerHeight - (header + cardPad + tableHead + footer);
+    return Math.max(4, Math.floor(available / rowH));
+  }
+  window.addEventListener('resize', () => { if (lastRows) render(lastRows); });
 
-      const pos = idx + 1;
-      const carNum = row.car || "";
-      const teamName = row.team || `Tag ${row.tag}`;
-      const laps = row.laps ?? 0;
-      const last = row.last ? row.last.toFixed(3) : "—";
-      const best = row.best ? row.best.toFixed(3) : "—";
+  /* ---------- data state ---------- */
+  let teamMap = {}; // tag_id -> team name
+  let carMap  = {}; // tag_id -> car number
+  const agg   = new Map(); // tag_id -> {name,laps,lastLap,bestLap,lastT}
+  let lastOrder = [];
+  let firstPaintDone = false;
+  let lastRows = null; // keep the most recently rendered rows
 
-      el.innerHTML = `
-        <div>${pos}</div>
-        <div class="car">${carNum}</div>
-        <div class="name">${teamName}</div>
-        <div class="right">${laps}</div>
-        <div class="right">${last}</div>
-        <div class="right best">${best}</div>
-      `;
-      rowsEl.appendChild(el);
-    });
+  /* ---------- helpers ---------- */
+  function carNumberFromTag(tag){ return ((Number(tag) % 900) + 100) } // 100–999
+
+  async function loadTeams(){
+    const res = await fetch(`${API}/teams`, {cache:'no-store'});
+    const data = await res.json();
+
+    teamMap = {};
+    carMap  = {};
+
+    // Shape 0: legacy { map: { tag_id: teamName } }
+    if (data && data.map && typeof data.map === 'object'){
+      for (const [k, v] of Object.entries(data.map)){
+        teamMap[String(k)] = v;
+      }
+    }
+
+    // Shape 1: { name_map, car_map }
+    if (data && (data.name_map || data.car_map)) {
+      for (const [k, v] of Object.entries(data.name_map || {})) {
+        teamMap[String(k)] = v;
+      }
+      for (const [k, v] of Object.entries(data.car_map || {})) {
+        carMap[String(k)] = v;
+      }
+    }
+
+    // Shape 2: { rows: [{tag_id, team, car_num}, ...] }
+    if (Array.isArray(data.rows)) {
+      for (const r of data.rows) {
+        if (r && r.tag_id != null) {
+          const k = String(r.tag_id);
+          teamMap[k] = r.team ?? teamMap[k] ?? `Tag ${k}`;
+          if (r.car_num != null) carMap[k] = r.car_num;
+        }
+      }
+    }
   }
 
-  /* ----------- Flag banner ----------- */
-  function updateFlagBanner(flag) {
-    const banner = $(".flag");
-    const label = $(".flag__label");
-    if (!banner || !label) return;
+  function recomputeAggregate(items){
+    // items are newest-first from /laps
+    for (const it of items) {
+      const tag = String(it.tag_id ?? it.tag ?? it.transponder ?? '');
+      if (!tag) continue;
 
-    banner.className = "flag"; // reset classes
-    if (!flag) {
-      banner.classList.add("hidden");
-      label.textContent = "";
+      let s = agg.get(tag);
+      if (!s){
+        s = { name: teamMap[tag] || `Tag ${tag}`, laps:0, lastLap:null, bestLap:null, lastT:0 };
+        agg.set(tag, s);
+      }
+      s.laps += 1;
+
+      const t = Number(it.decoder_secs ?? it.t ?? 0);
+      if (!Number.isNaN(t) && t > 0) {
+        if (s.lastT > 0) {
+          const lap = t - s.lastT;
+          s.lastLap = lap;
+          if (lap > 0 && (!s.bestLap || lap < s.bestLap)) s.bestLap = lap;
+        }
+        s.lastT = t;
+      }
+      // refresh name when /teams arrives
+      s.name = teamMap[tag] || s.name;
+    }
+  }
+
+  function buildRowsFromAgg(){
+    const out = [];
+    for (const [tag,s] of agg){
+      out.push({
+        tag: Number(tag), name: s.name, laps: s.laps,
+        lastLap: s.lastLap, bestLap: s.bestLap, lastT: s.lastT
+      });
+    }
+    out.sort((a,b) =>
+      (b.laps - a.laps) ||
+      ((a.bestLap ?? Infinity) - (b.bestLap ?? Infinity)) ||
+      ((a.lastLap ?? Infinity) - (b.lastLap ?? Infinity))
+    );
+    return out;
+  }
+
+  function updateRaceClock(){
+    const el = document.getElementById('raceClock');
+    if (!el) return;
+
+    // If we’ve never started and not running, dashes
+    if (!raceState.start_ms && !raceState.running){
+      el.textContent = '--:--';
       return;
     }
-    banner.classList.remove("hidden");
-    banner.classList.add(`flag--${flag}`);
-    label.textContent = flag.toUpperCase();
+
+    const now    = Date.now();
+    const paused = raceState.paused_ms || 0;
+
+    // How much time has elapsed (respecting pause)
+    let elapsed_ms = 0;
+    if (raceState.start_ms){
+      elapsed_ms = raceState.running
+        ? (now - raceState.start_ms - paused)
+        : (raceState.last_elapsed_ms ?? (now - raceState.start_ms - paused));
+    }
+
+    if (raceState.mode === 'time'){
+      const total     = (raceState.duration_s || 0) * 1000;
+      const remaining = Math.max(0, total - elapsed_ms);
+      const mm = Math.floor(remaining / 60000);
+      const ss = String(Math.floor((remaining % 60000) / 1000)).padStart(2,'0');
+      el.textContent = `${mm}:${ss}`;
+
+      // Auto-checkered when timer hits zero (optional)
+      if (remaining === 0 && raceState.flag !== 'checkered'){
+        renderFlag('checkered');
+      }
+    } else {
+      // Lap mode: count up
+      const mm = Math.floor(elapsed_ms / 60000);
+      const ss = String(Math.floor((elapsed_ms % 60000) / 1000)).padStart(2,'0');
+      el.textContent = `${mm}:${ss}`;
+    }
   }
 
-  /* ----------- Pollers ----------- */
+  function renderFlag(flag){
+    const host = document.getElementById('flagBanner');
+    const icon = document.getElementById('flagIcon');
+    const lbl  = document.getElementById('flagLabel');
+    if (!host || !icon || !lbl) return;
 
-  // Laps/leaderboard
-  const lapsPoller = makePoller(async () => {
-    const data = await fetchJSON("/laps?limit=200");
-    updateTable(data);
-    const rows = Array.isArray(data?.rows) ? data.rows.length : (data?.length ?? 0);
-    setNetStatus(true, `OK — ${rows} rows`);
-  }, 1000, () => setNetStatus(false, "Disconnected — retrying..."));
+    // Normalize
+    const f = String(flag || '').toLowerCase();
+    if (!f) { host.className = 'flag hidden'; host.dataset.currentFlag = ''; return; }
 
-  // Race state (flag + race clock)
-  const racePoller = makePoller(async () => {
-    const s = await fetchJSON("/race/state");
-    updateFlagBanner(s.flag);
-    const el = $("#raceClock");
-    el.textContent = s.clock_ms == null ? "--:--" : fmtClock(s.clock_ms);
-  }, 1000, () => {
-    const el = $("#raceClock");
-    if (el) el.textContent = "--:--";
+    // Map canonical names we may receive
+    const isFinal = (f === 'final' || f === 'final_lap' || f === 'finalminute' || f === 'final-minute');
+    const prev = host.dataset.currentFlag || '';
+    host.dataset.currentFlag = f;
+
+    // Base color choice (final stays yellow if already under yellow)
+    const visual = isFinal ? ((prev === 'yellow') ? 'yellow' : 'white') : f;
+
+    // Label logic
+    const mapText = {
+      pre       : 'Pre-Grid',
+      green     : 'Green Flag',
+      yellow    : 'Caution — Yellow',
+      red       : 'Race Stopped — Red',
+      blue      : 'Blue Flag',
+      white     : 'Final Lap',               // default if not under yellow
+      checkered : 'Checkered — Finish'
+    };
+
+    let text;
+    if (isFinal) {
+      // Determine "Final Minute" vs "Final Lap"
+      const qpType = (new URLSearchParams(location.search).get('type') || '').toLowerCase();
+      const raceType = (raceState.race_type || qpType || '').toLowerCase();
+
+      let remainingMs = 0;
+      if (raceState.mode === 'time' && raceState.duration_s) {
+        const paused = raceState.paused_ms || 0;
+        const now = Date.now();
+        const elapsed = raceState.start_ms
+          ? (raceState.running ? (now - raceState.start_ms - paused)
+                              : (raceState.last_elapsed_ms ?? (now - raceState.start_ms - paused)))
+          : 0;
+        remainingMs = Math.max(0, raceState.duration_s * 1000 - elapsed);
+      }
+
+      const showMinute = (raceType === 'sprint') || (remainingMs > 0 && remainingMs <= 60000);
+      text = showMinute ? 'Final Minute' : 'Final Lap';
+    } else {
+      text = mapText[visual] || 'Flag';
+    }
+
+    // Icon color block (matches visual background)
+    const fillColor = {
+      pre       : '#64748b',
+      green     : '#22c55e',
+      yellow    : '#facc15',
+      red       : '#ef4444',
+      blue      : '#3b82f6',
+      white     : '#e2e8f0',
+      checkered : '#d1d5db'
+    }[visual] || '#e5e7eb';
+
+    // Apply classes
+    host.className = `flag flag--${visual}`;
+
+    // Pulse on these states
+    const pulseSet = new Set(['yellow','red','blue','checkered']);
+    if (isFinal) pulseSet.add('white'); // "final" uses white visual unless under yellow
+    if (pulseSet.has(visual)) host.classList.add('is-pulsing'); else host.classList.remove('is-pulsing');
+
+    // One-shot flash when switching into green
+    if (visual === 'green' && prev !== 'green') {
+      host.classList.remove('flash'); void host.offsetWidth; host.classList.add('flash');
+      host.addEventListener('animationend', (e) => {
+        if (e.animationName === 'greenFlash') host.classList.remove('flash');
+      }, { once: true });
+    }
+
+    // Update icon + label
+    icon.innerHTML = `
+      <svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect x="1" y="1" width="20" height="20" rx="3" fill="${fillColor}" opacity="0.9"/>
+        <path d="M3 19 L19 3" stroke="#0b0f13" stroke-width="3" stroke-linecap="round" />
+      </svg>`;
+    lbl.textContent = isFinal ? text : (mapText[visual] || text);
+  }
+
+
+
+  /* ---------- rendering ---------- */
+  function render(rows){
+    lastRows = rows; // keep a copy for freeze/resize
+    const container = document.getElementById('rows');
+    if (!container || !Array.isArray(rows)) return;
+
+    const newOrder = rows.map(r => r.tag);
+    const deltas = new Map();
+
+    if (lastOrder.length){
+      const posPrev = new Map(lastOrder.map((t,i)=>[t,i]));
+      for (let i=0;i<newOrder.length;i++){
+        const tag = newOrder[i];
+        if(!posPrev.has(tag)) { deltas.set(tag, 0); continue; }
+        const diff = posPrev.get(tag) - i;
+        deltas.set(tag, diff===0 ? 0 : (diff>0 ? +1 : -1));
+      }
+    }
+    lastOrder = newOrder;
+
+    // 1) measure original positions
+    const firstPos = new Map();
+    for (const el of container.children) {
+      firstPos.set(Number(el.dataset.tag), el.getBoundingClientRect().top);
+    }
+
+    // ensure each row element exists
+    const existing = new Map([...container.children].map(el=>[Number(el.dataset.tag), el]));
+    for (const r of rows){
+      if (!existing.has(r.tag)){
+        const el = document.createElement('div');
+        el.className = 'row'; el.dataset.tag = r.tag;
+        el.innerHTML = `
+          <div class="pos"></div>
+          <div class="right car"></div>
+          <div class="name"></div>
+          <div class="right laps"></div>
+          <div class="right last"></div>
+          <div class="right best"></div>`;
+        container.appendChild(el);
+        existing.set(r.tag, el);
+      }
+    }
+
+    // DOM order = new order (no animation yet)
+    for (const r of rows) container.appendChild(existing.get(r.tag));
+
+    // 3) invert-then-play
+    for (const r of rows){
+      const el = existing.get(r.tag);
+      const lastTop  = el.getBoundingClientRect().top;
+      const firstTop = firstPos.get(r.tag) ?? lastTop;
+      const deltaY   = firstTop - lastTop;
+
+      el.style.transition = 'transform 0s';
+      el.style.transform  = `translateY(${deltaY}px)`;
+      requestAnimationFrame(()=>{
+        el.style.transition = 'transform 800ms cubic-bezier(0.2,0,0,1)';
+        el.style.transform  = 'translateY(0)';
+      });
+
+      // populate cells
+      el.querySelector('.pos').textContent  = String(rows.indexOf(r)+1);
+      el.querySelector('.car').textContent  = (carMap[String(r.tag)] ?? carNumberFromTag(r.tag));
+      el.querySelector('.name').textContent = r.name;
+      el.querySelector('.laps').textContent = r.laps;
+      el.querySelector('.last').textContent = (r.lastLap!=null ? r.lastLap.toFixed(3) : '—');
+
+      // PB flash that persists until the NEXT lap for this kart
+      const bestCell = el.querySelector('.best');
+      const prevBest = el._bestLap;
+      const curBest  = r.bestLap;
+      bestCell.textContent = (curBest != null ? curBest.toFixed(3) : '—');
+
+      // If we hit a new PB, start a pulse that stops on the *next* crossing.
+      // Use decoder timestamp (r.lastT) which increases only when a new lap is recorded.
+      if (firstPaintDone && prevBest != null && curBest != null && curBest < prevBest && Number(r.lastT) > 0) {
+        el._pbStopAfterT = Number(r.lastT);    // remember the PB lap’s crossing time
+        bestCell.classList.add('pb-live');
+      }
+
+      // When we see a later crossing time, the kart has completed the next lap → stop pulsing
+      if (el._pbStopAfterT != null && Number(r.lastT) > el._pbStopAfterT) {
+        bestCell.classList.remove('pb-live');
+        el._pbStopAfterT = null;
+      }
+
+      // Track the latest PB value we’ve seen for this kart
+      el._bestLap = (curBest != null ? curBest : null);
+
+
+      // delta bubble
+      const d = (deltas.get(r.tag) || 0);
+      let bubble = el._bubble;
+      if (!bubble){
+        bubble = document.createElement('span');
+        bubble.className = 'delta';
+        el.querySelector('.pos').appendChild(bubble);
+        el._bubble = bubble;
+      }
+      if (d>0){ bubble.textContent='▲'; bubble.className='delta up';   bubble.style.opacity='0.95'; }
+      else if (d<0){ bubble.textContent='▼'; bubble.className='delta down'; bubble.style.opacity='0.95'; }
+      else { bubble.textContent=''; bubble.style.opacity='0'; }
+    }
+
+    // remove disappeared rows
+    for (const el of [...container.children]){
+      const tag = Number(el.dataset.tag);
+      if (!rows.find(r=>r.tag===tag)) el.remove();
+    }
+
+    firstPaintDone = true;
+  }
+
+  /* ---------- polling ---------- */
+  async function poll(){
+    // During demo freeze, keep showing the last rendered rows (no flicker)
+    if (DEMO && Date.now() < demoFreezeUntil){
+      if (lastRows) render(lastRows);
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API}/laps?limit=${LIMIT}`, {cache:'no-store'});
+      const data = await res.json();
+      const items = (data.items || []).slice().reverse(); // oldest->newest
+
+      if (DEMO) {
+        // reveal items over time
+        demoCursor = Math.min(items.length, demoCursor + 1);
+        items.splice(demoCursor); // only include first N oldest->newest
+      }
+
+      document.getElementById('netDot').style.background = 'var(--ok)';
+      document.getElementById('netMsg').textContent = `OK — ${data.count} rows`;
+
+      // Reset aggregate so we don't add the same laps each poll
+      agg.clear();
+
+      recomputeAggregate(items);
+      let rows = buildRowsFromAgg();
+
+      // demo shuffle + brief freeze so it doesn't immediately snap back
+      if (DEMO && Math.random() < 0.18 && rows.length > 2){
+        const i = Math.floor(Math.random() * (rows.length - 1));
+        const j = (i===0) ? 1 : (Math.random()<0.5 ? i-1 : i+1);
+        [rows[i], rows[j]] = [rows[j], rows[i]];
+        demoFreezeUntil = Date.now() + 4000;
+      }
+
+      // respect row limits and viewport
+      const maxFit = fitRowsToViewport();
+      const limit  = Math.min(rows.length, Math.min(rowsLimit(), maxFit));
+      rows = rows.slice(0, limit);
+
+      render(rows);
+    } catch (e){
+      document.getElementById('netDot').style.background = 'var(--error)';
+      document.getElementById('netMsg').textContent = 'Disconnected — retrying…';
+      console.error(e);
+    }
+
+    // ---- race state fetch (non-fatal if missing) ----
+    try {
+      const rs = await fetch(`${API}/race/state`, { cache: 'no-store' });
+
+      if (rs.ok) {
+        const s = await rs.json();
+
+        // race type (if API provides it)
+        raceState.race_type = s.race_type ?? s.raceType ?? s.type ?? raceState.race_type;
+
+        // merge state
+        raceState.mode       = s.mode       ?? raceState.mode;
+        raceState.duration_s = s.duration_s ?? raceState.duration_s;
+        raceState.start_ms   = s.start_ms   ?? raceState.start_ms;
+        raceState.paused_ms  = s.paused_ms  ?? raceState.paused_ms;
+        raceState.running    = (s.running !== undefined) ? s.running : raceState.running;
+
+        // If we haven't started locally, force "pre" regardless of API defaults.
+        const nextFlag = (!raceState.start_ms && !raceState.running)
+          ? 'pre'
+          : (s.flag || 'green');
+        renderFlag(nextFlag);
+
+      } else {
+        // Non-fatal: demo fallback
+        if (DEMO) {
+          const demoFlag = (!raceState.start_ms && !raceState.running) ? 'pre' : (window.__demoFlag || 'green');
+          renderFlag(demoFlag);
+        }
+      }
+
+    } catch (e) {
+      // Non-fatal: demo fallback
+      if (DEMO) {
+        const demoFlag = (!raceState.start_ms && !raceState.running) ? 'pre' : (window.__demoFlag || 'green');
+        renderFlag(demoFlag);
+      }
+    }
+
+
+    // Update the clock pill right after race state
+    updateRaceClock();
+  }
+
+  /* ---------- boot ---------- */
+  // Demo helpers + hotkeys
+  window.__demoFlag = 'green';
+  window.addEventListener('keydown', (e)=>{
+    const k = e.key.toLowerCase();
+
+    // Demo: shuffle standings
+    if (k==='s' && lastRows){
+      const r = lastRows.slice();
+      r.sort(()=>Math.random()-0.5);
+      demoFreezeUntil = Date.now() + 3000;
+      render(r);
+    }
+
+    // Demo: fake PB
+    if (k==='p' && lastRows){
+      const r = lastRows.slice(); const i = Math.floor(Math.random()*r.length);
+      r[i].bestLap = (r[i].bestLap || r[i].lastLap || 25) - 0.15;
+      render(r);
+    }
+
+    // Demo: flag toggles
+    if (k==='g'){ window.__demoFlag='green';     renderFlag('green'); }
+    if (k==='y'){ window.__demoFlag='yellow';    renderFlag('yellow'); }
+    if (k==='r' && !e.shiftKey){ window.__demoFlag='red'; renderFlag('red'); }
+    if (k==='w'){ window.__demoFlag='white';     renderFlag('white'); }
+    if (k==='b'){ window.__demoFlag='blue';      renderFlag('blue'); }
+    if (k==='c'){ window.__demoFlag='checkered'; renderFlag('checkered'); }
+
+    // Timer: Space = start/pause (ignore typing in inputs/fields)
+    const typing = /^(INPUT|TEXTAREA|SELECT)$/i.test(e.target.tagName) || e.target.isContentEditable;
+    if (e.code === 'Space' && !typing) {
+      e.preventDefault();
+      if (!raceState.start_ms) {
+        const was = (document.getElementById('flagBanner')?.dataset.currentFlag) || '';
+        raceState.start_ms = Date.now();
+        raceState.paused_ms = 0;
+        raceState.running = true;
+        if (was === '' || was === 'pre') renderFlag('green');
+      } else {
+        raceState.running = !raceState.running;
+        raceState.last_elapsed_ms = Date.now() - raceState.start_ms - (raceState.paused_ms || 0);
+      }
+      updateRaceClock();
+    }
+
+    // Timer: Shift+R = reset demo to 5:00
+    if (k === 'r' && e.shiftKey) {
+      raceState = { mode:'time', duration_s: 5*60, start_ms: null, paused_ms: 0, running: false, flag: 'green' };
+      updateRaceClock(); renderFlag('green');
+    }
   });
 
-  /* ----------- Start polling ----------- */
-  lapsPoller.start();
-  racePoller.start();
+  (async ()=>{
+    renderFlag('pre');
+    await loadTeams();           // load team/car maps first
+    await poll();                // kick one poll so names resolve immediately
+    setInterval(poll, POLL_MS);  // then poll
+    // removed redundant wallClock setInterval — startWallClock already updates it
+  })();
+
+  // Smooth ticking (doesn't spam the network; uses cached raceState)
+  setInterval(updateRaceClock, 500);
 </script>
-  
+
+  <script>
+    /* PRS Spectator hotkey shim (safe to append as a second <script> at the end)
+      - Restores Spacebar start/pause while ignoring inputs/fields
+      - Defers to your existing handlers if present, otherwise broadcasts 'race:toggle'
+    */
+    (function () {
+      'use strict';
+      function isTypingTarget(el) {
+        return /^(INPUT|TEXTAREA|SELECT)$/i.test(el.tagName) || el.isContentEditable;
+      }
+      window.addEventListener('keydown', function (e) {
+        if (e.code === 'Space' && !isTypingTarget(e.target)) {
+          e.preventDefault();
+          if (typeof window.toggleRace === 'function') { window.toggleRace(); return; }
+          if (window.race && typeof window.race.toggle === 'function') { window.race.toggle(); return; }
+          window.dispatchEvent(new CustomEvent('race:toggle'));
+        }
+      }, { passive: false });
+    }());
+  </script>
  </body>
 </html>
