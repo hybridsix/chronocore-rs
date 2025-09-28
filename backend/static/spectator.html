@@ -56,6 +56,7 @@
     </div>
   </footer>
 
+
  <script>
   // pull what we need from the shared namespace
   const { $, $$, fetchJSON, makePoller, setNetStatus, startWallClock, fmtClock } = window.PRS;
@@ -73,6 +74,14 @@
   const rowsParam = qp.get('rows'); // "all", "12", etc.
   let demoFreezeUntil = 0;
   let demoCursor = 0; // how many items to include
+
+  /* --------- API Helper --------- */
+  const qs = new URLSearchParams(location.search);
+  window.raceId = Number(qs.get("race_id") || 1);
+  //const apiUrl = (path) => `${path}${path.includes("?") ? "&" : "?"}race_id=${raceId}`;
+  window.apiUrl = (path) =>
+    `${path}${path.includes("?") ? "&" : "?"}race_id=${window.raceId}`;
+
 
   // ---- Race state (spectator-only) ----
   let raceState = {
@@ -106,43 +115,56 @@
   let lastRows = null; // keep the most recently rendered rows
 
   /* ---------- helpers ---------- */
-  function carNumberFromTag(tag){ return ((Number(tag) % 900) + 100) } // 100–999
+  function carNumberFromTag(tag) {
+    return ((Number(tag.replace(/\D/g, "")) % 900) + 100); // 100–999 from numeric part of tag
+  }
 
   async function loadTeams(){
-    const res = await fetch(`${API}/teams`, {cache:'no-store'});
-    const data = await res.json();
+    // NEW: pull from /race/state instead of /teams
+    const res = await fetch(apiUrl("/race/state"), { cache: "no-store" });
+    const state = await res.json(); // { race, standings: [ {tag, org, display_name, ...}, ... ] }
 
     teamMap = {};
     carMap  = {};
 
-    // Shape 0: legacy { map: { tag_id: teamName } }
-    if (data && data.map && typeof data.map === 'object'){
-      for (const [k, v] of Object.entries(data.map)){
-        teamMap[String(k)] = v;
-      }
-    }
+    const rows = Array.isArray(state?.standings) ? state.standings : [];
 
-    // Shape 1: { name_map, car_map }
-    if (data && (data.name_map || data.car_map)) {
-      for (const [k, v] of Object.entries(data.name_map || {})) {
-        teamMap[String(k)] = v;
-      }
-      for (const [k, v] of Object.entries(data.car_map || {})) {
-        carMap[String(k)] = v;
-      }
-    }
-
+    // Shape 0: legacy { map: { tag_id: teamName } }  (derive from org/display_name)
+    // Shape 1: { name_map, car_map }                 (derive both maps)
     // Shape 2: { rows: [{tag_id, team, car_num}, ...] }
-    if (Array.isArray(data.rows)) {
-      for (const r of data.rows) {
-        if (r && r.tag_id != null) {
-          const k = String(r.tag_id);
-          teamMap[k] = r.team ?? teamMap[k] ?? `Tag ${k}`;
-          if (r.car_num != null) carMap[k] = r.car_num;
-        }
-      }
+    // We'll populate all three “views” your consumer code expects.
+
+    // Build maps from standings
+    for (const r of rows) {
+      const tag = String(r.tag);
+      // Prefer org, fall back to display_name, else "Tag <id>"
+      const teamLabel = (r.org && r.org.trim()) 
+        || (r.display_name && r.display_name.trim()) 
+        || `Tag ${tag}`;
+      teamMap[tag] = teamLabel;
+
+      // If you don’t store car numbers, derive a stable fake one from tag
+      const carNum = (r.car_num != null) ? r.car_num 
+        : carNumberFromTag(tag);
+      carMap[tag] = carNum;
     }
+
+    // If some code elsewhere expects the old return shapes, return a union object:
+    return {
+      // shape 0
+      map: { ...teamMap },
+      // shape 1
+      name_map: { ...teamMap },
+      car_map: { ...carMap },
+      // shape 2
+      rows: rows.map(r => ({
+        tag_id: String(r.tag),
+        team: teamMap[String(r.tag)],
+        car_num: carMap[String(r.tag)]
+      })),
+    };
   }
+
 
   function recomputeAggregate(items){
     // items are newest-first from /laps
@@ -440,7 +462,7 @@
     }
 
     try {
-      const res = await fetch(`${API}/laps?limit=${LIMIT}`, {cache:'no-store'});
+      const res = await fetch(apiUrl("/laps?limit=" + LIMIT), { cache: "no-store" });
       const data = await res.json();
       const items = (data.items || []).slice().reverse(); // oldest->newest
 
@@ -481,7 +503,7 @@
 
     // ---- race state fetch (non-fatal if missing) ----
     try {
-      const rs = await fetch(`${API}/race/state`, { cache: 'no-store' });
+      const rs = await fetch(apiUrl("/race/state"), { cache: "no-store" });
 
       if (rs.ok) {
         const s = await rs.json();
@@ -524,6 +546,17 @@
   }
 
   /* ---------- boot ---------- */
+  //make sure page actually starts the fetch loop
+  window.addEventListener('DOMContentLoaded', async () => {
+  try {
+    if (typeof loadTeams === 'function') await loadTeams();
+    if (typeof refresh   === 'function') {
+      await refresh();                 // initial draw
+      setInterval(refresh, 3000);      // keep updating
+    }
+  } catch (e) { console.error(e); }
+  });
+
   // Demo helpers + hotkeys
   window.__demoFlag = 'green';
   window.addEventListener('keydown', (e)=>{

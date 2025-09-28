@@ -4,6 +4,20 @@
 (function () {
   const PRS = {};
 
+  // ---- PRS API helpers ----
+    const qs = new URLSearchParams(location.search);
+    const raceId = Number(qs.get("race_id") || qs.get("raceId") || 1);  // defaults to 1 if missing
+
+    // same-origin API root (because spectator is served at /ui/*)
+    const API = {
+    state: () => fetch(`/race/state?race_id=${raceId}`).then(r => r.json()),
+    laps: (extraParams = "") => {
+    const extra = extraParams ? "&" + String(extraParams).replace(/^&/, "") : "";
+    return fetch(`/laps?race_id=${raceId}${extra}`).then(r => r.json());
+    }
+    };
+ // --------------------------
+
   /* ---------- DOM helpers ---------- */
   PRS.$ = (sel, root = document) => root.querySelector(sel);
   PRS.$$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
