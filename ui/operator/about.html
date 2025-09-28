@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PRS — About</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../css/base.css" />
+  <link rel="stylesheet" href="../css/operator.css" />
+  <script>
+    async function home(){ if (window.pywebview?.api?.goto) { await window.pywebview.api.goto('home'); } else { location.href='index.html'; } }
+  </script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="title">About</div>
+    <button class="tag" onclick="home()">← Back</button>
+  </header>
+
+  <main class="wrap">
+    <section class="card" style="padding:16px">
+      <h2>Power Racing Series — Operator Console</h2>
+      <p>Version: <strong>v0.1 Preview</strong></p>
+      <p>Build date: (tbd)</p>
+      <p>Backend: FastAPI @ http://localhost:8000</p>
+      <p>UI: pywebview + Qt (PySide6)</p>
+      <p>© PRS. All rights reserved.</p>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-left"><div class="status-dot"></div> About</div>
+    <div class="footer-right">Operator UI</div>
+  </footer>
+</body>
+</html>

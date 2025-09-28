@@ -1,47 +1,67 @@
 #!/usr/bin/env python3
+"""
+PRS Simulator Feed (entrant-based, new schema)
+
+- Creates a race, entrants (name+car), registers them for the race,
+  assigns a TAG to each entrant (time-bounded), and writes passes.
+- Race clock is simulated (speed changes don't skew lap deltas).
+- On 's' (start): for sprint, does an optional grid release (one crossing each).
+- On 'x' (pre): resets to pre-grid (clock=0, flag='pre', running=False).
+- On quit: sets sim badge off and (unless --keep) cleans the race rows.
+
+UI prompt stays visible: "Enter command >".
+"""
+
 from __future__ import annotations
-import argparse, os, platform, random, signal, sqlite3, sys, time, threading, queue, hashlib
+import argparse
+import os
+import platform
+import random
+import signal
+import sqlite3
+import sys
+import time
+import hashlib
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-# ---------- Constants ----------
 DEFAULT_RACE_ID = 99
-SIM_DECODER_BASE = 900000
 
-# ---------- Helpers ----------
-def clear_screen():
-    os.system("cls" if platform.system() == "Windows" else "clear")
+# -------------------- helpers --------------------
+
+def now_ms() -> int:
+    return int(time.time() * 1000)
 
 def utc_iso() -> str:
     return datetime.utcnow().replace(tzinfo=timezone.utc).isoformat()
 
+def clear_screen():
+    os.system("cls" if platform.system() == "Windows" else "clear")
+
 def format_clock_ms(ms: int) -> str:
-    if ms < 0: return "--:--"
     s = ms // 1000
     m = s // 60
     s = s % 60
     return f"{int(m):02d}:{int(s):02d}"
 
 def db_path() -> Path:
-    # 1) Honor DB_PATH env var if set
     env = os.getenv("DB_PATH")
     if env:
         return Path(env)
-    # 2) Default to repo-root laps.sqlite
     here = Path(__file__).resolve()
-    return (here.parent.parent.parent / "laps.sqlite")
+    return here.parent.parent.parent / "laps.sqlite"   # repo-root fallback
 
-def table_has_column(cur: sqlite3.Cursor, table: str, column: str) -> bool:
-    cur.execute(f"PRAGMA table_info({table})")
-    return any(row[1] == column for row in cur.fetchall())
+# -------------------- data types --------------------
 
-# ---------- Data ----------
 @dataclass
-class Entrant:
-    tag_id: int
-    team: str
+class EntrantSim:
+    entrant_id: int
+    tag: str
+    name: str
+    car: str
+    org: str
     mean_lap: float
     stddev: float = 1.8
     next_pass_t: float = 0.0
@@ -52,9 +72,9 @@ class Entrant:
 @dataclass
 class SimState:
     race_id: int = DEFAULT_RACE_ID
-    race_type: str = "sprint"
+    race_type: str = "sprint"           # 'sprint' | 'endurance' | 'qualifying'
     running: bool = False
-    flag: str = "pre"  # pre, green, yellow, red, white, blue, checkered
+    flag: str = "pre"
     speed: float = 1.0
     sim_clock_s: float = 0.0
     started: bool = False
@@ -62,230 +82,262 @@ class SimState:
     blue_until_s: float = 0.0
     blue_schedule_s: List[Tuple[float, float]] = field(default_factory=list)
 
-# ---------- DB ----------
+# -------------------- DB layer --------------------
+
 class DB:
     def __init__(self, path: Path):
         self.path = path
         self.conn = sqlite3.connect(str(path))
-        self.conn.execute("PRAGMA journal_mode=WAL;")
-        self.conn.execute("PRAGMA synchronous=NORMAL;")
+        self.conn.row_factory = sqlite3.Row
         self.cur = self.conn.cursor()
-        self._probe_schema()
         self._ensure_schema()
 
-    def _probe_schema(self):
-        self.passes_has_race_id = False
-        try:
-            self.cur.execute("PRAGMA table_info(passes)")
-            cols = {r[1] for r in self.cur.fetchall()}
-            self.passes_has_race_id = "race_id" in cols
-        except sqlite3.OperationalError:
-            pass
-        # transponders columns
-        self.trans_tag_col = "tag_id"
-        self.trans_team_col = "team"
-        try:
-            self.cur.execute("PRAGMA table_info(transponders)")
-            cols = {r[1] for r in self.cur.fetchall()}
-            if "tag_id" in cols: self.trans_tag_col = "tag_id"
-            elif "tag" in cols:  self.trans_tag_col = "tag"
-            if "team" in cols:   self.trans_team_col = "team"
-            elif "name" in cols: self.trans_team_col = "name"
-        except sqlite3.OperationalError:
-            pass
-
     def _ensure_schema(self):
-        self.cur.execute("""
-        CREATE TABLE IF NOT EXISTS passes (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            host_ts_utc TEXT NOT NULL,
-            port TEXT NOT NULL,
-            decoder_id INTEGER NOT NULL,
-            tag_id INTEGER NOT NULL,
-            decoder_secs REAL NOT NULL,
-            raw_line TEXT NOT NULL
-        )""")
-        if not self.passes_has_race_id:
-            try:
-                self.cur.execute("ALTER TABLE passes ADD COLUMN race_id INTEGER")
-                self.passes_has_race_id = True
-            except sqlite3.OperationalError:
-                pass
+        self.cur.executescript(r"""
+PRAGMA journal_mode=WAL;
 
-        # transponders
-        self.cur.execute(f"""
-        CREATE TABLE IF NOT EXISTS transponders (
-            {self.trans_tag_col} INTEGER PRIMARY KEY,
-            {self.trans_team_col} TEXT,
-            car_num INTEGER
-        )""")
+CREATE TABLE IF NOT EXISTS races (
+  id              INTEGER PRIMARY KEY,
+  name            TEXT NOT NULL,
+  start_ts_utc    INTEGER NOT NULL,
+  end_ts_utc      INTEGER,
+  created_at_utc  INTEGER NOT NULL
+);
 
-        # race_state
-        self.cur.execute("""
-        CREATE TABLE IF NOT EXISTS race_state (
-            race_id INTEGER PRIMARY KEY,
-            running INTEGER NOT NULL,
-            flag TEXT NOT NULL,
-            clock_ms INTEGER NOT NULL,
-            race_type TEXT,
-            sim INTEGER,
-            sim_label TEXT,
-            source TEXT,
-            updated_utc TEXT
-        )""")
+CREATE TABLE IF NOT EXISTS entrants (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  name            TEXT NOT NULL,
+  car_num         TEXT,
+  org             TEXT,
+  created_at_utc  INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS race_entries (
+  race_id         INTEGER NOT NULL,
+  entrant_id      INTEGER NOT NULL,
+  PRIMARY KEY (race_id, entrant_id)
+);
+
+CREATE TABLE IF NOT EXISTS tag_assignments (
+  race_id            INTEGER NOT NULL,
+  entrant_id         INTEGER NOT NULL,
+  tag                TEXT    NOT NULL,
+  effective_from_utc INTEGER NOT NULL,
+  effective_to_utc   INTEGER
+);
+CREATE INDEX IF NOT EXISTS idx_tag_assign_race_tag_time
+  ON tag_assignments(race_id, tag, effective_from_utc, effective_to_utc);
+
+CREATE TABLE IF NOT EXISTS passes (
+  id              INTEGER PRIMARY KEY AUTOINCREMENT,
+  race_id         INTEGER NOT NULL,
+  tag             TEXT NOT NULL,
+  ts_utc          INTEGER NOT NULL,
+  source          TEXT DEFAULT 'sim',
+  device_id       TEXT,
+  meta_json       TEXT,
+  created_at_utc  INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_passes_race_tag_ts ON passes(race_id, tag, ts_utc);
+
+CREATE TABLE IF NOT EXISTS race_state (
+  race_id          INTEGER PRIMARY KEY,
+  started_at_utc   INTEGER,
+  clock_ms         INTEGER,
+  flag             TEXT,
+  running          INTEGER DEFAULT 0,
+  race_type        TEXT,
+  sim              INTEGER,
+  sim_label        TEXT,
+  source           TEXT
+);
+""")
         self.conn.commit()
 
-    def clean_race(self, race_id: int):
-        if self.passes_has_race_id:
-            self.cur.execute("DELETE FROM passes WHERE race_id=?", (race_id,))
-        else:
-            sim_decoder = SIM_DECODER_BASE + race_id
-            self.cur.execute("DELETE FROM passes WHERE decoder_id=? AND port='SIM'", (sim_decoder,))
+    # ----- race lifecycle -----
+
+    def ensure_race(self, race_id: int, name: str) -> None:
+        r = self.cur.execute("SELECT 1 FROM races WHERE id=?", (race_id,)).fetchone()
+        if not r:
+            now = now_ms()
+            self.cur.execute(
+                "INSERT INTO races(id,name,start_ts_utc,end_ts_utc,created_at_utc) VALUES(?,?,?,?,?)",
+                (race_id, name, now, None, now)
+            )
+            self.conn.commit()
+
+    def clean_race(self, race_id: int) -> None:
+        self.cur.execute("DELETE FROM passes WHERE race_id=?", (race_id,))
+        self.cur.execute("DELETE FROM tag_assignments WHERE race_id=?", (race_id,))
+        self.cur.execute("DELETE FROM race_entries WHERE race_id=?", (race_id,))
         self.cur.execute("DELETE FROM race_state WHERE race_id=?", (race_id,))
+        self.cur.execute("DELETE FROM races WHERE id=?", (race_id,))
         self.conn.commit()
 
-    def upsert_transponder(self, tag_id: int, team: str):
-        tag_col = self.trans_tag_col
-        team_col = self.trans_team_col
-        try:
-            self.cur.execute(
-                f"INSERT INTO transponders({tag_col},{team_col}) VALUES(?,?) "
-                f"ON CONFLICT({tag_col}) DO UPDATE SET {team_col}=excluded.{team_col}",
-                (tag_id, team),
-            )
-        except sqlite3.OperationalError:
-            self.cur.execute(
-                f"REPLACE INTO transponders({tag_col},{team_col}) VALUES(?,?)", (tag_id, team)
-            )
-        self.conn.commit()
+    # ----- entrants + registration + tag assignment -----
 
-    def insert_pass(self, race_id: int, decoder_id: int, tag_id: int, decoder_secs: float):
-        iso = utc_iso()
-        raw = f"SIM {decoder_id} {tag_id} {decoder_secs:.3f}"
-        if self.passes_has_race_id:
-            self.cur.execute(
-                "INSERT INTO passes(host_ts_utc, port, decoder_id, tag_id, decoder_secs, raw_line, race_id) "
-                "VALUES(?,?,?,?,?,?,?)",
-                (iso, "SIM", decoder_id, tag_id, float(decoder_secs), raw, race_id),
-            )
-        else:
-            self.cur.execute(
-                "INSERT INTO passes(host_ts_utc, port, decoder_id, tag_id, decoder_secs, raw_line) "
-                "VALUES(?,?,?,?,?,?)",
-                (iso, "SIM", decoder_id, tag_id, float(decoder_secs), raw),
-            )
-        self.conn.commit()
-
-    def update_race_state(self, st: SimState, sim_label: str, sim_on: int = 1):
+    def insert_entrant(self, name: str, car_num: str, org: str) -> int:
+        now = now_ms()
         self.cur.execute(
-            """INSERT INTO race_state(race_id, running, flag, clock_ms, race_type, sim, sim_label, source, updated_utc)
-               VALUES(?,?,?,?,?,?,?,?,?)
-               ON CONFLICT(race_id) DO UPDATE SET
-                 running=excluded.running, flag=excluded.flag, clock_ms=excluded.clock_ms,
-                 race_type=excluded.race_type, sim=excluded.sim, sim_label=excluded.sim_label,
-                 source=excluded.source, updated_utc=excluded.updated_utc""",
-            (
-                st.race_id,
-                1 if st.running else 0,
-                st.flag,
-                int(round(st.sim_clock_s * 1000)),
-                st.race_type,
-                int(sim_on),
-                sim_label,
-                "sim",
-                utc_iso(),
-            ),
+            "INSERT INTO entrants(name,car_num,org,created_at_utc) VALUES(?,?,?,?)",
+            (name, car_num, org, now)
+        )
+        self.conn.commit()
+        return int(self.cur.lastrowid)
+
+    def ensure_race_entry(self, race_id: int, entrant_id: int) -> None:
+        self.cur.execute(
+            "INSERT OR IGNORE INTO race_entries(race_id, entrant_id) VALUES(?,?)",
+            (race_id, entrant_id)
         )
         self.conn.commit()
 
-# ---------- Input (Windows line reader with stable prompt) ----------
+    def assign_tag(self, race_id: int, entrant_id: int, tag: str, start_ms: int) -> None:
+        # Close any open assignment for this entrant or tag in this race
+        self.cur.execute(
+            "UPDATE tag_assignments SET effective_to_utc=? "
+            "WHERE race_id=? AND (entrant_id=? OR tag=?) AND effective_to_utc IS NULL",
+            (start_ms, race_id, entrant_id, tag)
+        )
+        # Open a new assignment window
+        self.cur.execute(
+            "INSERT INTO tag_assignments(race_id, entrant_id, tag, effective_from_utc, effective_to_utc) "
+            "VALUES(?,?,?,?,NULL)",
+            (race_id, entrant_id, tag, start_ms)
+        )
+        self.conn.commit()
+
+    # ----- writes -----
+
+    def insert_pass(self, race_id: int, tag: str, ts_utc: int) -> None:
+        self.cur.execute(
+            "INSERT INTO passes(race_id, tag, ts_utc, source, created_at_utc) VALUES(?,?,?,?,?)",
+            (race_id, tag, ts_utc, "sim", now_ms())
+        )
+        self.conn.commit()
+
+    def upsert_race_state(self, race_id: int, *, started_at_utc, clock_ms, flag, running, race_type, sim, sim_label):
+        self.cur.execute(
+            "INSERT INTO race_state(race_id,started_at_utc,clock_ms,flag,running,race_type,sim,sim_label,source) "
+            "VALUES(?,?,?,?,?,?,?,?,?) "
+            "ON CONFLICT(race_id) DO UPDATE SET started_at_utc=excluded.started_at_utc, clock_ms=excluded.clock_ms, "
+            "flag=excluded.flag, running=excluded.running, race_type=excluded.race_type, sim=excluded.sim, "
+            "sim_label=excluded.sim_label, source=excluded.source",
+            (race_id, started_at_utc, clock_ms, flag, int(running), race_type, int(sim), sim_label, "sim")
+        )
+        self.conn.commit()
+
+# -------------------- input prompt --------------------
+
 class CommandInput:
+    """
+    Stable single-line prompt:
+      - draw_prompt(reset=True) after a full-screen render
+      - echo as you type without duplicating the prompt
+    """
     def __init__(self):
         self.buffer = ""
-        self.ready = None  # last completed command (consumed by poll)
-        self.win = (platform.system() == "Windows")
+        self._last_drawn = ""
 
-    def start(self):
-        # nothing to start; polled from main loop
-        pass
-
-    def stop(self):
-        pass
-
-    def _print_prompt(self):
-        sys.stdout.write("Enter command > " + self.buffer)
+    def draw_prompt(self, reset=False):
+        # erase the previous prompt line and redraw
+        # (works well after a full-screen render or when resetting)
+        sys.stdout.write("\r")
+        if reset:
+            # write a fresh line at the bottom
+            sys.stdout.write("Enter command > ")
+            sys.stdout.write(self.buffer)
+        else:
+            # re-draw only if changed
+            line = "Enter command > " + self.buffer
+            if line != self._last_drawn:
+                # clear current line then redraw
+                sys.stdout.write(" " * max(len(self._last_drawn), len(line)))
+                sys.stdout.write("\rEnter command > ")
+                sys.stdout.write(self.buffer)
         sys.stdout.flush()
+        self._last_drawn = "Enter command > " + self.buffer
 
-    def poll(self) -> Optional[str]:
-        if not self.win:
-            # Fallback: non-Windows environments still use blocking input()
-            # Show a stable prompt, read a line once, return it, otherwise None
-            if self.ready is None:
-                try:
-                    self._print_prompt()
-                    line = input()  # user presses Enter here
-                    return line.strip()
-                except EOFError:
-                    return None
-            else:
-                cmd, self.ready = self.ready, None
-                return cmd
+    def _backspace(self):
+        if self.buffer:
+            self.buffer = self.buffer[:-1]
+            # move back one char, erase, move back again
+            sys.stdout.write("\b \b")
+            sys.stdout.flush()
+            self._last_drawn = ""  # force redraw next time
 
-        # Windows: non-blocking line assembly with msvcrt
-        import msvcrt
-        got_cmd = None
-        while msvcrt.kbhit():
-            ch = msvcrt.getwch()
-            if ch in ("\r", "\n"):  # Enter
-                sys.stdout.write("\n")
-                sys.stdout.flush()
-                got_cmd = self.buffer.strip()
-                self.buffer = ""
-            elif ch == "\x08":  # Backspace
-                if self.buffer:
-                    self.buffer = self.buffer[:-1]
-                    # erase char on screen
-                    sys.stdout.write("\b \b")
-                    sys.stdout.flush()
-            elif ch == "\x1b":  # ESC clears the line
-                # move cursor to line start after prompt, clear tail
-                # Easiest: print CR and redraw prompt
-                sys.stdout.write("\r")
-                sys.stdout.flush()
-                self.buffer = ""
-                self._print_prompt()
-            else:
-                # normal printable
-                if ch.isprintable():
+    def poll(self):
+        if platform.system() == "Windows":
+            import msvcrt
+            got = None
+            while msvcrt.kbhit():
+                ch = msvcrt.getwch()
+                if ch in ("\r", "\n"):
+                    sys.stdout.write("\n"); sys.stdout.flush()
+                    got, self.buffer = self.buffer.strip(), ""
+                    self._last_drawn = ""  # force fresh prompt after processing
+                elif ch == "\x08":      # backspace
+                    self._backspace()
+                elif ch == "\x1b":      # ESC clears
+                    self.buffer = ""
+                    self.draw_prompt(reset=True)
+                elif ch.isprintable():
                     self.buffer += ch
                     sys.stdout.write(ch)
                     sys.stdout.flush()
-        return got_cmd
+                    # don’t update _last_drawn here; we’re echoing char-by-char
+            return got
+        # Non-Windows fallback (blocking)
+        try:
+            self.draw_prompt(reset=True)
+            line = input()
+            return line.strip()
+        except EOFError:
+            return None
 
 
+# -------------------- simulator --------------------
 
-# ---------- Simulator ----------
 class Simulator:
+    """
+    Entrant-first model (tag can change mid-race; results stick to entrant).
+    Console shows: Position | Car Num | Racer Name | Laps | Last | Best
+    """
     def __init__(self, args):
         self.args = args
         self.db = DB(db_path())
         self.state = SimState(race_id=args.race_id, race_type=args.race_type)
-        self.sim_label = args.sim_label
-        self.decoder_id = SIM_DECODER_BASE + self.state.race_id
-        self.entrants: List[Entrant] = []
         random.seed(args.seed)
 
-        teams = [t.strip() for t in args.teams.split(",") if t.strip()] if args.teams else [f"Team {i+1}" for i in range(max(3, min(24, args.synthetic_teams)))]
-        base_tag = 3000000 + 10 * self.state.race_id
-        for i, team in enumerate(teams):
-            tag = base_tag + i + 1
-            mean = max(6.0, random.uniform(args.lap_min, args.lap_max))
-            e = Entrant(tag_id=tag, team=team, mean_lap=mean, stddev=args.lap_jitter)
-            e.next_pass_t = 0.0
-            self.entrants.append(e)
-            self.db.upsert_transponder(tag, team)
+        # Wipe race rows at start unless user keeps
+        if not args.keep_on_start:
+            self.db.clean_race(self.state.race_id)
 
-        # Auto-blue schedule
+        # Create the race
+        self.db.ensure_race(self.state.race_id, name=f"Sim Race {self.state.race_id}")
+
+        # Synthetic entrants: name + car + org + tag assignment
+        self.entrants: List[EntrantSim] = []
+        n = max(3, min(24, args.synthetic_teams))
+        base_tag = 3000000 + 10*self.state.race_id
+        self.epoch_ms = now_ms()
+
+        for i in range(n):
+            name = f"Racer {i+1}" if not args.teams else args.teams.split(",")[i].strip() if i < len(args.teams.split(",")) else f"Racer {i+1}"
+            car  = f"{(i % 89) + 11:02d}"
+            org  = f"Team {i+1}"
+            tag  = str(base_tag + i + 1)
+            mean = max(6.0, random.uniform(args.lap_min, args.lap_max))
+
+            eid = self.db.insert_entrant(name=name, car_num=car, org=org)
+            self.db.ensure_race_entry(self.state.race_id, eid)
+            self.db.assign_tag(self.state.race_id, eid, tag, start_ms=self.epoch_ms)
+
+            self.entrants.append(EntrantSim(
+                entrant_id=eid, tag=tag, name=name, car=car, org=org, mean_lap=mean, stddev=args.lap_jitter
+            ))
+
+        # Auto-blue schedule (optional)
         if args.blue_every_mins > 0:
             step = args.blue_every_mins * 60.0
             for k in range(1, 1000):
@@ -296,30 +348,28 @@ class Simulator:
                 s = float(m) * 60.0
                 self.state.blue_schedule_s.append((s, s + args.blue_duration_sec))
 
-        if not args.keep_on_start:
-            self.db.clean_race(self.state.race_id)
-
-        # input + render buffers
         self.cmd = CommandInput()
-        self.last_render_hash = ""
+        self._last_hash = ""
 
-    # ---- Flags/flow ----
+    # --- flow control ---
+
     def set_flag(self, f: str):
         self.state.flag = f
         if f == "green" and not self.state.started:
             self.on_first_green()
 
     def on_first_green(self):
+        # Sprint: grid release -> one crossing per entrant at t=0
         if self.args.race_type == "sprint" and self.args.grid_release:
             for e in self.entrants:
-                self.db.insert_pass(self.state.race_id, self.decoder_id, e.tag_id, 0.0)
+                self.db.insert_pass(self.state.race_id, e.tag, self.epoch_ms + int(self.state.sim_clock_s * 1000))
                 e.next_pass_t = self.sample_lap(e)
         else:
             for e in self.entrants:
                 e.next_pass_t = self.sample_lap(e)
         self.state.started = True
 
-    def sample_lap(self, e: Entrant) -> float:
+    def sample_lap(self, e: EntrantSim) -> float:
         t = random.gauss(e.mean_lap, e.stddev)
         t = max(self.args.lap_min, min(self.args.lap_max, t))
         return self.state.sim_clock_s + t
@@ -336,95 +386,114 @@ class Simulator:
             if self.state.flag == "blue" and self.state.sim_clock_s >= self.state.blue_until_s:
                 self.state.flag = "green"
 
-        # Pass generation
+        # Generate passes only during racing flags
         if self.state.running and self.state.flag in ("green", "white", "blue"):
             nxt_idx, nxt_t = None, float("inf")
-            for i, entry in enumerate(self.entrants):
-                if entry.next_pass_t > 0 and entry.next_pass_t < nxt_t:
-                    nxt_t, nxt_idx = entry.next_pass_t, i
+            for i, ent in enumerate(self.entrants):
+                if ent.next_pass_t > 0 and ent.next_pass_t < nxt_t:
+                    nxt_idx, nxt_t = i, ent.next_pass_t
             if nxt_idx is not None and nxt_t <= self.state.sim_clock_s:
-                e = self.entrants[nxt_idx]
-                self.db.insert_pass(self.state.race_id, self.decoder_id, e.tag_id, e.next_pass_t)
-                # rough in-console stats
-                if e.last_lap_s is None:
-                    e.last_lap_s = e.next_pass_t
-                    e.best_lap_s = e.last_lap_s
+                ent = self.entrants[nxt_idx]
+                ts = self.epoch_ms + int(ent.next_pass_t*1000)
+                self.db.insert_pass(self.state.race_id, ent.tag, ts)
+                # console stats only
+                if ent.last_lap_s is None:
+                    ent.last_lap_s = nxt_t
+                    ent.best_lap_s = ent.last_lap_s
                 else:
-                    lapse = e.next_pass_t - (e.next_pass_t - e.last_lap_s)
-                    e.last_lap_s = lapse
-                    e.best_lap_s = min(e.best_lap_s or lapse, lapse)
-                e.laps += 1
-                e.next_pass_t = self.sample_lap(e)
+                    lap_s = nxt_t - (nxt_t - ent.last_lap_s)
+                    ent.last_lap_s = lap_s
+                    ent.best_lap_s = min(ent.best_lap_s or lap_s, lap_s)
+                ent.laps += 1
+                ent.next_pass_t = self.sample_lap(ent)
 
-    # ---- Standings + Render ----
-    def standings_snap(self):
+    # --- console rendering ---
+
+    def _rows(self):
+        # Sort by laps desc, then soonest next crossing
         rows = []
         for e in self.entrants:
-            rows.append((e.team, e.laps, e.last_lap_s, e.best_lap_s, e.next_pass_t))
-        rows.sort(key=lambda r: (-r[1], r[4]))
-        return [(r[0], r[1], r[2], r[3]) for r in rows]
+            rows.append((e.name, e.car, e.laps, e.last_lap_s, e.best_lap_s, e.next_pass_t))
+        rows.sort(key=lambda r: (-r[2], r[5]))
+        return rows
 
-    def build_view(self) -> str:
+    def _view(self) -> str:
         lines = []
         lines.append(f"PRS Simulator Feed — Race {self.state.race_id}")
         lines.append(f"Race Type: {self.state.race_type}   Speed: {self.state.speed:.2f}x   Flag: {self.state.flag}   Running: {self.state.running}")
-        lines.append(f"Clock: {format_clock_ms(int(self.state.sim_clock_s*1000))}   Entrants: {len(self.entrants)}   DB: {self.db.path.name}")
+        lines.append(f"Clock: {format_clock_ms(int(self.state.sim_clock_s*1000))}   Entrants: {len(self.entrants)}   DB: {self.db.path}")
         lines.append("")
-        lines.append("Pos | Team                        | Laps | Last(s) | Best(s)")
-        lines.append("----+-----------------------------+------+---------+--------")
-        for i, (team, laps, last, best) in enumerate(self.standings_snap(), start=1):
+        lines.append("Pos | Car | Racer Name                 | Laps | Last(s) | Best(s)")
+        lines.append("----+-----+----------------------------+------+---------+--------")
+        for i, (name, car, laps, last, best, _) in enumerate(self._rows(), start=1):
             last_s = f"{last:5.2f}" if last else "  —  "
             best_s = f"{best:5.2f}" if best else "  —  "
-            lines.append(f"{i:3d} | {team:<27} | {laps:4d} | {last_s:>7} | {best_s:>6}")
+            lines.append(f"{i:3d} | {car:>3s} | {name:<26} | {laps:4d} | {last_s:>7} | {best_s:>6}")
         lines.append("")
         lines.append("Commands: s=start  p=pause  t=toggle  g=green  y=yellow  r=red  w=white  b=blue  c=checkered  n=next  +=faster  -=slower  x=pre  q=quit")
-        lines.append("")  # leave space above the prompt
+        lines.append("")
         return "\n".join(lines)
 
     def render(self, force=False):
-        view = self.build_view()
-        h = hashlib.md5(view.encode("utf-8")).hexdigest()
-        if force or h != self.last_render_hash:
+        view = self._view()
+        h = hashlib.md5(view.encode()).hexdigest()
+        if force or h != self._last_hash:
             clear_screen()
             print(view)
-            # prompt will be printed by input thread; we just ensure space above it
-            self.last_render_hash = h
+            self._last_hash = h
+            # draw the prompt exactly once per full render
+            self.cmd.draw_prompt(reset=True)
 
-    # ---- Run ----
+
+    # --- main loop ---
+
     def run(self):
-        # start input thread
-        self.cmd.start()
-
+        self.cmd = CommandInput()
         last_wall = time.perf_counter()
-        self.db.update_race_state(self.state, self.sim_label, sim_on=1)
+
+        # initial overlay
+        self.db.upsert_race_state(
+            self.state.race_id,
+            started_at_utc=None,
+            clock_ms=int(self.state.sim_clock_s*1000),
+            flag=self.state.flag,
+            running=self.state.running,
+            race_type=self.state.race_type,
+            sim=True,
+            sim_label="SIMULATOR ACTIVE",
+        )
         self.render(force=True)
 
-       # ensure prompt is visible immediately
-        sys.stdout.write("Enter command > ")
-        sys.stdout.flush()
-
-        # target ~2 fps renders
         render_interval = 0.5
         next_render = 0.0
 
         while not self.state.quit:
             now = time.perf_counter()
-            dt_wall = now - last_wall
+            dt = now - last_wall
             last_wall = now
 
             if self.state.running:
-                self.state.sim_clock_s += dt_wall * max(0.05, self.state.speed)
+                self.state.sim_clock_s += dt * max(0.05, self.state.speed)
 
             self.tick_events()
-            self.db.update_race_state(self.state, self.sim_label, sim_on=1)
 
-            # render throttle
-            next_render -= dt_wall
+            started_at = (self.epoch_ms if (self.state.started and self.state.flag != "pre") else None)
+            self.db.upsert_race_state(
+                self.state.race_id,
+                started_at_utc=started_at,
+                clock_ms=int(self.state.sim_clock_s*1000),
+                flag=self.state.flag,
+                running=self.state.running,
+                race_type=self.state.race_type,
+                sim=True,
+                sim_label="SIMULATOR ACTIVE",
+            )
+
+            next_render -= dt
             if next_render <= 0:
                 self.render()
                 next_render = render_interval
 
-            # process commands (line-based)
             cmd = self.cmd.poll()
             if cmd:
                 c = cmd.strip().lower()
@@ -433,6 +502,9 @@ class Simulator:
                     if self.state.flag == "pre":
                         self.set_flag("green")
                     self.render(force=True)
+                    # ...after processing the command...
+                    # if you didn't call render(force=True), at least refresh the prompt:
+                    self.cmd.draw_prompt(reset=True)
                 elif c in ("p","pause"):
                     self.state.running = False
                 elif c in ("t","toggle"):
@@ -454,47 +526,64 @@ class Simulator:
                     self.state.speed = max(0.1, self.state.speed / 1.25)
                 elif c in ("n","next"):
                     if not self.state.running:
-                        e = min(self.entrants, key=lambda x: x.next_pass_t if x.next_pass_t>0 else 9e9)
-                        if e and e.next_pass_t>0:
-                            self.db.insert_pass(self.state.race_id, self.decoder_id, e.tag_id, max(e.next_pass_t, self.state.sim_clock_s))
-                            e.laps += 1
-                            e.next_pass_t = self.sample_lap(e)
+                        # fire one pass for the earliest scheduled entrant
+                        ent = min(self.entrants, key=lambda x: x.next_pass_t if x.next_pass_t>0 else 9e9)
+                        if ent and ent.next_pass_t>0:
+                            ts = self.epoch_ms + int(max(ent.next_pass_t, self.state.sim_clock_s)*1000)
+                            self.db.insert_pass(self.state.race_id, ent.tag, ts)
+                            ent.laps += 1
+                            ent.next_pass_t = self.sample_lap(ent)
+                            self.render(force=True)
                 elif c in ("x","pre","reset"):
+                    # reset to pre-grid, keep entrants/assignments
                     self.state.running = False
                     self.state.flag = "pre"
                     self.state.started = False
                     self.state.sim_clock_s = 0.0
                     self.state.blue_until_s = 0.0
-                    self.db.update_race_state(self.state, self.sim_label, sim_on=1)
+                    self.db.upsert_race_state(
+                        self.state.race_id,
+                        started_at_utc=None,
+                        clock_ms=0,
+                        flag="pre",
+                        running=False,
+                        race_type=self.state.race_type,
+                        sim=True,
+                        sim_label="SIMULATOR ACTIVE",
+                    )
                     self.render(force=True)
                 elif c in ("q","quit","exit"):
                     self.state.quit = True
-                else:
-                    # ignore unknowns; re-render to keep prompt tidy
-                    self.render(force=True)
 
             time.sleep(0.05)
 
-        # shutdown
-        self.cmd.stop()
+        # shutdown overlay + cleanup
         self.state.running = False
         self.state.flag = "pre"
         self.state.sim_clock_s = 0.0
-        self.db.update_race_state(self.state, self.sim_label, sim_on=0)
+        self.db.upsert_race_state(
+            self.state.race_id,
+            started_at_utc=None,
+            clock_ms=0,
+            flag="pre",
+            running=False,
+            race_type=self.state.race_type,
+            sim=False,
+            sim_label="",
+        )
         if not self.args.keep_on_exit:
             self.db.clean_race(self.state.race_id)
         clear_screen()
         print("Simulator ended.", "(kept data)" if self.args.keep_on_exit else "(cleaned race)")
 
-# ---------- CLI ----------
+# -------------------- CLI --------------------
+
 def parse_args():
-    p = argparse.ArgumentParser(description="PRS Simulator Feed (CLI)")
+    p = argparse.ArgumentParser(description="PRS Simulator Feed (entrant-based)")
     p.add_argument("--race-id", type=int, default=DEFAULT_RACE_ID)
     p.add_argument("--race-type", choices=["sprint","endurance","qualifying"], default="sprint")
-    p.add_argument("--sim-label", default="SIMULATOR ACTIVE")
-    p.add_argument("--synthetic", type=int, default=60)
-    p.add_argument("--teams", type=str, default="")
-    p.add_argument("--synthetic-teams", type=int, default=6)
+    p.add_argument("--teams", type=str, default="", help="Optional comma list of racer names (used as display names)")
+    p.add_argument("--synthetic-teams", type=int, default=12)
     p.add_argument("--grid-release", action="store_true", default=True)
     p.add_argument("--no-grid-release", dest="grid_release", action="store_false")
     p.add_argument("--speed", type=float, default=1.0)
@@ -512,18 +601,10 @@ def parse_args():
 def main():
     args = parse_args()
     sim = Simulator(args)
-
-    def handle_sig(sig, frame):
-        sim.state.quit = True
+    def handle_sig(sig, frame): sim.state.quit = True
     signal.signal(signal.SIGINT, handle_sig)
     signal.signal(signal.SIGTERM, handle_sig)
-
-    try:
-        sim.run()
-    finally:
-        pass
+    sim.run()
 
 if __name__ == "__main__":
     main()
-
-

@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PRS — Operator Console</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Shared design tokens / utilities -->
+  <link rel="stylesheet" href="../css/base.css" />
+  <link rel="stylesheet" href="../css/spectator.css" />
+
+  <!-- Page-specific styles (cleaned operator.css you just installed) -->
+  <link rel="stylesheet" href="../css/operator.css" />
+
+  <script>
+    /**
+     * Desktop navigation helper:
+     * - In the app window (pywebview), call into the Python API.
+     * - In a normal browser, fall back to simple page navigation.
+     */
+    async function goto(screenId) {
+      if (window.pywebview?.api?.goto) {
+        try { await window.pywebview.api.goto(screenId); }
+        catch (e) { console.error("goto failed:", e); }
+      } else {
+        location.href = screenId + ".html";
+      }
+    }
+      // Open spectator in external browser, or fallback link
+     async function openSpectator() {
+        if (window.pywebview?.api?.open_spectator) {
+            try { await window.pywebview.api.open_spectator(); return; } catch(e){ console.error(e); }
+            }
+            // Fallback if testing in a normal browser
+        window.open("http://localhost:8000/ui", "_blank");
+  }
+
+  </script>
+</head>
+
+<!-- "index" class is just a hook if we ever need index-only CSS tweaks -->
+<body class="index">
+  <!-- ───────────────────────────────────────────────────────────────
+       Header: ChronoCore wordmark (text) + optional mark (image later)
+       We keep this text-based so it scales crisply; the round clock mark
+       can be added as an SVG via <img class="brand__logo"> when ready.
+       ─────────────────────────────────────────────────────────────── -->
+  <header class="app-header">
+    <div class="brand">
+      <!-- Optional mark placeholder (leave commented until you have the SVG) -->
+      <!-- <img class="brand__logo" src="../img/chronocore_mark.svg" alt="ChronoCore mark"> -->
+
+      <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+        <div class="wordmark__top">
+          <span class="wordmark__big">CHRONO</span>
+          <span class="wordmark__big">CORE</span>
+        </div>
+        <div class="wordmark__bottom">RACE SOFTWARE</div>
+      </div>
+    </div>
+  </header>
+
+  <!-- ───────────────────────────────────────────────────────────────
+       Main: two-column hero card
+       Left  = logo + subline (centered block with a small right nudge)
+       Right = primary actions
+       ─────────────────────────────────────────────────────────────── -->
+  <main class="wrap">
+    <section class="hero card">
+      <div class="hero__inner">
+        <!-- LEFT COLUMN: brand block -->
+        <!-- Centered in its pane; the tiny optical offset is controlled by
+             --brand-nudge-x in operator.css (default: 8px). -->
+        <div class="hero__brand">
+          <img class="brand-mark" src="../img/PRS_Logo.svg" alt="PRS Logo">
+          <p class="sub">Timing • Control • Moxie</p>
+        </div>
+
+        <!-- RIGHT COLUMN: primary actions -->
+        <div class="hero__actions">
+          <button class="btn btn-primary" onclick="goto('race_control')">Start / Race Control</button>
+          <button class="btn" onclick="goto('entrants')">Entrants & Tags</button>
+          <button class="btn" onclick="goto('stats')">Results & Exports</button>
+          <button class="btn" onclick="goto('settings')">Setup & Devices</button>
+          <button class="btn" onclick="openSpectator()">Open Spectator View</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- ───────────────────────────────────────────────────────────────
+       Footer: sticky status bar
+       ─────────────────────────────────────────────────────────────── -->
+  <footer class="app-footer">
+    <div class="footer-left">
+      <div class="status-dot" id="netDot"></div>
+      <div id="netMsg">Desktop shell ready</div>
+    </div>
+    <div class="footer-right">Operator UI</div>
+  </footer>
+
+  <!-- Anchored version pill (clickable → About) -->
+  <div class="version-pill" onclick="goto('about')">v0.1 Preview</div>
+</body>
+</html>

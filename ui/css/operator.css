@@ -1,0 +1,189 @@
+/* ==========================================================================
+   Operator Console — page styles
+   - Dark theme + sticky footer layout
+   - Two-column hero: brand (left) / actions (right)
+   - ChronoCore header wordmark
+   ========================================================================== */
+
+/* ===== Global layout vars ===== */
+:root {
+  --footer-h: 48px;        /* footer height for consistent spacing */
+  --brand-nudge-x: 8px;    /* tiny optical push to the right; tweak (px) */
+}
+
+/* ===== Base layout & theme ===== */
+html, body { height: 100%; }
+
+body {
+  margin: 0;
+  display: flex;                 /* header | main | footer */
+  flex-direction: column;
+  background: var(--bg, #0c131a);
+  color: var(--text, #e6ebf0);
+  font-family: var(--sans, system-ui, Segoe UI, Roboto, Arial, sans-serif);
+  font-size: var(--fs-base, 16px);
+}
+
+/* ===== Header ===== */
+.app-header {
+  display: flex;
+  align-items: center;
+  padding: 10px 16px;
+  border-bottom: 1px solid #0b2230;
+}
+
+/* ChronoCore wordmark in header */
+.brand {
+  display: inline-grid;
+  grid-auto-flow: column;
+  align-items: center;
+  gap: 12px;
+}
+.brand__logo {
+  height: 36px;
+  width: auto;
+  display: block;
+  filter: drop-shadow(0 2px 6px rgba(0,0,0,.45));
+}
+.brand__wordmark {
+  line-height: 1;
+  color: #e9f1f7;
+  text-transform: uppercase;
+  text-shadow:
+    0 0 2px rgba(255,255,255,0.25),
+    0 2px 10px rgba(0,0,0,0.45);
+}
+.wordmark__top {
+  display: grid;
+  gap: 4px;
+  letter-spacing: 0.06em;
+}
+.wordmark__big {
+  display: block;
+  font-weight: 800;
+  font-size: clamp(18px, 3.0vw, 28px);
+}
+.wordmark__bottom {
+  margin-top: 4px;
+  font-weight: 700;
+  font-size: clamp(11px, 1.4vw, 14px);
+  letter-spacing: 0.18em;
+  opacity: 0.92;
+}
+
+/* ===== Main grows to push footer to bottom ===== */
+main { flex: 1; }
+.wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+
+/* ===== Card ===== */
+.card {
+  background: #0f141a;
+  border: 1px solid #0b0f13;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0,0,0,.35);
+}
+
+/* ===== Hero layout (two columns) ===== */
+.hero { padding: 0; }
+
+.hero__inner {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 360px; /* left pane grows, right pane fixed */
+  min-height: 320px;
+}
+.hero__inner::after {
+  content: "";
+  position: absolute;
+  top: 20px; bottom: 20px;
+  left: calc(100% - 360px - 1px);
+  width: 1px;
+  background: #0b2230;
+  opacity: .9;
+}
+
+/* ===== Left pane: brand block (logo + subline) ===== */
+.hero__brand {
+  display: grid;
+  justify-items: center;         /* center horizontally in left pane */
+  align-content: start;          /* top aligned */
+  text-align: center;
+  gap: 10px;
+  padding: 24px;
+  transform: translateX(var(--brand-nudge-x));
+}
+.hero__brand .brand-mark {
+  height: 84px;
+  width: auto;
+  display: block;
+}
+.hero__brand .sub {
+  margin: 0;
+  color: var(--muted, #9aa7b3);
+}
+
+/* ===== Right pane: action buttons ===== */
+.hero__actions {
+  display: grid;
+  gap: 12px;
+  align-content: start;
+  padding: 24px;
+}
+.btn {
+  appearance: none;
+  border: 1px solid #0b2230;
+  background: #12171c;
+  color: #e6ebf0;
+  font-size: 18px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  cursor: pointer;
+  box-shadow: 0 0 0 1px #0c1116, 0 6px 16px rgba(0,0,0,.35);
+  transition: transform .06s ease, filter .2s ease;
+}
+.btn:hover { filter: brightness(1.08); }
+.btn:active { transform: translateY(1px); }
+.btn-primary {
+  background: linear-gradient(180deg, rgba(0,180,255,.22), rgba(0,180,255,.06));
+  color: #dff3ff;
+}
+
+/* ===== Sticky footer ===== */
+.app-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 16px;
+  border-top: 1px solid #0b2230;
+  font-size: 14px;
+  min-height: var(--footer-h);
+}
+.footer-left { display: flex; align-items: center; gap: 8px; }
+.footer-right { opacity: .8; }
+.status-dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--ok, #17c964);
+}
+
+/* ===== Anchored version pill ===== */
+.version-pill {
+  position: fixed;
+  left: 16px;
+  bottom: calc(var(--footer-h, 48px) + 8px);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #12171c;
+  border: 1px solid #0b2230;
+  font-size: 12px;
+  color: var(--text, #e6ebf0);
+  opacity: .95;
+  cursor: pointer;
+}
+.version-pill:hover { filter: brightness(1.08); }
+
+/* ===== Responsive ===== */
+@media (max-width: 900px) {
+  .hero__inner { grid-template-columns: 1fr; }
+  .hero__inner::after { display: none; }
+  .hero__brand { align-content: start; transform: none; }
+}
