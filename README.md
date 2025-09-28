@@ -3,6 +3,10 @@
 Open-source race timing and management platform.  
 Supports Power Racing Series (PRS) and general lap-based racing (karts, RC cars, boats, etc.).
 
+[![GitHub Repo](https://img.shields.io/badge/github-hybridsix%2Fchronocore--rs-blue?logo=github)](https://github.com/hybridsix/chronocore-rs)
+[![Issues](https://img.shields.io/github/issues/hybridsix/chronocore-rs)](https://github.com/hybridsix/chronocore-rs/issues)
+[![License](https://img.shields.io/github/license/hybridsix/chronocore-rs)](https://github.com/hybridsix/chronocore-rs/blob/main/LICENSE)
+
 ---
 
 ## Requirements
