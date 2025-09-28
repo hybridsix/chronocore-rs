@@ -5,15 +5,13 @@ Run:
     uvicorn server:app --reload
 
 Env:
-    PRS_DB=/path/to/laps.sqlite
+    DB_PATH=/absolute/path/to/laps.sqlite
 """
 from __future__ import annotations
-
-import os
 from pathlib import Path
-
 import json
 import os
+import time
 import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,7 +28,7 @@ from starlette.staticfiles import StaticFiles
 # ---------------------------------------------------------------------------
 BASE_DIR = Path(__file__).resolve().parent
 ROOT = BASE_DIR.parent
-DB_PATH = Path(os.environ.get("PRS_DB", BASE_DIR / "laps.sqlite")).resolve()
+## (Don’t bind a global path at import time; always resolve via get_db_path())
 
 # Static UI
 UI_DIR = BASE_DIR / "static"
@@ -120,7 +118,7 @@ def get_db_path() -> str:
     return str(repo_root / "laps.sqlite")
 
 def get_conn() -> sqlite3.Connection:
-    conn = sqlite3.connect(DB_PATH, detect_types=sqlite3.PARSE_DECLTYPES)
+    conn = sqlite3.connect(get_db_path(), detect_types=sqlite3.PARSE_DECLTYPES)   
     conn.row_factory = sqlite3.Row
     return conn
 
