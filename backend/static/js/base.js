@@ -1,123 +1,199 @@
-/* backend/static/js/base.js */
-/* global window, document, fetch, AbortController */
+/* =========================================================================
+   PRS – Shared Frontend Helpers (production build)
+   Exposes: window.PRS = { $, $$, qs, apiUrl, fmt, startWallClock, debounce,
+                           throttle, onVisible, jsonFetch, NetStatus }
+   -------------------------------------------------------------------------
+   - Zero dependencies. No frameworks.
+   - Safe to load on any page; everything is namespaced under PRS.
+   - No UI side effects on its own.
+   ========================================================================= */
 
-(function () {
-  const PRS = {};
+(() => {
+  // Guard: keep existing PRS if reloaded (hot reload / multiple pages)
+  const PRS = (window.PRS = window.PRS || {});
 
-  // ---- PRS API helpers ----
-    const qs = new URLSearchParams(location.search);
-    const raceId = Number(qs.get("race_id") || qs.get("raceId") || 1);  // defaults to 1 if missing
+  /* -----------------------------------------------------------------------
+     DOM helpers
+     --------------------------------------------------------------------- */
+  const $  = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
 
-    // same-origin API root (because spectator is served at /ui/*)
-    const API = {
-    state: () => fetch(`/race/state?race_id=${raceId}`).then(r => r.json()),
-    laps: (extraParams = "") => {
-    const extra = extraParams ? "&" + String(extraParams).replace(/^&/, "") : "";
-    return fetch(`/laps?race_id=${raceId}${extra}`).then(r => r.json());
+  // Read a querystring value with a fallback
+  function qs(name, fallback = null) {
+    const v = new URLSearchParams(location.search).get(name);
+    return v === null ? fallback : v;
+  }
+
+  /* -----------------------------------------------------------------------
+     API URL helper
+     - Builds a path with query params and an optional race_id
+     --------------------------------------------------------------------- */
+  function apiUrl(path, params = {}, raceId = null) {
+    const url = new URL(path, location.origin);
+    Object.entries(params || {}).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+    });
+    if (raceId != null && !url.searchParams.has("race_id")) {
+      url.searchParams.set("race_id", String(raceId));
     }
+    return url.pathname + (url.search ? url.search : "");
+  }
+
+  /* -----------------------------------------------------------------------
+     Formatters
+     --------------------------------------------------------------------- */
+  const fmt = {
+    // Race clock mm:ss from milliseconds
+    raceClock(ms) {
+      if (ms == null || isNaN(ms)) return "--:--";
+      const total = Math.max(0, Math.floor(ms / 1000));
+      const mm = Math.floor(total / 60);
+      const ss = String(total % 60).padStart(2, "0");
+      return `${mm}:${ss}`;
+    },
+    // Lap seconds to 0.000 (or em dash if nullish)
+    lapSeconds(sec) {
+      return sec == null || isNaN(sec) ? "—" : Number(sec).toFixed(3);
+    },
+    // Generic ms to hh:mm:ss
+    ms(ms) {
+      if (ms == null || isNaN(ms)) return "--:--:--";
+      const t = Math.max(0, Math.floor(ms / 1000));
+      const hh = String(Math.floor(t / 3600)).padStart(2, "0");
+      const mm = String(Math.floor((t % 3600) / 60)).padStart(2, "0");
+      const ss = String(t % 60).padStart(2, "0");
+      return `${hh}:${mm}:${ss}`;
+    },
+  };
+
+  /* -----------------------------------------------------------------------
+     Time utilities
+     --------------------------------------------------------------------- */
+  function debounce(fn, wait = 200) {
+    let t = null;
+    return function debounced(...args) {
+      clearTimeout(t);
+      t = setTimeout(() => fn.apply(this, args), wait);
     };
- // --------------------------
+  }
 
-  /* ---------- DOM helpers ---------- */
-  PRS.$ = (sel, root = document) => root.querySelector(sel);
-  PRS.$$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-
-  /* ---------- Formatting ---------- */
-  PRS.fmtClock = (ms) => {
-    if (ms == null || Number.isNaN(ms)) return "--:--";
-    const s = Math.max(0, Math.floor(ms / 1000));
-    const m = Math.floor(s / 60);
-    const r = s % 60;
-    return `${m}:${String(r).padStart(2, "0")}`;
-  };
-
-  PRS.fmtSecs3 = (secs) => {
-    if (secs == null || Number.isNaN(secs)) return "—";
-    return Number(secs).toFixed(3);
-  };
-
-  /* ---------- Net / fetch helpers ---------- */
-  PRS.fetchJSON = async (url, opts = {}) => {
-    const timeoutMs = opts.timeout ?? 8000;
-    const controller = new AbortController();
-    const to = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const res = await fetch(url, { signal: controller.signal });
-      if (!res.ok) throw new Error(`HTTP ${res.status} for ${url}`);
-      return await res.json();
-    } finally {
-      clearTimeout(to);
-    }
-  };
-
-  /* Simple poller with back-off on error. */
-  PRS.makePoller = (fn, intervalMs, onError) => {
-    let timer = null;
-    let stopped = false;
-
-    const tick = async () => {
-      try {
-        await fn();
-      } catch (err) {
-        onError?.(err);
-      } finally {
-        if (!stopped) {
-          timer = setTimeout(tick, intervalMs);
-        }
+  function throttle(fn, wait = 200) {
+    let last = 0, timer = null, trailingArgs = null, ctx = null;
+    return function throttled(...args) {
+      const now = Date.now();
+      ctx = this;
+      if (now - last >= wait) {
+        last = now;
+        fn.apply(ctx, args);
+      } else {
+        trailingArgs = args;
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          last = Date.now();
+          fn.apply(ctx, trailingArgs);
+          trailingArgs = null;
+        }, wait - (now - last));
       }
     };
+  }
 
-    return {
-      start() {
-        if (stopped) return;
-        tick();
-      },
-      stop() {
-        stopped = true;
-        if (timer) clearTimeout(timer);
-      },
+  // Run a callback only when the page is visible (after it becomes visible)
+  function onVisible(cb) {
+    if (document.visibilityState === "visible") { cb(); return; }
+    const handler = () => {
+      if (document.visibilityState === "visible") {
+        document.removeEventListener("visibilitychange", handler);
+        cb();
+      }
     };
-  };
+    document.addEventListener("visibilitychange", handler);
+  }
 
-  /* ---------- Status / clocks ---------- */
-  PRS.setNetStatus = (ok, msg) => {
-    const dot = PRS.$("#netDot");
-    const text = PRS.$("#netMsg");
-    if (!dot || !text) return;
-    dot.style.background = ok ? "var(--ok)" : "var(--error)";
-    text.textContent = msg;
-  };
+  /* -----------------------------------------------------------------------
+     JSON fetch with sane defaults and small retry
+     - cache: "no-store" to avoid stale timing data
+     - retries network errors (not 4xx/5xx) a couple times with backoff
+     --------------------------------------------------------------------- */
+  async function jsonFetch(path, { method = "GET", body, headers, retries = 2 } = {}) {
+    const opts = {
+      method,
+      cache: "no-store",
+      headers: { "Content-Type": "application/json", ...(headers || {}) },
+    };
+    if (body !== undefined) opts.body = typeof body === "string" ? body : JSON.stringify(body);
 
-  PRS.startWallClock = (selectorOrEl) => {
-    const el =
-      typeof selectorOrEl === "string" ? PRS.$(selectorOrEl) : selectorOrEl;
-    if (!el) return null;
+    let attempt = 0, lastErr;
+    while (attempt <= retries) {
+      try {
+        const res = await fetch(path, opts);
+        // treat non-OK as errors but don't retry (server responded)
+        if (!res.ok) {
+          const text = await res.text().catch(() => "");
+          const err = new Error(`HTTP ${res.status} on ${path}: ${text.slice(0, 200)}`);
+          err.status = res.status;
+          throw err;
+        }
+        return await res.json();
+      } catch (e) {
+        lastErr = e;
+        // Only retry on network-ish errors (when status is undefined)
+        if (e && typeof e.status === "number") break;
+        if (attempt++ >= retries) break;
+        await new Promise(r => setTimeout(r, 250 * attempt)); // backoff
+      }
+    }
+    throw lastErr || new Error("Request failed");
+  }
 
+  /* -----------------------------------------------------------------------
+     Wall clock (local time) – used in footer on spectator.html
+     --------------------------------------------------------------------- */
+  function startWallClock(selector) {
+    const el = $(selector);
+    if (!el) return;
     const tick = () => {
-      const now = new Date();
-      el.textContent = now.toLocaleTimeString([], {
-        hour: "numeric",
-        minute: "2-digit",
-        second: "2-digit",
-      });
+      const d = new Date();
+      const hh = String(d.getHours()).padStart(2, "0");
+      const mm = String(d.getMinutes()).padStart(2, "0");
+      const ss = String(d.getSeconds()).padStart(2, "0");
+      el.textContent = `${hh}:${mm}:${ss}`;
     };
-
     tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id); // returns a cancel function
-  };
+    return setInterval(tick, 1000);
+  }
 
-  /* ---------- Misc utilities ---------- */
-  PRS.debounce = (fn, ms = 200) => {
-    let t;
-    return (...args) => {
-      clearTimeout(t);
-      t = setTimeout(() => fn(...args), ms);
-    };
-  };
+  /* -----------------------------------------------------------------------
+     NetStatus widget
+     - tiny helper to wire a status dot + message
+     - call .ok("msg") or .err("msg")
+     --------------------------------------------------------------------- */
+  class NetStatus {
+    constructor({ dotSel = "#netDot", msgSel = "#netMsg" } = {}) {
+      this.dot = $(dotSel);
+      this.msg = $(msgSel);
+    }
+    ok(message = "OK") {
+      if (this.dot) this.dot.style.background = "var(--ok)";
+      if (this.msg) this.msg.textContent = message;
+    }
+    err(message = "Disconnected — retrying…") {
+      if (this.dot) this.dot.style.background = "var(--error)";
+      if (this.msg) this.msg.textContent = message;
+    }
+  }
 
-  PRS.clamp = (n, min, max) => Math.min(max, Math.max(min, n));
-
-  /* expose */
-  window.PRS = PRS;
+  /* -----------------------------------------------------------------------
+     Export
+     --------------------------------------------------------------------- */
+  PRS.$ = $;
+  PRS.$$ = $$;
+  PRS.qs = qs;
+  PRS.apiUrl = apiUrl;
+  PRS.fmt = fmt;
+  PRS.debounce = debounce;
+  PRS.throttle = throttle;
+  PRS.onVisible = onVisible;
+  PRS.jsonFetch = jsonFetch;
+  PRS.startWallClock = startWallClock;
+  PRS.NetStatus = NetStatus;
 })();

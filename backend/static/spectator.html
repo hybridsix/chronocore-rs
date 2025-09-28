@@ -5,641 +5,463 @@
   <title>PRS — Spectator Leaderboard</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-<!-- CSS Styles-->
-<link rel="stylesheet" href="/ui/css/base.css?v=1">  
-<link rel="stylesheet" href="/ui/css/spectator.css?v=1">
+  <!-- Stylesheets -->
+  <!-- NOTE: served by FastAPI StaticFiles at /ui -->
+  <link rel="stylesheet" href="/ui/css/base.css?v=3">
+  <link rel="stylesheet" href="/ui/css/spectator.css?v=3">
 
-<!-- Base Javascript Helpers-->
-<script src="/ui/js/base.js?v=1"></script>
-
+  <!-- Optional shared helpers. This page works fine even if base.js is missing. -->
+  <script src="/ui/js/base.js?v=3" defer></script>
 </head>
 <body>
+  <!-- ===================== HEADER ===================== -->
   <header>
-    <div class="logo"><img src="img/PRS_Logo.svg" alt="PRS Logo" /></div>
+    <div class="logo">
+      <!-- Path assumes /ui/img/PRS_Logo.svg exists -->
+      <img src="/ui/img/PRS_Logo.svg" alt="PRS Logo" />
+    </div>
     <div class="title">Live Timing — Spectator</div>
     <div class="raceclock-wrap">
       <div class="raceclock-label">Race&nbsp;Clock</div>
-      <div class="pill pill-xl" id="raceClock" aria-live="polite" aria-label="Race clock">--:--</div>
+      <div class="race-type" id="raceType" aria-label="Race type"></div>
+      <div class="pill pill-xl" id="raceClock" aria-live="polite" aria-label="Race clock">-:--:--</div>
     </div>
-
   </header>
 
+  <!-- ====================== MAIN ====================== -->
   <main>
-
-    <!-- Flag banner -->
+    <!-- Live flag/banner (colors/states styled in spectator.css) -->
     <div id="flagBanner" class="flag hidden" aria-live="polite">
       <div class="flag__icon" id="flagIcon" aria-hidden="true"></div>
       <div class="flag__label" id="flagLabel">Pre-Grid</div>
     </div>
 
-    <section class="card">
+    <!-- Leaderboard card -->
+    <section class="card" aria-label="Leaderboard">
       <h2>Leaderboard</h2>
-      <div class="table">
-        <div class="thead">
-          <div>Position</div><div>Car #</div><div>Team</div>
-          <div class="right">Laps</div><div class="right">Last Lap</div><div class="right">Best Lap</div>
+      <div class="table" role="table" aria-label="Race standings">
+        <div class="thead" role="row">
+          <div role="columnheader">Position</div>
+          <div role="columnheader">Car #</div>
+          <div role="columnheader">Team</div>
+          <div role="columnheader" class="right">Laps</div>
+          <div role="columnheader" class="right">Last Lap</div>
+          <div role="columnheader" class="right">Best Lap</div>
         </div>
-        <div class="rows" id="rows"></div>
+        <div class="rows" id="rows" role="rowgroup"></div>
       </div>
     </section>
   </main>
 
+  <!-- ===================== FOOTER ===================== -->
   <footer>
     <div class="footer-left">
-      <div class="status-dot" id="netDot"></div>
+      <div class="status-dot" id="netDot" title="Network status"></div>
       <div id="netMsg">Connecting…</div>
     </div>
-        
-      <div id="wallClock" class="pill">--:--:--</div>
+
+    <!-- Centered wall clock (local time) -->
+    <div id="wallClock" class="pill" aria-label="Local time">--:--:--</div>
+
+    <!-- Simulator Active Text -->
+    <span id="simBadge" class="sim-badge" hidden>SIMULATOR&nbsp;ACTIVE</span>
+
     <div class="footer-right">
-      <div style="margin-left:auto">API: <a class="link" href="/laps?limit=5" target="_blank">/laps</a></div>
+      <div>API: <a class="link" id="apiLink" href="#" target="_blank" rel="noopener">/laps</a></div>
     </div>
   </footer>
 
+  <!-- =================== PAGE SCRIPT =================== -->
+  <script>
+    // ---------- Minimal helpers (work even if base.js is absent) ----------
+    const $  = (sel, root=document) => root.querySelector(sel);
+    const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
 
- <script>
-  // pull what we need from the shared namespace
-  const { $, $$, fetchJSON, makePoller, setNetStatus, startWallClock, fmtClock } = window.PRS;
-
-  // start footer wall clock (no need to keep a stopper ref)
-  startWallClock("#wallClock");
-
-  /* ---------- runtime config ---------- */
-  const API     = location.origin;
-  const POLL_MS = 1000;
-  const LIMIT   = 200;
-
-  const qp = new URLSearchParams(location.search);
-  const DEMO = qp.get('demo') === '1';
-  const rowsParam = qp.get('rows'); // "all", "12", etc.
-  let demoFreezeUntil = 0;
-  let demoCursor = 0; // how many items to include
-
-  /* --------- API Helper --------- */
-  const qs = new URLSearchParams(location.search);
-  window.raceId = Number(qs.get("race_id") || 1);
-  //const apiUrl = (path) => `${path}${path.includes("?") ? "&" : "?"}race_id=${raceId}`;
-  window.apiUrl = (path) =>
-    `${path}${path.includes("?") ? "&" : "?"}race_id=${window.raceId}`;
-
-
-  // ---- Race state (spectator-only) ----
-  let raceState = {
-    mode: "time",       // "time" | "laps"
-    duration_s: 1800,   // only for time mode
-    start_ms: null,     // epoch ms when race started
-    paused_ms: 0,       // accumulated paused time
-    running: false,     // true = clock runs
-    flag: "pre",         // "pre","green","yellow","red","white","blue","checkered"
-  };
-
-  function rowsLimit(){
-    if (rowsParam === 'all') return Infinity;
-    if (rowsParam && !Number.isNaN(Number(rowsParam))) return Number(rowsParam);
-    return 12; // default
-  }
-  function fitRowsToViewport(){
-    const rowH = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--rowH')) || 54;
-    const header = 70, cardPad = 40, tableHead = 48, footer = 40;
-    const available = window.innerHeight - (header + cardPad + tableHead + footer);
-    return Math.max(4, Math.floor(available / rowH));
-  }
-  window.addEventListener('resize', () => { if (lastRows) render(lastRows); });
-
-  /* ---------- data state ---------- */
-  let teamMap = {}; // tag_id -> team name
-  let carMap  = {}; // tag_id -> car number
-  const agg   = new Map(); // tag_id -> {name,laps,lastLap,bestLap,lastT}
-  let lastOrder = [];
-  let firstPaintDone = false;
-  let lastRows = null; // keep the most recently rendered rows
-
-  /* ---------- helpers ---------- */
-  function carNumberFromTag(tag) {
-    return ((Number(tag.replace(/\D/g, "")) % 900) + 100); // 100–999 from numeric part of tag
-  }
-
-  async function loadTeams(){
-    // NEW: pull from /race/state instead of /teams
-    const res = await fetch(apiUrl("/race/state"), { cache: "no-store" });
-    const state = await res.json(); // { race, standings: [ {tag, org, display_name, ...}, ... ] }
-
-    teamMap = {};
-    carMap  = {};
-
-    const rows = Array.isArray(state?.standings) ? state.standings : [];
-
-    // Shape 0: legacy { map: { tag_id: teamName } }  (derive from org/display_name)
-    // Shape 1: { name_map, car_map }                 (derive both maps)
-    // Shape 2: { rows: [{tag_id, team, car_num}, ...] }
-    // We'll populate all three “views” your consumer code expects.
-
-    // Build maps from standings
-    for (const r of rows) {
-      const tag = String(r.tag);
-      // Prefer org, fall back to display_name, else "Tag <id>"
-      const teamLabel = (r.org && r.org.trim()) 
-        || (r.display_name && r.display_name.trim()) 
-        || `Tag ${tag}`;
-      teamMap[tag] = teamLabel;
-
-      // If you don’t store car numbers, derive a stable fake one from tag
-      const carNum = (r.car_num != null) ? r.car_num 
-        : carNumberFromTag(tag);
-      carMap[tag] = carNum;
+    function fmtRaceClock(ms) {
+      if (ms == null || isNaN(ms)) return '-:--:--';
+      const total = Math.max(0, Math.floor(ms / 1000));
+      const mm = Math.floor(total / 60);
+      const ss = String(total % 60).padStart(2, '0');
+      return `${mm}:${ss}`;
     }
 
-    // If some code elsewhere expects the old return shapes, return a union object:
-    return {
-      // shape 0
-      map: { ...teamMap },
-      // shape 1
-      name_map: { ...teamMap },
-      car_map: { ...carMap },
-      // shape 2
-      rows: rows.map(r => ({
-        tag_id: String(r.tag),
-        team: teamMap[String(r.tag)],
-        car_num: carMap[String(r.tag)]
-      })),
-    };
-  }
+    function fmtHMS(ms) {
+      const total = Math.max(0, Math.floor(ms / 1000));
+      const h = Math.floor(total / 3600);
+      const m = Math.floor((total % 3600) / 60);
+      const s = total % 60;
+      return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+    }
 
+    function fmtLapSeconds(s) {
+      return (s == null || isNaN(s)) ? '—' : Number(s).toFixed(3);
+    }
+    function startWallClock(selector) {
+      const target = $(selector);
+      if (!target) return;
+      const tick = () => {
+        const d = new Date();
+        const hh = String(d.getHours()).padStart(2, '0');
+        const mm = String(d.getMinutes()).padStart(2, '0');
+        const ss = String(d.getSeconds()).padStart(2, '0');
+        target.textContent = `${hh}:${mm}:${ss}`;
+      };
+      tick();
+      setInterval(tick, 1000);
+    }
 
-  function recomputeAggregate(items){
-    // items are newest-first from /laps
-    for (const it of items) {
-      const tag = String(it.tag_id ?? it.tag ?? it.transponder ?? '');
-      if (!tag) continue;
-
-      let s = agg.get(tag);
-      if (!s){
-        s = { name: teamMap[tag] || `Tag ${tag}`, laps:0, lastLap:null, bestLap:null, lastT:0 };
-        agg.set(tag, s);
+    function setSimBadge(active, label) {
+      const el = document.getElementById('simBadge');
+      if (!el) return;
+      if (active) {
+        el.hidden = false;
+        el.classList.add('on');
+        if (label) el.textContent = label;
+      } else {
+        el.hidden = true;
+        el.classList.remove('on');
       }
-      s.laps += 1;
+    }
 
-      const t = Number(it.decoder_secs ?? it.t ?? 0);
-      if (!Number.isNaN(t) && t > 0) {
-        if (s.lastT > 0) {
-          const lap = t - s.lastT;
-          s.lastLap = lap;
-          if (lap > 0 && (!s.bestLap || lap < s.bestLap)) s.bestLap = lap;
+    // Race type label section
+    function setRaceTypeLabel(t) {
+      const el = document.getElementById('raceType');
+      if (!el) return;
+      const key = String(t || '').trim().toLowerCase();
+      const pretty = ({
+        'sprint': 'Sprint Race',
+        'sprint race': 'Sprint Race',
+        'endurance': 'Endurance',
+        'free': 'Free Play',
+        'freeplay': 'Free Play',
+        'practice': 'Free Play',
+        'qual': 'Qualifying',
+        'qualify': 'Qualifying',
+        'qualifying': 'Qualifying',
+        'relay': 'Relay'
+      })[key] || (key ? key.charAt(0).toUpperCase() + key.slice(1) : '');
+      el.textContent = pretty;
+    }
+  
+    // --- Client clock smoother (500ms local tick anchored to server state)
+    let __clockSyncMs = null;      // last clock_ms we got from the server
+    let __clockSyncAt = 0;         // performance.now() when we received it
+    let __clockRunning = false;    // whether the server says the race is running
+
+    function tickRaceClock() {
+      const el = document.getElementById('raceClock');
+      if (!el) return;
+
+      if (__clockSyncMs == null) {
+        el.textContent = '-:--:--';
+        return;
+      }
+
+      let ms = __clockSyncMs;
+      if (__clockRunning) {
+        ms += (performance.now() - __clockSyncAt);
+      }
+      el.textContent = fmtHMS(ms);   // you already have fmtHMS(h:mm:ss)
+    }
+
+    // run at 500ms
+    setInterval(tickRaceClock, 500);
+
+    // Prefer helpers from base.js if present
+    const PRS = window.PRS || {};
+    const startClock = (PRS.startWallClock || startWallClock);
+
+    // ---------- Runtime configuration ----------
+    const qp = new URLSearchParams(location.search);
+    const raceId = Number(qp.get('race_id') || 1);
+    const POLL_MS = 1000;
+
+    const apiUrl = (path) => `${path}${path.includes('?') ? '&' : '?'}race_id=${raceId}`;
+    $("#apiLink").href = apiUrl("/laps?limit=5");
+    $("#apiLink").textContent = "/laps";
+
+    // ---------- Local state ----------
+    let lastOrder = [];           // previous row order for delta arrows
+    let lastRowsPainted = null;   // last rendered logical rows (for resize)
+
+    // Derive a stable pseudo car number from tag until real numbers are stored.
+    const carNumFromTag = (tag) => ((Number(String(tag).replace(/\D/g, "")) % 900) + 100);
+
+    // ---------- Flag banner rendering ----------
+    function renderFlag(flag) {
+      const host = $('#flagBanner'), icon = $('#flagIcon'), lbl = $('#flagLabel');
+      if (!host || !icon || !lbl) return;
+
+      const fRaw = String(flag || '').toLowerCase();
+      if (!fRaw) { host.className = 'flag hidden'; host.dataset.currentFlag = ''; return; }
+
+      const prev = host.dataset.currentFlag || '';   // <-- read BEFORE we change it
+      const f = fRaw;
+
+      const textMap = {
+        pre       : 'Pre-Grid',
+        green     : 'Green Flag',
+        yellow    : 'Caution — Yellow',
+        red       : 'Race Stopped — Red',
+        blue      : 'Blue Flag',
+        white     : 'Final Lap',
+        checkered : 'Checkered — Finish'
+      };
+
+      // Apply base classes first
+      host.className = `flag flag--${f}`;
+
+      // Pulse these states
+      const pulsing = new Set(['yellow','red','blue','checkered']);
+      if (pulsing.has(f)) host.classList.add('is-pulsing'); else host.classList.remove('is-pulsing');
+
+      // One-shot flash when SWITCHING into green
+      if (f === 'green' && prev !== 'green') {
+        host.classList.remove('flash');  // reset if lingering
+        void host.offsetWidth;           // force reflow so animation can restart
+        host.classList.add('flash');
+        host.addEventListener('animationend', (e) => {
+          if (e.animationName === 'greenFlash') host.classList.remove('flash');
+        }, { once: true });
+      }
+
+      // Icon + label
+      const fillColor = {
+        pre:'#64748b', green:'#22c55e', yellow:'#facc15', red:'#ef4444',
+        blue:'#3b82f6', white:'#e2e8f0', checkered:'#d1d5db'
+      }[f] || '#e5e7eb';
+
+      icon.innerHTML = `
+        <svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+          <rect x="1" y="1" width="20" height="20" rx="3" fill="${fillColor}" opacity="0.9"/>
+          <path d="M3 19 L19 3" stroke="#0b0f13" stroke-width="3" stroke-linecap="round" />
+        </svg>`;
+      lbl.textContent = textMap[f] || 'Flag';
+
+      // NOW record current state (so we detect the next transition)
+      host.dataset.currentFlag = f;
+    }
+
+
+    // ---------- Race clock rendering ----------
+    function renderClock(clock_ms) {
+      $('#raceClock').textContent = (clock_ms == null ? '-:--:--' : fmtHMS(clock_ms));
+    }
+
+    // ---------- Leaderboard rendering with FLIP animation ----------
+    function renderRows(rows) {
+      lastRowsPainted = rows;
+      const container = $('#rows');
+      const existing = new Map([...container.children].map(el => [Number(el.dataset.tag), el]));
+
+      const newOrder = rows.map(r => r.tag);
+      const deltas = new Map();
+      if (lastOrder.length) {
+        const posPrev = new Map(lastOrder.map((t, i) => [t, i]));
+        for (let i = 0; i < newOrder.length; i++) {
+          const tag = newOrder[i];
+          if (!posPrev.has(tag)) { deltas.set(tag, 0); continue; }
+          const diff = posPrev.get(tag) - i;
+          deltas.set(tag, diff === 0 ? 0 : (diff > 0 ? +1 : -1));
         }
-        s.lastT = t;
       }
-      // refresh name when /teams arrives
-      s.name = teamMap[tag] || s.name;
-    }
-  }
+      lastOrder = newOrder;
 
-  function buildRowsFromAgg(){
-    const out = [];
-    for (const [tag,s] of agg){
-      out.push({
-        tag: Number(tag), name: s.name, laps: s.laps,
-        lastLap: s.lastLap, bestLap: s.bestLap, lastT: s.lastT
-      });
-    }
-    out.sort((a,b) =>
-      (b.laps - a.laps) ||
-      ((a.bestLap ?? Infinity) - (b.bestLap ?? Infinity)) ||
-      ((a.lastLap ?? Infinity) - (b.lastLap ?? Infinity))
-    );
-    return out;
-  }
+      // 1) Measure first positions
+      const firstPos = new Map();
+      for (const el of container.children) firstPos.set(Number(el.dataset.tag), el.getBoundingClientRect().top);
 
-  function updateRaceClock(){
-    const el = document.getElementById('raceClock');
-    if (!el) return;
-
-    // If we’ve never started and not running, dashes
-    if (!raceState.start_ms && !raceState.running){
-      el.textContent = '--:--';
-      return;
-    }
-
-    const now    = Date.now();
-    const paused = raceState.paused_ms || 0;
-
-    // How much time has elapsed (respecting pause)
-    let elapsed_ms = 0;
-    if (raceState.start_ms){
-      elapsed_ms = raceState.running
-        ? (now - raceState.start_ms - paused)
-        : (raceState.last_elapsed_ms ?? (now - raceState.start_ms - paused));
-    }
-
-    if (raceState.mode === 'time'){
-      const total     = (raceState.duration_s || 0) * 1000;
-      const remaining = Math.max(0, total - elapsed_ms);
-      const mm = Math.floor(remaining / 60000);
-      const ss = String(Math.floor((remaining % 60000) / 1000)).padStart(2,'0');
-      el.textContent = `${mm}:${ss}`;
-
-      // Auto-checkered when timer hits zero (optional)
-      if (remaining === 0 && raceState.flag !== 'checkered'){
-        renderFlag('checkered');
+      // 2) Ensure elements exist and arrange in final order
+      for (const r of rows) {
+        let el = existing.get(r.tag);
+        if (!el) {
+          el = document.createElement('div');
+          el.className = 'row';
+          el.dataset.tag = r.tag;
+          el.innerHTML = `
+            <div class="pos"></div>
+            <div class="right car"></div>
+            <div class="name"></div>
+            <div class="laps"></div>
+            <div class="right last"></div>
+            <div class="right best"></div>`;
+          container.appendChild(el);
+          existing.set(r.tag, el);
+        }
       }
-    } else {
-      // Lap mode: count up
-      const mm = Math.floor(elapsed_ms / 60000);
-      const ss = String(Math.floor((elapsed_ms % 60000) / 1000)).padStart(2,'0');
-      el.textContent = `${mm}:${ss}`;
-    }
-  }
+      for (const r of rows) container.appendChild(existing.get(r.tag));
 
-  function renderFlag(flag){
-    const host = document.getElementById('flagBanner');
-    const icon = document.getElementById('flagIcon');
-    const lbl  = document.getElementById('flagLabel');
-    if (!host || !icon || !lbl) return;
+      // 3) Invert & play + populate cells
+      for (const r of rows) {
+        const el = existing.get(r.tag);
+        const lastTop  = el.getBoundingClientRect().top;
+        const firstTop = firstPos.get(r.tag) ?? lastTop;
+        const dy = firstTop - lastTop;
 
-    // Normalize
-    const f = String(flag || '').toLowerCase();
-    if (!f) { host.className = 'flag hidden'; host.dataset.currentFlag = ''; return; }
+        el.style.transition = 'transform 0s';
+        el.style.transform  = `translateY(${dy}px)`;
+        requestAnimationFrame(() => {
+          el.style.transition = 'transform 800ms cubic-bezier(0.2,0,0,1)';
+          el.style.transform  = 'translateY(0)';
+        });
 
-    // Map canonical names we may receive
-    const isFinal = (f === 'final' || f === 'final_lap' || f === 'finalminute' || f === 'final-minute');
-    const prev = host.dataset.currentFlag || '';
-    host.dataset.currentFlag = f;
+        // Fill cells
+        el.querySelector('.pos').textContent  = String(rows.indexOf(r) + 1);
+        el.querySelector('.car').textContent  = r.car ?? carNumFromTag(r.tag);
+        el.querySelector('.name').textContent = r.team || r.driver || `Tag ${r.tag}`;
+        el.querySelector('.laps').textContent = r.laps ?? 0;
+        el.querySelector('.last').textContent = fmtLapSeconds(r.last);
 
-    // Base color choice (final stays yellow if already under yellow)
-    const visual = isFinal ? ((prev === 'yellow') ? 'yellow' : 'white') : f;
+        // --- Personal Best (PB) flash logic ---
+        const bestCell = el.querySelector('.best');
+        const prevBest = el._bestLap;
+        const prevLaps = el._laps || 0;
+        const curBest  = r.best;
+        const curLaps  = r.laps ?? 0;
 
-    // Label logic
-    const mapText = {
-      pre       : 'Pre-Grid',
-      green     : 'Green Flag',
-      yellow    : 'Caution — Yellow',
-      red       : 'Race Stopped — Red',
-      blue      : 'Blue Flag',
-      white     : 'Final Lap',               // default if not under yellow
-      checkered : 'Checkered — Finish'
-    };
+        bestCell.textContent = fmtLapSeconds(curBest);
 
-    let text;
-    if (isFinal) {
-      // Determine "Final Minute" vs "Final Lap"
-      const qpType = (new URLSearchParams(location.search).get('type') || '').toLowerCase();
-      const raceType = (raceState.race_type || qpType || '').toLowerCase();
+        // If best improved and we already had at least 1 completed lap, flash PB
+        if (prevBest != null && curBest != null && curBest < prevBest && curLaps >= 1) {
+          bestCell.classList.add('pb-live');
+          // Keep PB highlight until this kart completes the *next* lap
+          el._pbClearAtLaps = curLaps + 1;
+        }
 
-      let remainingMs = 0;
-      if (raceState.mode === 'time' && raceState.duration_s) {
-        const paused = raceState.paused_ms || 0;
-        const now = Date.now();
-        const elapsed = raceState.start_ms
-          ? (raceState.running ? (now - raceState.start_ms - paused)
-                              : (raceState.last_elapsed_ms ?? (now - raceState.start_ms - paused)))
-          : 0;
-        remainingMs = Math.max(0, raceState.duration_s * 1000 - elapsed);
+        // Clear PB highlight when the next lap arrives
+        if (el._pbClearAtLaps != null && curLaps >= el._pbClearAtLaps) {
+          bestCell.classList.remove('pb-live');
+          el._pbClearAtLaps = null;
+        }
+
+        el._bestLap = (curBest != null ? curBest : null);
+        el._laps    = curLaps;
+
+        // Position delta bubble
+        const d = (deltas.get(r.tag) || 0);
+        const bubble = el._bubble || (() => {
+          const b = document.createElement('span');
+          b.className = 'delta';
+          el.querySelector('.pos').appendChild(b);
+          el._bubble = b;
+          return b;
+        })();
+        if (d > 0)      { bubble.textContent = '▲'; bubble.className = 'delta up';   bubble.style.opacity = '0.95'; }
+        else if (d < 0) { bubble.textContent = '▼'; bubble.className = 'delta down'; bubble.style.opacity = '0.95'; }
+        else            { bubble.textContent = '';  bubble.style.opacity = '0'; }
       }
 
-      const showMinute = (raceType === 'sprint') || (remainingMs > 0 && remainingMs <= 60000);
-      text = showMinute ? 'Final Minute' : 'Final Lap';
-    } else {
-      text = mapText[visual] || 'Flag';
-    }
-
-    // Icon color block (matches visual background)
-    const fillColor = {
-      pre       : '#64748b',
-      green     : '#22c55e',
-      yellow    : '#facc15',
-      red       : '#ef4444',
-      blue      : '#3b82f6',
-      white     : '#e2e8f0',
-      checkered : '#d1d5db'
-    }[visual] || '#e5e7eb';
-
-    // Apply classes
-    host.className = `flag flag--${visual}`;
-
-    // Pulse on these states
-    const pulseSet = new Set(['yellow','red','blue','checkered']);
-    if (isFinal) pulseSet.add('white'); // "final" uses white visual unless under yellow
-    if (pulseSet.has(visual)) host.classList.add('is-pulsing'); else host.classList.remove('is-pulsing');
-
-    // One-shot flash when switching into green
-    if (visual === 'green' && prev !== 'green') {
-      host.classList.remove('flash'); void host.offsetWidth; host.classList.add('flash');
-      host.addEventListener('animationend', (e) => {
-        if (e.animationName === 'greenFlash') host.classList.remove('flash');
-      }, { once: true });
-    }
-
-    // Update icon + label
-    icon.innerHTML = `
-      <svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect x="1" y="1" width="20" height="20" rx="3" fill="${fillColor}" opacity="0.9"/>
-        <path d="M3 19 L19 3" stroke="#0b0f13" stroke-width="3" stroke-linecap="round" />
-      </svg>`;
-    lbl.textContent = isFinal ? text : (mapText[visual] || text);
-  }
-
-
-
-  /* ---------- rendering ---------- */
-  function render(rows){
-    lastRows = rows; // keep a copy for freeze/resize
-    const container = document.getElementById('rows');
-    if (!container || !Array.isArray(rows)) return;
-
-    const newOrder = rows.map(r => r.tag);
-    const deltas = new Map();
-
-    if (lastOrder.length){
-      const posPrev = new Map(lastOrder.map((t,i)=>[t,i]));
-      for (let i=0;i<newOrder.length;i++){
-        const tag = newOrder[i];
-        if(!posPrev.has(tag)) { deltas.set(tag, 0); continue; }
-        const diff = posPrev.get(tag) - i;
-        deltas.set(tag, diff===0 ? 0 : (diff>0 ? +1 : -1));
-      }
-    }
-    lastOrder = newOrder;
-
-    // 1) measure original positions
-    const firstPos = new Map();
-    for (const el of container.children) {
-      firstPos.set(Number(el.dataset.tag), el.getBoundingClientRect().top);
-    }
-
-    // ensure each row element exists
-    const existing = new Map([...container.children].map(el=>[Number(el.dataset.tag), el]));
-    for (const r of rows){
-      if (!existing.has(r.tag)){
-        const el = document.createElement('div');
-        el.className = 'row'; el.dataset.tag = r.tag;
-        el.innerHTML = `
-          <div class="pos"></div>
-          <div class="right car"></div>
-          <div class="name"></div>
-          <div class="right laps"></div>
-          <div class="right last"></div>
-          <div class="right best"></div>`;
-        container.appendChild(el);
-        existing.set(r.tag, el);
+      // Remove vanished rows
+      for (const el of [...container.children]) {
+        const tag = Number(el.dataset.tag);
+        if (!rows.find(r => r.tag === tag)) el.remove();
       }
     }
 
-    // DOM order = new order (no animation yet)
-    for (const r of rows) container.appendChild(existing.get(r.tag));
-
-    // 3) invert-then-play
-    for (const r of rows){
-      const el = existing.get(r.tag);
-      const lastTop  = el.getBoundingClientRect().top;
-      const firstTop = firstPos.get(r.tag) ?? lastTop;
-      const deltaY   = firstTop - lastTop;
-
-      el.style.transition = 'transform 0s';
-      el.style.transform  = `translateY(${deltaY}px)`;
-      requestAnimationFrame(()=>{
-        el.style.transition = 'transform 800ms cubic-bezier(0.2,0,0,1)';
-        el.style.transform  = 'translateY(0)';
-      });
-
-      // populate cells
-      el.querySelector('.pos').textContent  = String(rows.indexOf(r)+1);
-      el.querySelector('.car').textContent  = (carMap[String(r.tag)] ?? carNumberFromTag(r.tag));
-      el.querySelector('.name').textContent = r.name;
-      el.querySelector('.laps').textContent = r.laps;
-      el.querySelector('.last').textContent = (r.lastLap!=null ? r.lastLap.toFixed(3) : '—');
-
-      // PB flash that persists until the NEXT lap for this kart
-      const bestCell = el.querySelector('.best');
-      const prevBest = el._bestLap;
-      const curBest  = r.bestLap;
-      bestCell.textContent = (curBest != null ? curBest.toFixed(3) : '—');
-
-      // If we hit a new PB, start a pulse that stops on the *next* crossing.
-      // Use decoder timestamp (r.lastT) which increases only when a new lap is recorded.
-      if (firstPaintDone && prevBest != null && curBest != null && curBest < prevBest && Number(r.lastT) > 0) {
-        el._pbStopAfterT = Number(r.lastT);    // remember the PB lap’s crossing time
-        bestCell.classList.add('pb-live');
-      }
-
-      // When we see a later crossing time, the kart has completed the next lap → stop pulsing
-      if (el._pbStopAfterT != null && Number(r.lastT) > el._pbStopAfterT) {
-        bestCell.classList.remove('pb-live');
-        el._pbStopAfterT = null;
-      }
-
-      // Track the latest PB value we’ve seen for this kart
-      el._bestLap = (curBest != null ? curBest : null);
-
-
-      // delta bubble
-      const d = (deltas.get(r.tag) || 0);
-      let bubble = el._bubble;
-      if (!bubble){
-        bubble = document.createElement('span');
-        bubble.className = 'delta';
-        el.querySelector('.pos').appendChild(bubble);
-        el._bubble = bubble;
-      }
-      if (d>0){ bubble.textContent='▲'; bubble.className='delta up';   bubble.style.opacity='0.95'; }
-      else if (d<0){ bubble.textContent='▼'; bubble.className='delta down'; bubble.style.opacity='0.95'; }
-      else { bubble.textContent=''; bubble.style.opacity='0'; }
+    // ---------- API fetchers ----------
+    async function fetchRaceState() {
+      const r = await fetch(apiUrl('/race/state'), { cache: 'no-store' });
+      if (!r.ok) throw new Error('race_state failed');
+      return r.json(); // { flag, clock_ms, standings?, ... }
+    }
+    async function fetchLeaderboard() {
+      const r = await fetch(apiUrl('/laps'), { cache: 'no-store' });
+      if (!r.ok) throw new Error('laps failed');
+      return r.json(); // { rows: [{ tag, team, driver, laps, last, best }], ... }
     }
 
-    // remove disappeared rows
-    for (const el of [...container.children]){
-      const tag = Number(el.dataset.tag);
-      if (!rows.find(r=>r.tag===tag)) el.remove();
-    }
+      // ---------- Polling loop ----------
+     async function poll() {
+      try {
+        // Leaderboard rows
+        const lapData = await fetchLeaderboard();
+        const rows = Array.isArray(lapData.rows) ? lapData.rows.map(rec => ({
+          tag: Number(rec.tag),
+          team: rec.team || null,
+          driver: rec.driver || null,
+          laps: rec.laps ?? 0,
+          last: rec.last ?? null,
+          best: rec.best ?? null,
+          car: null,
+          lastT: null
+        })) : [];
 
-    firstPaintDone = true;
-  }
-
-  /* ---------- polling ---------- */
-  async function poll(){
-    // During demo freeze, keep showing the last rendered rows (no flicker)
-    if (DEMO && Date.now() < demoFreezeUntil){
-      if (lastRows) render(lastRows);
-      return;
-    }
-
-    try {
-      const res = await fetch(apiUrl("/laps?limit=" + LIMIT), { cache: "no-store" });
-      const data = await res.json();
-      const items = (data.items || []).slice().reverse(); // oldest->newest
-
-      if (DEMO) {
-        // reveal items over time
-        demoCursor = Math.min(items.length, demoCursor + 1);
-        items.splice(demoCursor); // only include first N oldest->newest
+        renderRows(rows);
+        $('#netDot').style.background = 'var(--ok)';
+        $('#netMsg').textContent = `OK — ${rows.length} entries`;
+      } catch (e) {
+        $('#netDot').style.background = 'var(--error)';
+        $('#netMsg').textContent = 'Disconnected — retrying…';
+        console.error(e);
       }
 
-      document.getElementById('netDot').style.background = 'var(--ok)';
-      document.getElementById('netMsg').textContent = `OK — ${data.count} rows`;
+      // Race status (non-fatal to table)
+      const qp = new URLSearchParams(location.search);
+      const urlSimParam = qp.get('sim');
+      const urlFeed = qp.get('feed');
 
-      // Reset aggregate so we don't add the same laps each poll
-      agg.clear();
+      // URL overrides
+      const urlSimForceOn  = urlSimParam === '1' || urlSimParam === 'true';
+      const urlSimForceOff = urlSimParam === '0' || urlSimParam === 'false';
 
-      recomputeAggregate(items);
-      let rows = buildRowsFromAgg();
+      try {
+        const s = await fetchRaceState();
 
-      // demo shuffle + brief freeze so it doesn't immediately snap back
-      if (DEMO && Math.random() < 0.18 && rows.length > 2){
-        const i = Math.floor(Math.random() * (rows.length - 1));
-        const j = (i===0) ? 1 : (Math.random()<0.5 ? i-1 : i+1);
-        [rows[i], rows[j]] = [rows[j], rows[i]];
-        demoFreezeUntil = Date.now() + 4000;
-      }
+        // Base detection from server
+        let simActive =
+          s.sim === true ||
+          s.is_sim === true ||
+          s.source === 'sim' ||
+          s.feed === 'sim' ||
+          s.race_type === 'sim';
 
-      // respect row limits and viewport
-      const maxFit = fitRowsToViewport();
-      const limit  = Math.min(rows.length, Math.min(rowsLimit(), maxFit));
-      rows = rows.slice(0, limit);
+        // URL explicit overrides win
+        if (urlSimForceOn)  simActive = true;
+        if (urlSimForceOff) simActive = false;
 
-      render(rows);
-    } catch (e){
-      document.getElementById('netDot').style.background = 'var(--error)';
-      document.getElementById('netMsg').textContent = 'Disconnected — retrying…';
-      console.error(e);
-    }
+        const simLabel = s.sim_label || 'SIMULATOR ACTIVE';
+        setSimBadge(simActive, simLabel);   // <-- always called; hides when false
 
-    // ---- race state fetch (non-fatal if missing) ----
-    try {
-      const rs = await fetch(apiUrl("/race/state"), { cache: "no-store" });
+        // Race type label (API or ?type= fallback)
+        setRaceTypeLabel(s.race_type || s.raceType || s.type || qp.get('type'));
 
-      if (rs.ok) {
-        const s = await rs.json();
-
-        // race type (if API provides it)
-        raceState.race_type = s.race_type ?? s.raceType ?? s.type ?? raceState.race_type;
-
-        // merge state
-        raceState.mode       = s.mode       ?? raceState.mode;
-        raceState.duration_s = s.duration_s ?? raceState.duration_s;
-        raceState.start_ms   = s.start_ms   ?? raceState.start_ms;
-        raceState.paused_ms  = s.paused_ms  ?? raceState.paused_ms;
-        raceState.running    = (s.running !== undefined) ? s.running : raceState.running;
-
-        // If we haven't started locally, force "pre" regardless of API defaults.
-        const nextFlag = (!raceState.start_ms && !raceState.running)
-          ? 'pre'
-          : (s.flag || 'green');
+        // Stay PRE until backend actually provides a clock
+        const nextFlag = (typeof s.clock_ms === 'number') ? (s.flag || 'green') : 'pre';
         renderFlag(nextFlag);
 
-      } else {
-        // Non-fatal: demo fallback
-        if (DEMO) {
-          const demoFlag = (!raceState.start_ms && !raceState.running) ? 'pre' : (window.__demoFlag || 'green');
-          renderFlag(demoFlag);
+        // Anchor the local 500ms race-clock tick to server state
+        if (typeof s.clock_ms === 'number') {
+          __clockSyncMs = s.clock_ms;
+          __clockSyncAt = performance.now();
+        } else {
+          __clockSyncMs = null; // no clock yet → show -:--:--
         }
+        __clockRunning = !!(s.running ?? s.clock_running ?? s.is_running);
+
+        // render immediately; interval keeps it fresh
+        tickRaceClock();
+
+      } catch (e) {
+        // On error, respect explicit URL override; otherwise hide the badge
+        if (urlSimForceOn)  setSimBadge(true,  'SIMULATOR ACTIVE');
+        else                setSimBadge(false, 'SIMULATOR ACTIVE');
       }
+    } // <-- this brace was missing
 
-    } catch (e) {
-      // Non-fatal: demo fallback
-      if (DEMO) {
-        const demoFlag = (!raceState.start_ms && !raceState.running) ? 'pre' : (window.__demoFlag || 'green');
-        renderFlag(demoFlag);
-      }
-    }
+    // ---------- Boot ----------
+    window.addEventListener('DOMContentLoaded', () => {
+      startWallClock('#wallClock');   // fix: this was startClock
+      renderFlag('pre');              // initial state
+      poll();                         // first fetch
+      setInterval(poll, POLL_MS);     // regular polling
+    });
 
-
-    // Update the clock pill right after race state
-    updateRaceClock();
-  }
-
-  /* ---------- boot ---------- */
-  //make sure page actually starts the fetch loop
-  window.addEventListener('DOMContentLoaded', async () => {
-  try {
-    if (typeof loadTeams === 'function') await loadTeams();
-    if (typeof refresh   === 'function') {
-      await refresh();                 // initial draw
-      setInterval(refresh, 3000);      // keep updating
-    }
-  } catch (e) { console.error(e); }
-  });
-
-  // Demo helpers + hotkeys
-  window.__demoFlag = 'green';
-  window.addEventListener('keydown', (e)=>{
-    const k = e.key.toLowerCase();
-
-    // Demo: shuffle standings
-    if (k==='s' && lastRows){
-      const r = lastRows.slice();
-      r.sort(()=>Math.random()-0.5);
-      demoFreezeUntil = Date.now() + 3000;
-      render(r);
-    }
-
-    // Demo: fake PB
-    if (k==='p' && lastRows){
-      const r = lastRows.slice(); const i = Math.floor(Math.random()*r.length);
-      r[i].bestLap = (r[i].bestLap || r[i].lastLap || 25) - 0.15;
-      render(r);
-    }
-
-    // Demo: flag toggles
-    if (k==='g'){ window.__demoFlag='green';     renderFlag('green'); }
-    if (k==='y'){ window.__demoFlag='yellow';    renderFlag('yellow'); }
-    if (k==='r' && !e.shiftKey){ window.__demoFlag='red'; renderFlag('red'); }
-    if (k==='w'){ window.__demoFlag='white';     renderFlag('white'); }
-    if (k==='b'){ window.__demoFlag='blue';      renderFlag('blue'); }
-    if (k==='c'){ window.__demoFlag='checkered'; renderFlag('checkered'); }
-
-    // Timer: Space = start/pause (ignore typing in inputs/fields)
-    const typing = /^(INPUT|TEXTAREA|SELECT)$/i.test(e.target.tagName) || e.target.isContentEditable;
-    if (e.code === 'Space' && !typing) {
-      e.preventDefault();
-      if (!raceState.start_ms) {
-        const was = (document.getElementById('flagBanner')?.dataset.currentFlag) || '';
-        raceState.start_ms = Date.now();
-        raceState.paused_ms = 0;
-        raceState.running = true;
-        if (was === '' || was === 'pre') renderFlag('green');
-      } else {
-        raceState.running = !raceState.running;
-        raceState.last_elapsed_ms = Date.now() - raceState.start_ms - (raceState.paused_ms || 0);
-      }
-      updateRaceClock();
-    }
-
-    // Timer: Shift+R = reset demo to 5:00
-    if (k === 'r' && e.shiftKey) {
-      raceState = { mode:'time', duration_s: 5*60, start_ms: null, paused_ms: 0, running: false, flag: 'green' };
-      updateRaceClock(); renderFlag('green');
-    }
-  });
-
-  (async ()=>{
-    renderFlag('pre');
-    await loadTeams();           // load team/car maps first
-    await poll();                // kick one poll so names resolve immediately
-    setInterval(poll, POLL_MS);  // then poll
-    // removed redundant wallClock setInterval — startWallClock already updates it
-  })();
-
-  // Smooth ticking (doesn't spam the network; uses cached raceState)
-  setInterval(updateRaceClock, 500);
-</script>
-
-  <script>
-    /* PRS Spectator hotkey shim (safe to append as a second <script> at the end)
-      - Restores Spacebar start/pause while ignoring inputs/fields
-      - Defers to your existing handlers if present, otherwise broadcasts 'race:toggle'
-    */
-    (function () {
-      'use strict';
-      function isTypingTarget(el) {
-        return /^(INPUT|TEXTAREA|SELECT)$/i.test(el.tagName) || el.isContentEditable;
-      }
-      window.addEventListener('keydown', function (e) {
-        if (e.code === 'Space' && !isTypingTarget(e.target)) {
-          e.preventDefault();
-          if (typeof window.toggleRace === 'function') { window.toggleRace(); return; }
-          if (window.race && typeof window.race.toggle === 'function') { window.race.toggle(); return; }
-          window.dispatchEvent(new CustomEvent('race:toggle'));
-        }
-      }, { passive: false });
-    }());
+    // Keep clock pill readable even if race_state request hiccups
+    setInterval(() => {
+      const el = document.getElementById('raceClock');
+      const text = el ? el.textContent : '';
+      if (!text.trim()) el.textContent = '-:--:--';
+    }, 2000);
   </script>
- </body>
+</body>
 </html>

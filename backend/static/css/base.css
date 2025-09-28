@@ -1,9 +1,10 @@
-/* ===========================
-   Base: tokens, reset, layout
-   =========================== */
+/* =========================================================
+   Base styles: design tokens, reset, layout scaffolding
+   Shared across UI pages (spectator, operator, announcer).
+   ========================================================= */
 
 :root {
-  /* Color tokens */
+  /* ---- Color tokens ---- */
   --bg: #111418;
   --panel: #171b20;
   --text: #e6ebf0;
@@ -13,21 +14,22 @@
   --ok: #22c55e;
   --error: #ef4444;
 
-  /* Typography */
+  /* ---- Typography ---- */
   --mono: ui-monospace, Menlo, Consolas, monospace;
   --sans: Inter, system-ui, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
-  --fs-base: 22px;
-  --fs-small: 18px;
 
-  /* Layout */
-  --rowH: 58px;              /* default row height */
-  --headerH: 96px;           /* header block height */
-  --headerPadY: 16px;        /* header vertical padding */
+  /* Base font size: tune once; pages can override via media queries if needed */
+  --fs-base: 18px;
+  --fs-small: 14px;
+
+  /* ---- Layout ---- */
+  --rowH: 58px;            /* default leaderboard row height */
+  --headerH: 96px;         /* header block height */
+  --headerPadY: 16px;      /* header vertical padding */
 }
 
-* {
-  box-sizing: border-box;
-}
+/* -------- Reset-ish + layout root -------- */
+* { box-sizing: border-box; }
 
 html, body {
   height: 100%;
@@ -36,22 +38,23 @@ html, body {
   color: var(--text);
   font-family: var(--sans);
   font-size: var(--fs-base);
+  line-height: 1.35;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
 }
 
-/* Main region grows, footer stays at bottom */
+/* Main region grows, footer stays bottom */
 main {
   padding: 16px;
   flex: 1 0 auto;
 }
 
-/* ===========================
-   Common UI primitives
-   =========================== */
+/* =========================================================
+   Common primitives (header, cards, footer, pills, links)
+   ========================================================= */
 
-/* Header shell (shared) */
+/* ---- Header ---- */
 header {
   display: flex;
   align-items: center;
@@ -68,7 +71,6 @@ header {
   display: flex;
   align-items: center;
 }
-
 .logo img {
   height: 100%;
   width: auto;
@@ -78,10 +80,10 @@ header {
 .title {
   font-size: 26px;
   font-weight: 700;
-  margin-right: auto;   /* push right-side tools */
+  margin-right: auto; /* push tools to right */
 }
 
-/* Pill chips (clock, status) */
+/* ---- Pill chips (clock, status) ---- */
 .pill {
   padding: 6px 10px;
   border: 1px solid #0b2230;
@@ -90,17 +92,15 @@ header {
   color: #bfefff;
   background: rgba(0, 180, 255, .08);
 }
-
 .pill.pill-xl {
-  font-size: 24px;
+  font-size: 22px;
   padding: 8px 14px;
   background: rgba(0, 0, 0, .35);
   border: 1px solid #0b2230;
-  border-radius: 999px;
   color: #eaf6ff;
 }
 
-/* Generic card container */
+/* ---- Generic card container ---- */
 .card {
   background: var(--panel);
   border: 1px solid #0b0f13;
@@ -110,7 +110,6 @@ header {
   max-width: 1200px;
   margin: 0 auto;
 }
-
 .card h2 {
   margin: 0;
   padding: 10px 12px;
@@ -122,7 +121,7 @@ header {
   border-bottom: 1px solid #0b2230;
 }
 
-/* Footer (sticky bottom) */
+/* ---- Footer (sticky) ---- */
 footer {
   flex: 0 0 auto;
   display: flex;
@@ -132,37 +131,21 @@ footer {
   border-top: 1px solid #0b2230;
   background: rgba(4, 18, 28, 0.85);
   backdrop-filter: blur(4px);
-  position: relative;    /* enables absolute centering for wallClock */
+  position: relative; /* enables absolute centering for wallClock */
 }
-
-.footer-left {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.footer-right {
-  margin-left: auto;
-}
-
+.footer-left { display: flex; align-items: center; gap: 10px; }
+.footer-right { margin-left: auto; }
 .status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--ok);
-  box-shadow: 0 0 0 2px #0a1a24;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--ok); box-shadow: 0 0 0 2px #0a1a24;
 }
+.link { color: #8addff; text-decoration: none; }
 
-.link {
-  color: #8addff;
-  text-decoration: none;
-}
-
-/* Wall clock centered in footer */
+/* Centered wall clock */
 #wallClock {
   padding: 4px 10px;
   z-index: 50;
-  font-size: 18px;
+  font-size: 16px;
   background: rgba(0, 0, 0, .35);
   border: 1px solid #0b2230;
   border-radius: 999px;
@@ -173,7 +156,7 @@ footer {
   transform: translateX(-50%);
 }
 
-/* Flag banner scaffold (colors are page-specific) */
+/* ---- Flag banner scaffold (per-flag colors are in spectator.css) ---- */
 .flag {
   display: flex;
   align-items: center;
@@ -187,32 +170,24 @@ footer {
   font-weight: 700;
   letter-spacing: .2px;
 }
-
-.flag.hidden {
-  display: none;
-}
-
+.flag.hidden { display: none; }
 .flag__icon {
-  width: 36px;
-  height: 36px;
-  border-radius: 8px;
-  display: grid;
-  place-items: center;
-  background: #0f141a;
-  border: 1px solid #0b0f13;
+  width: 36px; height: 36px; border-radius: 8px;
+  display: grid; place-items: center;
+  background: #0f141a; border: 1px solid #0b0f13;
 }
+.flag__label { font-size: 20px; }
 
-.flag__label {
-  font-size: 22px;
-}
-
-/* Soft pulse animation hook */
+/* Subtle generic pulse keyframes (used by per-flag styles) */
 @keyframes flagPulse {
   0%   { filter: none; }
   50%  { filter: brightness(1.12); }
   100% { filter: none; }
 }
 
-:root { --fs-base: 16px; }
-html { font-size: var(--fs-base); }
-body { font-size: 1rem; line-height: 1.4; }
+/* --------- Responsive fine-tuning --------- */
+@media (max-width: 900px) {
+  :root { --fs-base: 16px; }
+  .title { font-size: 22px; }
+  .pill.pill-xl { font-size: 20px; }
+}

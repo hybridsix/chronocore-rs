@@ -1,29 +1,47 @@
-/* ===========================
-   Spectator-specific styles
-   (requires base.css first)
-   =========================== */
+/* =========================================================
+   Spectator page styles (requires base.css first)
+   – grid layout for leaderboard
+   – flag color themes & animations
+   – PB/green flash effects
+   ========================================================= */
 
-/* Header: position the race clock block to the right */
+/* ---- Header clock grouping ---- */
+/* Header: put 'Race type' to the LEFT of the clock */
 .raceclock-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 6px;
-  margin-left: auto;
+  display: grid;
+  grid-template-columns: auto auto;
+  grid-template-rows: auto auto;
+  gap: 6px 10px;
+  align-items: center;
+  margin-left: auto;         /* push block to the right edge */
 }
-
 .raceclock-label {
+  grid-column: 1 / span 2;   /* label spans both columns above */
+  justify-self: end;
   font-size: 12px;
-  letter-spacing: .12em;
-  text-transform: uppercase;
-  color: #8fb6c9;
-  padding: 0 8px;
+  opacity: 0.7;
+}
+.race-type {
+  justify-self: end;         /* sits to the LEFT of the clock */
+  font-weight: 700;          /* same font, slightly smaller than title */
+  font-size: clamp(0.9rem, 1.6vw, 1.05rem);
+  line-height: 1;
+  opacity: 0.9;
+  white-space: nowrap;
+  margin-right: 0.25rem;
+}
+#raceClock {
+  justify-self: end;         /* clock stays at the far right */
+}
+@media (max-width: 560px) {
+  .race-type { display: none; } /* optional: hide on very small screens */
 }
 
-/* Leaderboard table grid: Position | Car # | Team | Laps | Last | Best */
-.table {
-  width: 100%;
-}
+/* =========================================================
+   Leaderboard table grid:
+   Position | Car # | Team | Laps | Last | Best
+   ========================================================= */
+.table { width: 100%; }
 
 .thead,
 .row {
@@ -40,15 +58,9 @@
   border-bottom: 1px solid #0b2230;
   font-size: var(--fs-base);
 }
+.thead > :nth-child(2) { text-align: center; padding-right: 24px; }
 
-.thead > :nth-child(2) {
-  text-align: center;
-  padding-right: 24px;
-}
-
-.rows {
-  position: relative;
-}
+.rows { position: relative; }
 
 .row {
   height: var(--rowH);
@@ -59,10 +71,7 @@
     background-color .4s ease;
   will-change: transform;
 }
-
-.row:nth-child(odd) {
-  background: #151a20;
-}
+.row:nth-child(odd) { background: #151a20; }
 
 .name {
   overflow: hidden;
@@ -70,85 +79,30 @@
   white-space: nowrap;
   font-size: var(--fs-base);
 }
-
 .right {
   text-align: right;
   font-family: var(--mono);
   color: #d7e9ff;
   font-size: var(--fs-base);
 }
+.car { text-align: center; padding-right: 24px; }
 
-.car {
-  text-align: center;
-  padding-right: 24px;
-}
-
+/* Position delta arrows */
 .delta {
   margin-left: 8px;
   font-size: 14px;
   opacity: .9;
   transition: opacity 1.4s ease .6s;
 }
+.up   { color: var(--ok); }
+.down { color: var(--error); }
 
-.up {
-  color: var(--ok);
-}
+/* =========================================================
+   Flag colors & animations
+   – .flag scaffolding lives in base.css
+   ========================================================= */
 
-.down {
-  color: var(--error);
-}
-
-/* --- Spectator Guard Styles --- */
-.flagbar {
-  display: grid;
-  grid-auto-flow: column;
-  gap: 8px;
-  align-items: center;
-  padding: 8px 12px;
-  position: sticky;
-  top: 0;
-  z-index: 1000;
-}
-
-#leaderboard { table-layout: fixed; width: 100%; border-collapse: collapse; }
-#leaderboard th, #leaderboard td { padding: 6px 10px; white-space: nowrap; }
-
-/* Status/connection font normalization */
-#apiStatus, #connStatus, .statusbar, .footer {
-  font-size: 0.875rem;
-  line-height: 1.25;
-  font-weight: 500;
-  letter-spacing: 0.01em;
-}
-
-/* Best-lap flash: keep pulsing until the next lap for that kart */
-/* PB pulse — no outline, subtle green backer; stops when JS removes .pb-live */
-.best.pb-live {
-  animation: pbPulse 0.7s ease-in-out infinite;
-  background: rgba(34, 197, 94, 0.16);
-}
-@keyframes pbPulse {
-  0%   { transform: scale(1);   filter: brightness(1.0) saturate(1.0); }
-  50%  { transform: scale(1.03); filter: brightness(1.25) saturate(1.25); }
-  100% { transform: scale(1);   filter: brightness(1.0) saturate(1.0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .best.pb-live { animation: none; }
-}
-
-/* Short celebratory flash when Green appears (auto-stops) */
-.flag.flag--green.flash {
-  animation: greenFlash 0.32s ease-in-out 4; /* ~4 pulses, tweak count/speed to taste */
-}
-@keyframes greenFlash {
-  0%   { filter: brightness(1.0) saturate(1.0); box-shadow: 0 0 0 0 rgba(34,197,94,0.0); }
-  50%  { filter: brightness(1.45) saturate(1.3); box-shadow: 0 0 28px 8px rgba(34,197,94,0.35); }
-  100% { filter: brightness(1.0) saturate(1.0); box-shadow: 0 0 0 0 rgba(34,197,94,0.0); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .flag.flag--green.flash { animation: none; }
-}
-/* === Generic flag pulse (used by yellow, red, blue, checkered, final) === */
+/* Pulsing wrapper & ring (enabled by JS via .is-pulsing) */
 .flag.is-pulsing {
   animation: flagPulse 0.9s ease-out infinite;
   box-shadow:
@@ -165,50 +119,208 @@
   animation: flagRing 0.9s ease-out infinite;
   pointer-events: none;
 }
-@keyframes flagPulse {
-  0%   { filter: brightness(1.25) saturate(1.2); transform: scale(1); }
-  55%  { filter: brightness(1.0)  saturate(1.0); transform: scale(1.01); }
-  100% { filter: brightness(1.25) saturate(1.2); transform: scale(1); }
-}
 @keyframes flagRing {
   0%   { opacity: 1;   transform: scale(0.96); }
   60%  { opacity: 0.2; transform: scale(1.04); }
   100% { opacity: 0;   transform: scale(1.06); }
 }
 
-/* Wire colors per state (variables drive the pulse/glow) */
-.flag.flag--yellow      { --pulse-base:#facc15; --pulse-glow:rgba(250,204,21,0.55); background: var(--pulse-base); color:#0b0f13; }
-.flag.flag--red         { --pulse-base:#ef4444; --pulse-glow:rgba(239,68,68,0.55);  background: var(--pulse-base); color:#0b0f13; }
-.flag.flag--blue        { --pulse-base:#3b82f6; --pulse-glow:rgba(59,130,246,0.45); background: var(--pulse-base); color:#0b0f13; }
-.flag.flag--white       { --pulse-base:#e2e8f0; --pulse-glow:rgba(226,232,240,0.55); background: var(--pulse-base); color:#0b0f13; }
-.flag.flag--checkered   { --pulse-base:#d1d5db; --pulse-glow:rgba(209,213,219,0.55); background: var(--pulse-base); color:#0b0f13; }
-.flag.flag--pre         { --pulse-base:#64748b; background: var(--pulse-base); color:#0b0f13; }
+/* Wire per-flag base fills; the glow variable also drives ring/pulse */
+.flag.flag--yellow    { --pulse-base:#facc15; --pulse-glow:rgba(250,204,21,0.55); background: var(--pulse-base); color:#0b0f13; }
+.flag.flag--red       { --pulse-base:#ef4444; --pulse-glow:rgba(239,68,68,0.55);  background: var(--pulse-base); color:#0b0f13; }
+.flag.flag--blue      { --pulse-base:#3b82f6; --pulse-glow:rgba(59,130,246,0.45); background: var(--pulse-base); color:#0b0f13; }
+.flag.flag--white     { --pulse-base:#e2e8f0; --pulse-glow:rgba(226,232,240,0.55); background: var(--pulse-base); color:#0b0f13; }
+.flag.flag--checkered { --pulse-base:#d1d5db; --pulse-glow:rgba(209,213,219,0.55); background: var(--pulse-base); color:#0b0f13; }
+.flag.flag--pre       { --pulse-base:#64748b; background: var(--pulse-base); color:#0b0f13; }
 
-/* Base green fill (no pulse; flash still applies on transition) */
+/* Green does not pulse; it gets a brief “go!” flash on transition */
 .flag.flag--green {
   --pulse-base: #22c55e;
   background: var(--pulse-base);
   color: #0b0f13;
 }
-
-/* Pre-race: calm neutral “standby” */
-.flag.flag--pre {
-  background:#64748b; color:#0b0f13;
-  animation: preBreath 2.2s ease-in-out infinite;
+/* One-shot celebratory flash when entering green */
+.flag.flag--green.flash {
+  animation: greenFlash 0.32s ease-in-out 4;
 }
+@keyframes greenFlash {
+  0%   { filter: brightness(1.0) saturate(1.0); box-shadow: 0 0 0 0 rgba(34,197,94,0.0); }
+  50%  { filter: brightness(1.45) saturate(1.3); box-shadow: 0 0 28px 8px rgba(34,197,94,0.35); }
+  100% { filter: brightness(1.0) saturate(1.0); box-shadow: 0 0 0 0 rgba(34,197,94,0.0); }
+}
+
+/* Pre-race: calm neutral “breathing” */
+.flag.flag--pre { animation: preBreath 2.2s ease-in-out infinite; }
 @keyframes preBreath {
   0%,100% { filter: brightness(1.0); }
   50%     { filter: brightness(1.12); }
 }
 
-/* PB pulse refinement (no outline) */
-.best.pb-live { animation: pbPulse 0.7s ease-in-out infinite; background: rgba(34,197,94,0.16); }
-@keyframes pbPulse { 0%{transform:scale(1)} 50%{transform:scale(1.03)} 100%{transform:scale(1)} }
+/* =========================================================
+   Personal Best (PB) visual
+   – JS adds .pb-live to the “Best Lap” cell after a PB
+   – stays on until that kart records the next lap
+   ========================================================= */
+/* PB pulse: inset bar so it doesn't butt up against the last-lap cell */
+/* Create a little left breathing room for the highlight */
+.row .best {
+  position: relative;
+  /*padding-left: 20px;   /* <-- tweak to taste */
+}
 
+/* Full-width highlight, inset from all edges */
+.best.pb-live::before {
+  content: "";
+  position: absolute;
+  top: 2px; bottom: 2px;
+  left: 10px;   /* bigger left gap */
+  right: 2px;   /* tiny right gap */
+  border-radius: 6px;
+  background: rgba(34, 197, 94, 0.16);
+  animation: pbPulse 0.7s ease-in-out infinite;
+  pointer-events: none;
+}
+.row .best { z-index: 1; }  /* keep text above the bar */
+
+/* keep your existing keyframes */
+@keyframes pbPulse {
+  0% { transform: scale(1) }
+  50% { transform: scale(1.03) }
+  100% { transform: scale(1) }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .best.pb-live::before { animation: none; }
+}
+
+/* =========================================================
+     Tunable gap on the right edge of lap-time cells 
+========================================================= */
+
+:root { --lap-pad: 6px; }            /* set to 2–5px if you prefer tighter */
+
+.rows .row .last,
+.rows .row .best {
+  padding-right: var(--lap-pad);
+  text-align: right;                 /* keep numbers right-aligned */
+ 
+}
+
+
+/* =========================================================
+        Center the LAPS column (header + rows) 
+========================================================= */
+
+/* Center the LAPS column (4th col) for header + rows */
+.thead > :nth-child(4) { text-align: center; padding-right: 0; }
+#rows .row > :nth-child(4) { text-align: center; padding-right: 0; }
+
+
+/* =========================================================
+   Accessibility & motion prefs
+   ========================================================= */
 @media (prefers-reduced-motion: reduce) {
   .flag.is-pulsing,
   .flag.flag--green.flash,
   .flag.flag--pre,
-  .best.pb-live { animation: none; }
-  .flag.is-pulsing::after { display:none; }
+  .best.pb-live {
+    animation: none;
+  }
+  .flag.is-pulsing::after { display: none; }
 }
+
+/* =========================================================
+   Responsive tweaks
+   ========================================================= */
+@media (max-width: 900px) {
+  .thead, .row {
+    grid-template-columns: 80px 92px 1fr 92px 102px 102px;
+  }
+}
+
+/* =========================================================
+——— Race clock label: center over the pill + ALL CAPS   
+========================================================= */
+.raceclock-wrap {
+  display: grid;
+  grid-template-columns: auto auto;  /* [race-type] [clock] */
+  grid-auto-rows: auto;
+  column-gap: 10px;
+  row-gap: 4px;
+  align-items: center;
+  margin-left: auto;                  /* keep the whole block docked right */
+}
+
+/* Put the label above the CLOCK column (col 2), centered */
+.raceclock-label {
+  grid-column: 2;                     /* was spanning both */
+  grid-row: 1;
+  justify-self: center;               /* center over the pill */
+  text-transform: uppercase;          /* ALL CAPS */
+  letter-spacing: 0.04em;
+  font-size: 12px;                    /* keep it small */
+  line-height: 1;
+  opacity: 0.8;
+  margin: 0;
+}
+
+/* Race type stays left of the clock (row 2, col 1) */
+.race-type {
+  grid-column: 1;
+  grid-row: 2;
+  justify-self: end;                  /* snugs up to the pill */
+  font-weight: 700;
+  font-size: clamp(0.9rem, 1.6vw, 1.05rem);
+  line-height: 1;
+  white-space: nowrap;
+  margin-right: 0.25rem;
+}
+
+/* The pill remains on row 2, col 2 */
+#raceClock {
+  grid-column: 2;
+  grid-row: 2;
+  justify-self: end;
+}
+
+/* =========================================
+    ——— Simulator badge (footer)   ———
+============================================ */
+
+.sim-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-weight: 700;
+  font-size: 12px;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #f5f3ff;                      /* lavender text */
+  background: #5b21b6;                 /* indigo base */
+  box-shadow:
+    0 0 0 1px rgba(168, 85, 247, 0.25),
+    inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+.sim-badge::before {
+  content: "";
+  width: 8px; height: 8px;
+  border-radius: 2px;
+  background: #a855f7;                 /* neon dot */
+  box-shadow: 0 0 10px 2px rgba(168, 85, 247, 0.65);
+}
+.sim-badge.on { animation: simPulse 1.8s ease-in-out infinite; }
+@keyframes simPulse {
+  0% { filter: brightness(1.0) }
+  50% { filter: brightness(1.12) }
+  100% { filter: brightness(1.0) }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sim-badge.on { animation: none; }
+}
+
+/* Ensure the hidden attribute hides the sim badge even if we set display later */
+.sim-badge[hidden] { display: none !important; }
+
