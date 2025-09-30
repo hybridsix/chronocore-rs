@@ -5,7 +5,7 @@
 # This service exposes:
 #   • /race/state                 → Authoritative in-memory RaceEngine snapshot
 #   • /engine/load                → Initialize a race (roster + tags)
-#   • /engine/flag                → Change race flag (pre|green|yellow|red|white|checkered)
+#   • /engine/flag                → Change race flag. Allowed: pre|green|yellow|red|white|checkered|blue
 #   • /engine/pass                → Ingest a timing pass (track|pit_in|pit_out)
 #   • /engine/entrant/enable      → Enable/disable an entrant for this race
 #   • /engine/entrant/status      → Set entrant status (ACTIVE|DISABLED|DNF|DQ)
@@ -28,7 +28,8 @@ from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse
-from starlette.staticfiles import StaticFiles
+
+from fastapi.staticfiles import StaticFiles
 
 # RaceEngine singleton (authoritative in-memory state)
 from .race_engine import ENGINE

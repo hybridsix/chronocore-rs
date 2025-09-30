@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Tuple
 
 UTC_MS = lambda: int(time.time() * 1000)
 
-ALLOWED_FLAGS = {"pre","green","yellow","red","white","checkered"}
+ALLOWED_FLAGS = {"pre","green","yellow","red","blue","white","checkered"}
 ALLOWED_STATUS = {"ACTIVE","DISABLED","DNF","DQ"}
 
 # ----------------------------- Data structs -----------------------------

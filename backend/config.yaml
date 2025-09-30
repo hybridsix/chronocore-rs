@@ -11,7 +11,7 @@
 timing:
   # Minimum valid lap time in seconds.
   # Any lap shorter than this is ignored (likely a double-hit or glitch).
-  min_lap_s: 5.0
+  min_lap_s: 1.0
 
   # Minimum separation in seconds for duplicate tag hits.
   # If a transponder triggers multiple times at the line within this window,

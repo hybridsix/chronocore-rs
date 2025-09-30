@@ -318,3 +318,16 @@
     grid-template-columns: 80px 92px 1fr 92px 102px 102px;
   }
 }
+
+/* Flag icon color to match banner */
+.flag.flag--green    .flag__icon { background:#22c55e; }
+.flag.flag--yellow   .flag__icon { background:#eab308; }
+.flag.flag--red      .flag__icon { background:#ef4444; }
+.flag.flag--blue     .flag__icon { background:#3b82f6; }
+.flag.flag--white    .flag__icon { background:#e2e8f0; }
+.flag.flag--pre      .flag__icon { background:#64748b; }
+.flag.flag--checkered .flag__icon {
+  background: repeating-linear-gradient(
+    45deg, #0b0f13 0 10px, #ffffff 10px 20px
+  );
+}
