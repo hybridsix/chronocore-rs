@@ -18,7 +18,6 @@ timing:
   # only the first is counted; others are ignored.
   min_lap_s_dup: 1.0
 
-
 # ---------------------------------------------------------------------------
 # Feature toggles
 # ---------------------------------------------------------------------------
@@ -33,7 +32,6 @@ features:
   # (#### = last 4 digits of tag UID) and their laps are recorded.
   # When false, unknown tags are simply ignored.
   auto_provisional: true
-
 
 # ---------------------------------------------------------------------------
 # Persistence / durability
@@ -60,7 +58,6 @@ persistence:
   # True = maximum durability, slower.
   # False = faster, but a power loss could drop the last few seconds.
   fsync: true
-
 
 # ---------------------------------------------------------------------------
 # Pit receiver mapping (optional)

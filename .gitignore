@@ -9,6 +9,7 @@ venv/
 .vscode/
 dist/
 build/
+legacy/
 
 # Python cache
 __pycache__/
