@@ -2,580 +2,148 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>PRS — Spectator Leaderboard</title>
+  <title>ChronoCore — Spectator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Stylesheets served at /ui -->
-  <link rel="stylesheet" href="../css/base.css">
-  <link rel="stylesheet" href="../css/spectator.css">
+  <!-- Styles (unchanged layout/tokens) -->
+  <link rel="stylesheet" href="/ui/css/base.css?v=1">
+  <link rel="stylesheet" href="/ui/css/spectator.css?v=1">
 
-  <!-- shared helpers  -->
-  <script src="../js/base.js"></script>
+  <!-- Helpers (fetchJSON, makePoller, setNetStatus, startWallClock, fmtClock) -->
+  <script src="/ui/js/base.js?v=1"></script>
 </head>
 <body>
-  <!-- ===================== HEADER ===================== -->
   <header>
-    <div class="logo">
-      <img src="../img/PRS_Logo.svg" alt="PRS Logo" />
-    </div>
-
+    <div class="logo"><img src="/ui/img/PRS_Logo.svg" alt="PRS Logo" /></div>
     <div class="title">Live Timing — Spectator</div>
-
-    <!-- Clock cluster: label (top), then [race type | clock] -->
     <div class="raceclock-wrap">
-      <div class="raceclock-label">RACE CLOCK</div>
-      <div class="race-type" id="raceType" aria-label="Race type"></div>
-      <div class="pill pill-xl" id="raceClock" aria-live="polite" aria-label="Race clock">--:--:--</div>
+      <div class="raceclock-label">Race&nbsp;Clock</div>
+      <div class="pill pill-xl" id="raceClock" aria-live="polite" aria-label="Race clock">--:--</div>
     </div>
   </header>
 
-  <!-- ====================== MAIN ====================== -->
   <main>
-    <!-- Flag/banner; colors/animations are in spectator.css -->
+    <!-- Flag banner (class is switched to flag--{color}) -->
     <div id="flagBanner" class="flag hidden" aria-live="polite">
       <div class="flag__icon" id="flagIcon" aria-hidden="true"></div>
-      <div class="flag__label" id="flagLabel">Pre-Grid</div>
+      <div class="flag__label" id="flagLabel">—</div>
     </div>
 
-    <!-- Leaderboard -->
-    <section class="card" aria-label="Leaderboard">
+    <section class="card">
       <h2>Leaderboard</h2>
-
-      <div class="table" role="table" aria-label="Race standings">
-        <div class="thead" role="row">
-          <div role="columnheader">Position</div>
-          <div role="columnheader">Car #</div>
-          <div role="columnheader">Team / Driver</div>
-          <div role="columnheader" class="right">Laps</div>
-          <div role="columnheader" class="right">Last Lap</div>
-          <div role="columnheader" class="right">Best Lap</div>
+      <div class="table">
+        <div class="thead">
+          <div>Position</div><div>Car #</div><div>Team</div>
+          <div class="right">Laps</div><div class="right">Last Lap</div><div class="right">Best Lap</div>
         </div>
-        <div class="rows" id="rows" role="rowgroup"></div>
+        <div class="rows" id="rows"></div>
       </div>
     </section>
   </main>
 
-  <!-- ===================== FOOTER ===================== -->
   <footer>
     <div class="footer-left">
-      <div class="status-dot" id="netDot" title="Network status"></div>
+      <div class="status-dot" id="netDot"></div>
       <div id="netMsg">Connecting…</div>
-      <span id="simBadge" class="sim-badge" hidden>SIMULATOR&nbsp;ACTIVE</span>
     </div>
 
-    <div id="wallClock" class="pill" aria-label="Local time">--:--:--</div>
+    <div id="wallClock" class="pill">--:--:--</div>
 
     <div class="footer-right">
-      <div>API: <a class="link" id="apiLink" href="/race/state" target="_blank" rel="noopener">/race/state</a></div>
+      API: <a class="link" href="/race/state" target="_blank">/race/state</a>
     </div>
   </footer>
 
-  <!-- =================== PAGE SCRIPT =================== -->
   <script>
-  // =========================================================================
-  // Small utility helpers
-  // =========================================================================
-  const $  = (sel, root=document) => root.querySelector(sel);
-  const $$ = (sel, root=document) => [...root.querySelectorAll(sel)];
+    // Pull helpers from base.js (already loaded)
+    const { $, fetchJSON, makePoller, setNetStatus, startWallClock, fmtClock } = window.PRS || {};
 
-  // Format ms → h:mm:ss (always shows hours, even 0)
-  function fmtHMS(ms) {
-    const total = Math.max(0, Math.floor((ms ?? 0) / 1000));
-    const h = Math.floor(total / 3600);
-    const m = Math.floor((total % 3600) / 60);
-    const s = total % 60;
-    return `${h}:${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
-  }
+    /* ---------- Footer wall clock ---------- */
+    const stopWallClock = startWallClock("#wallClock");
 
-  // Local wall clock (not the race clock)
-  function startWallClock(selector) {
-    const target = $(selector);
-    if (!target) return;
-    const tick = () => {
-      const d = new Date();
-      const hh = String(d.getHours()).padStart(2,'0');
-      const mm = String(d.getMinutes()).padStart(2,'0');
-      const ss = String(d.getSeconds()).padStart(2,'0');
-      target.textContent = `${hh}:${mm}:${ss}`;
-    };
-    tick();
-    setInterval(tick, 1000);
-  }
+    /* ---------- Render functions ---------- */
 
-  // =========================================================================
-  // Race clock smoother (client-side 500ms tick, anchored to server state)
-  // =========================================================================
-  let __clockSyncMs   = null;  // last clock_ms from /race/state
-  let __clockSyncAt   = 0;     // performance.now() when we received it
-  let __clockRunning  = false; // whether server says race is running
-
-  function tickRaceClock() {
-    const el = $('#raceClock');
-    if (!el) return;
-    if (__clockSyncMs == null) { el.textContent = '--:--:--'; return; }
-    let ms = __clockSyncMs;
-    if (__clockRunning) ms += (performance.now() - __clockSyncAt);
-    el.textContent = fmtHMS(ms);
-  }
-  setInterval(tickRaceClock, 500); // <-- smooth 0.5s updates
-
-  // =========================================================================
-  // Runtime config (now race-agnostic; falls back to ?race_id=… if provided)
-  // =========================================================================
-  const qp = new URLSearchParams(location.search);
-  let   ACTIVE_RACE_ID = null;                // set by /race/current poller
-  const FALLBACK_RACE  = Number(qp.get('race_id') || 1);
-  const POLL_MS        = 1000;
-
-  // Build a URL with the currently active race id
-  function apiUrl(path) {
-    const rid = (ACTIVE_RACE_ID ?? FALLBACK_RACE);
-    return `${path}${path.includes('?') ? '&' : '?'}race_id=${rid}`;
-  }
-
-  // Keep the footer link honest so operators can click-through to exactly what we're polling
-  function updateApiLink() {
-    const el = $('#apiLink');
-    if (!el) return;
-    el.href = apiUrl('/race/state');
-    el.textContent = el.href;
-  }
-
-  // =========================================================================
-  // Race type label + Simulator badge
-  // =========================================================================
-  function setRaceTypeLabel(t) {
-    const el = $('#raceType');
-    if (!el) return;
-    const key = String(t || '').trim().toLowerCase();
-    const pretty = ({
-      'sprint': 'Sprint Race',
-      'sprint race': 'Sprint Race',
-      'endurance': 'Endurance',
-      'free': 'Free Play',
-      'freeplay': 'Free Play',
-      'practice': 'Free Play',
-      'qual': 'Qualifying',
-      'qualify': 'Qualifying',
-      'qualifying': 'Qualifying',
-      'relay': 'Relay'
-    })[key] || (key ? key.charAt(0).toUpperCase()+key.slice(1) : '');
-    el.textContent = pretty;
-  }
-
-  function setSimBadge(active, label) {
-    const el = $('#simBadge');
-    if (!el) return;
-    if (active) {
-      el.hidden = false;
-      el.classList.add('on');
-      if (label) el.textContent = label;
-    } else {
-      el.hidden = true;
-      el.classList.remove('on');
-    }
-  }
-
-  // =========================================================================
-  // Flag banner rendering (green enter flash, pulsing for caution)
-  // =========================================================================
-  function renderFlag(flag) {
-    const host = $('#flagBanner'), icon = $('#flagIcon'), lbl = $('#flagLabel');
-    if (!host || !icon || !lbl) return;
-
-    const fRaw = String(flag || '').toLowerCase();
-    if (!fRaw) { host.className = 'flag hidden'; host.dataset.currentFlag = ''; return; }
-
-    const prev = host.dataset.currentFlag || '';
-    const f = fRaw;
-
-    // Base class → CSS drives color/pulse
-    host.className = `flag flag--${f}`;
-
-    // Pulse set
-    const pulsing = new Set(['yellow','red','blue','checkered']);
-    if (pulsing.has(f)) host.classList.add('is-pulsing'); else host.classList.remove('is-pulsing');
-
-    // One-shot flash on entering green
-    if (f === 'green' && prev !== 'green') {
-      host.classList.remove('flash'); void host.offsetWidth;
-      host.classList.add('flash');
-      host.addEventListener('animationend', (e) => {
-        if (e.animationName === 'greenFlash') host.classList.remove('flash');
-      }, { once: true });
+    function renderClock(clock_ms) {
+      const el = $("#raceClock");
+      el.textContent = (clock_ms == null) ? "--:--" : fmtClock(clock_ms);
     }
 
-    // Icon + label (simple color block)
-    const fillColor = {
-      pre:'#64748b', green:'#22c55e', yellow:'#facc15', red:'#ef4444',
-      blue:'#3b82f6', white:'#e2e8f0', checkered:'#d1d5db'
-    }[f] || '#e5e7eb';
+    function renderFlag(flag) {
+      const banner = $("#flagBanner");
+      const label  = $("#flagLabel");
+      if (!banner || !label) return;
 
-    icon.innerHTML = `
-      <svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-        <rect x="1" y="1" width="20" height="20" rx="3" fill="${fillColor}" opacity="0.9"/>
-        <path d="M3 19 L19 3" stroke="#0b0f13" stroke-width="3" stroke-linecap="round" />
-      </svg>`;
-    lbl.textContent = ({
-      pre:'Pre-Grid', green:'Green Flag', yellow:'Caution — Yellow',
-      red:'Race Stopped — Red', blue:'Blue Flag', white:'Final Lap', checkered:'Checkered — Finish'
-    })[f] || 'Flag';
-
-    host.dataset.currentFlag = f;
-  }
-
-  // =========================================================================
-  // Leaderboard rendering (uses /race/state.standings)
-  // - FLIP animation in 1 column; skipped in 2-column mode
-  // - Uses entrant_id as the stable row key
-  // =========================================================================
-  let lastOrder = [];         // previous order (keys) for ▲▼ deltas
-  let lastRowsPainted = null; // last rendered rows (for resize, etc.)
-
-  function renderRows(rows) {
-    lastRowsPainted = rows;
-
-    // --- Helpers ---------------------------------------------------------
-    const $ = (sel, root = document) => root.querySelector(sel);
-    const $all = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-
-    // Cap the visible board at 24 as requested
-    const visible = Array.isArray(rows) ? rows.slice(0, 24) : [];
-
-    // Auto two-column (override with ?cols=1 or ?cols=2)
-    const qpCols   = qp.get('cols');
-    const forceTwo = qpCols === '2';
-    const forceOne = qpCols === '1';
-    const TWO_COL_THRESHOLD = 12;
-    const wantTwo = forceTwo || (!forceOne && visible.length > TWO_COL_THRESHOLD);
-
-    // Ensure we have a table-wrap that can hold one or two full tables
-    const card = $('.card');
-    let wrap = $('.table-wrap', card);
-
-    if (!wrap) {
-      const firstTable = $('.table', card);
-      if (!firstTable) return;
-      wrap = document.createElement('div');
-      wrap.className = 'table-wrap';
-      wrap.style.width = '100%';
-      card.replaceChild(wrap, firstTable);
-      wrap.appendChild(firstTable);
-    }
-
-    // Toggle two-col layout styles
-    wrap.classList.toggle('two-col', wantTwo);
-
-    // Ensure we have one or two FULL tables (header + rows)
-    const ensureSecondTable = () => {
-      const tables = $all('.table', wrap);
-      if (tables.length === 2) return tables;
-      if (tables.length === 1 && wantTwo) {
-        const clone = tables[0].cloneNode(true);
-        const rowsB = $('#rows', clone);
-        if (rowsB) rowsB.id = 'rowsB';
-        wrap.appendChild(clone);
-        return [tables[0], clone];
+      banner.className = "flag";          // reset base styles
+      if (!flag) {                        // hide if engine gives null/undefined
+        banner.classList.add("hidden");
+        label.textContent = "";
+        return;
       }
-      if (tables.length === 2 && !wantTwo) {
-        wrap.removeChild(tables[1]);
-        return [$all('.table', wrap)[0]];
-      }
-      return tables;
-    };
-
-    const tables = ensureSecondTable();
-    const tableA = tables[0];
-    const rowsA  = $('#rows', tableA);
-    if (!rowsA) return;
-
-    const tableB = wantTwo && tables[1] ? tables[1] : null;
-    const rowsB  = tableB ? ($('#rowsB', tableB) || $('#rows', tableB)) : null;
-
-    // --- Apply column width vars early (prevents snap) ------------------
-    function applyColVars(table, twoCol) {
-      if (!table) return;
-      const s = table.style;
-      if (twoCol) {
-        s.setProperty('--c-pos',  '90px');
-        s.setProperty('--c-car',  '100px');
-        s.setProperty('--c-name', '1.25fr');
-        s.setProperty('--c-laps', '110px');
-        s.setProperty('--c-last', '120px');
-        s.setProperty('--c-best', '120px');
-      } else {
-        s.setProperty('--c-pos',  '100px');
-        s.setProperty('--c-car',  '120px');
-        s.setProperty('--c-name', '1fr');
-        s.setProperty('--c-laps', '110px');
-        s.setProperty('--c-last', '120px');
-        s.setProperty('--c-best', '120px');
-      }
-    }
-    applyColVars(tableA, wantTwo);
-    if (tableB) applyColVars(tableB, true);
-
-    // Split the visible field into left/right chunks
-    const leftRows  = wantTwo ? visible.slice(0, 12) : visible;
-    const rightRows = wantTwo ? visible.slice(12, 24) : [];
-
-    // Build a map of all existing row elements by entrant id across both containers
-    const containers = wantTwo && rowsB ? [rowsA, rowsB] : [rowsA];
-    const existing = new Map(
-      containers.flatMap(c => [...c.children]).map(el => [Number(el.dataset.eid), el])
-    );
-
-    // Order bookkeeping for ▲▼ bubbles (based on full visible order)
-    const newOrder = visible.map(r => Number(r.eid));
-    const deltas = new Map();
-    if (lastOrder.length) {
-      const posPrev = new Map(lastOrder.map((k,i)=>[k,i]));
-      for (let i = 0; i < newOrder.length; i++) {
-        const k = newOrder[i];
-        if (!posPrev.has(k)) { deltas.set(k, 0); continue; }
-        const diff = posPrev.get(k) - i;
-        deltas.set(k, diff === 0 ? 0 : (diff > 0 ? +1 : -1));
-      }
-    }
-    lastOrder = newOrder;
-
-    // (1) Measure initial tops for FLIP (single column only)
-    const firstPos = new Map();
-    if (!wantTwo) {
-      for (const el of rowsA.children) {
-        firstPos.set(Number(el.dataset.eid), el.getBoundingClientRect().top);
-      }
+      label.textContent = flag.toUpperCase();
+      banner.classList.remove("hidden");
+      banner.classList.add(`flag--${flag}`);
     }
 
-    // Small helper to (ensure node, populate content)
-    function ensureAndFill(container, r, posNumber) {
-      let el = existing.get(r.eid);
-      if (!el) {
-        el = document.createElement('div');
-        el.className = 'row';
-        el.dataset.eid = r.eid;
+    function renderStandings(rows) {
+      const rowsEl = $("#rows");
+      if (!rowsEl) return;
+      rowsEl.innerHTML = "";
+
+      if (!Array.isArray(rows) || !rows.length) return;
+
+      rows.forEach((r, i) => {
+        const el = document.createElement("div");
+        el.className = "row";
+
+        // Map required fields; fall back defensively if the engine varies keys
+        const pos   = i + 1;
+        const car   = r.car_number ?? r.car ?? r.carNum ?? "";
+        const name  = r.name ?? r.team ?? r.driver ?? `Tag ${r.tag ?? ""}`;
+        const laps  = r.laps ?? 0;
+        const last  = (typeof r.last === "number") ? r.last.toFixed(3) : "—";
+        const best  = (typeof r.best === "number") ? r.best.toFixed(3) : "—";
+        // pace_5 is available from the engine but not displayed in this minimal table
+
         el.innerHTML = `
-          <div class="pos"></div>
-          <div class="right car"></div>
-          <div class="name"></div>
-          <div class="laps"></div>
-          <div class="right last"></div>
-          <div class="right best"></div>`;
-        existing.set(r.eid, el);
-      }
-      container.appendChild(el);
-
-      // Populate cells
-      el.querySelector('.pos').textContent  = String(posNumber ?? r.position ?? r.indexPos);
-      el.querySelector('.car').textContent  = r.car ?? '—';
-      el.querySelector('.name').textContent = r.name ?? `Entrant ${r.eid}`;
-      el.querySelector('.laps').textContent = r.laps ?? 0;
-      el.querySelector('.last').textContent = (r.last == null ? '—' : Number(r.last).toFixed(3));
-
-      // PB pulse lifecycle
-      const bestCell = el.querySelector('.best');
-      const prevBest = el._bestLap;
-      const prevLaps = el._laps || 0;
-      const curBest  = r.best;
-      const curLaps  = r.laps ?? 0;
-
-      bestCell.textContent = (curBest == null ? '—' : Number(curBest).toFixed(3));
-
-      if (prevBest != null && curBest != null && curBest < prevBest && curLaps >= 1) {
-        bestCell.classList.add('pb-live');
-        el._pbClearAtLaps = curLaps + 1;
-      }
-      if (el._pbClearAtLaps != null && curLaps >= el._pbClearAtLaps) {
-        bestCell.classList.remove('pb-live');
-        el._pbClearAtLaps = null;
-      }
-      el._bestLap = (curBest != null ? curBest : null);
-      el._laps    = curLaps;
-
-      // ▲ ▼ delta bubble based on global order change
-      const d = (deltas.get(r.eid) || 0);
-      const bubble = el._bubble || (() => {
-        const b = document.createElement('span');
-        b.className = 'delta';
-        el.querySelector('.pos').appendChild(b);
-        el._bubble = b;
-        return b;
-      })();
-      if (d > 0)      { bubble.textContent = '▲'; bubble.className = 'delta up';   bubble.style.opacity = '0.95'; }
-      else if (d < 0) { bubble.textContent = '▼'; bubble.className = 'delta down'; bubble.style.opacity = '0.95'; }
-      else            { bubble.textContent = '';  bubble.style.opacity = '0'; }
-
-      return el;
-    }
-
-    // (2) Clear containers and append rows in final order
-    rowsA.innerHTML = '';
-    if (rowsB) rowsB.innerHTML = '';
-
-    // Left column positions 1..12; right 13..24
-    leftRows.forEach((r, i)  => ensureAndFill(rowsA, r, i + 1));
-    rightRows.forEach((r, i) => rowsB && ensureAndFill(rowsB, r, i + 13));
-
-    // (3) FLIP animation only in single-column mode
-    if (!wantTwo) {
-      for (const r of leftRows) {
-        const el = existing.get(r.eid);
-        const lastTop  = el.getBoundingClientRect().top;
-        const firstTop = firstPos.get(r.eid) ?? lastTop;
-        const dy = firstTop - lastTop;
-        el.style.transition = 'transform 0s';
-        el.style.transform  = `translateY(${dy}px)`;
-        requestAnimationFrame(() => {
-          el.style.transition = 'transform 800ms cubic-bezier(0.2,0,0,1)';
-          el.style.transform  = 'translateY(0)';
-        });
-      }
-    } else {
-      // Clean transforms in two-col so they don't look weird across columns
-      [...rowsA.children, ...(rowsB ? [...rowsB.children] : [])].forEach(el => {
-        el.style.transition = '';
-        el.style.transform  = '';
+          <div>${pos}</div>
+          <div class="car">${car}</div>
+          <div class="name">${name}</div>
+          <div class="right">${laps}</div>
+          <div class="right">${last}</div>
+          <div class="right best">${best}</div>
+        `;
+        rowsEl.appendChild(el);
       });
     }
 
-    // (4) Remove any orphaned rows that disappeared
-    for (const el of existing.values()) {
-      const id = Number(el.dataset.eid);
-      const still = visible.find(r => r.eid === id);
-      if (!still) el.remove();
+    /* ---------- Single poller: /race/state (engine-first, 3 Hz) ---------- */
+
+    // Accept a few plausible shapes from the engine: {standings:[...]}, {entries:[...]}, or {rows:[...]}
+    function extractRows(state) {
+      return state?.standings ?? state?.entries ?? state?.rows ?? [];
     }
-  }
 
-  // =========================================================================
-  // Fetchers (now race-agnostic by using apiUrl())
-  // =========================================================================
-  async function fetchRaceCurrent() {
-    const r = await fetch('/race/current', { cache: 'no-store' });
-    if (!r.ok) throw new Error(`race_current failed ${r.status}`);
-    return r.json(); // { race_id: number | null }
-  }
+    const pollIntervalMs = 333; // ≈3 Hz within the requested 2–5 Hz
 
-  async function fetchRaceState() {
-    const r = await fetch(apiUrl('/race/state'), { cache: 'no-store' });
-    if (!r.ok) throw new Error(`race_state failed ${r.status}`);
-    return r.json();
-  }
+    const statePoller = makePoller(async () => {
+      const s = await fetchJSON("/race/state");
 
-  // =========================================================================
-  // Polling: we have a tiny "current race" poller and the usual state poller
-  // =========================================================================
-  let __lastRaceId = null;
+      // Clock + flag from authoritative engine state
+      renderClock(s.clock_ms);
+      renderFlag(s.flag);
 
-  async function pollCurrentRace() {
-    try {
-      const info = await fetchRaceCurrent();
-      const newId = info?.race_id ?? null;
-
-      if (newId !== ACTIVE_RACE_ID) {
-        const hadOne = ACTIVE_RACE_ID != null;
-        ACTIVE_RACE_ID = newId;
-        updateApiLink();
-
-        // Nudge the banner so field crews notice the switch
-        if (hadOne) {
-          const banner = $('#flagBanner');
-          if (banner) {
-            banner.style.outline = '2px solid var(--accent)';
-            setTimeout(() => (banner.style.outline = ''), 900);
-          }
-        }
-      }
-    } catch (e) {
-      // Quietly ignore — the main poller already shows net state
-      console.warn(e);
-    }
-  }
-
-  async function pollState() {
-    try {
-      const state = await fetchRaceState();
-
-      // ---- Overlay: SIM badge, race type, flag, race clock anchor
-      const urlSimParam   = qp.get('sim');
-      const urlSimForceOn = urlSimParam === '1' || urlSimParam === 'true';
-      const urlSimForceOff= urlSimParam === '0' || urlSimParam === 'false';
-
-      let simActive = state.sim === true || state.source === 'sim';
-      if (urlSimForceOn)  simActive = true;
-      if (urlSimForceOff) simActive = false;
-      setSimBadge(simActive, state.sim_label || 'SIMULATOR ACTIVE');
-
-      setRaceTypeLabel(state.race_type || qp.get('type'));
-      const hasClock = (typeof state.clock_ms === 'number');
-      renderFlag(hasClock ? (state.flag || 'green') : 'pre');
-
-      if (hasClock) {
-        __clockSyncMs  = state.clock_ms;
-        __clockSyncAt  = performance.now();
-        __clockRunning = !!(state.running);
-      } else {
-        __clockSyncMs  = null;
-        __clockRunning = false;
-      }
-      tickRaceClock();
-
-      // ---- Leaderboard rows (entrant-based)
-      const rows = Array.isArray(state.standings) ? state.standings.map((r, i) => ({
-        eid: Number(r.entrant_id ?? i+1),
-        position: Number(r.position ?? (i+1)),
-        car: (r.car_number ?? null),
-        name: (r.name ?? r.team ?? r.org ?? null),
-        laps: Number(r.laps ?? 0),
-        last: (r.last == null ? null : Number(r.last)),
-        best: (r.best == null ? null : Number(r.best)),
-        indexPos: i+1
-      })) : [];
-
-      // force table-wrap into two-col if more than 12 racers
-      if (state.total_participants > 12) {
-        document.querySelector('.table-wrap')?.classList.add('two-col');
-      }
-
-      renderRows(rows);
+      // Standings table
+      const rows = extractRows(s);
+      renderStandings(rows);
 
       // Footer net status
-      $('#netDot').style.background = 'var(--ok)';
-      $('#netMsg').textContent = `OK — ${rows.length} entries`;
-    } catch (e) {
-      // On error, keep previous UI, show disconnected
-      $('#netDot').style.background = 'var(--error)';
-      $('#netMsg').textContent = 'Disconnected — retrying…';
-      console.error(e);
-    }
-  }
+      setNetStatus(true, `OK — ${rows.length} karts`);
+    }, pollIntervalMs, () => {
+      setNetStatus(false, "Disconnected — retrying…");
+      renderClock(null);
+    });
 
-  // =========================================================================
-  // Boot
-  // =========================================================================
-  window.addEventListener('DOMContentLoaded', () => {
-    // Local wall clock
-    (window.PRS?.startWallClock || startWallClock)('#wallClock');
-
-    // Initial visuals
-    renderFlag('pre');
-    tickRaceClock();
-
-    // First link points at fallback race immediately
-    updateApiLink();
-
-    // Kick off pollers
-    pollCurrentRace();                // get an initial ACTIVE_RACE_ID ASAP
-    pollState();                      // draw something even if current is null
-    setInterval(pollCurrentRace, POLL_MS);
-    setInterval(pollState,        POLL_MS);
-  });
-
-  // Safety: keep race-clock readable if a poll hiccups
-  setInterval(() => {
-    const el = $('#raceClock');
-    const text = el ? el.textContent : '';
-    if (!text.trim()) el.textContent = '--:--:--';
-  }, 2000);
+    statePoller.start();
   </script>
 </body>
 </html>
