@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ChronoCore — Mock Showcase</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../css/base.css" />
+  <link rel="stylesheet" href="../css/operator.css" />
+  <style>
+    /* --- Global art placement (outside the hero card) --- */
+.art-global {
+  position: fixed;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 0;
+  pointer-events: none;
+  filter: drop-shadow(0 12px 24px rgba(0,0,0,.45));
+  opacity: .95;
+}
+
+.art-left {
+  /* push farther out: negative margin to offset more to the left */
+  left: +20px;
+  width: clamp(220px, 22vw, 340px);
+  -webkit-mask-image: radial-gradient(120% 120% at 35% 60%, #000 70%, transparent 100%);
+          mask-image: radial-gradient(120% 120% at 35% 60%, #000 70%, transparent 100%);
+}
+
+.art-right {
+  /* push farther out: negative margin to offset more to the right */
+  right: -0px;
+  width: clamp(240px, 23vw, 380px);
+  transform: translateY(-50%) rotate(-2deg);
+  -webkit-mask-image: radial-gradient(120% 120% at 70% 40%, #000 72%, transparent 100%);
+          mask-image: radial-gradient(120% 120% at 70% 40%, #000 72%, transparent 100%);
+  opacity: .9;
+}
+
+@media (max-width: 1000px) {
+  .art-global { display: none; }
+}
+
+
+    /* Ensure the card/content stays above the art */
+    .hero { position: relative; z-index: 1; }
+    .hero__inner { position: relative; }
+    .hero__inner::after { z-index: 0; } /* divider stays under content */
+  </style>
+  <script>
+    async function goto(screenId){
+      if (window.pywebview?.api?.goto) { try { await window.pywebview.api.goto(screenId); } catch(e){} }
+      else { location.href = screenId + ".html"; }
+    }
+  </script>
+</head>
+<body>
+  <!-- Left & right background art flanking the content -->
+  <img class="art-global art-left"  src="../img/chronocore_drivers.png" alt="">
+  <img class="art-global art-right" src="../img/race_flags.png"         alt="">
+
+  <header class="app-header">
+    <div class="brand">
+      <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+        <div class="wordmark__top">
+          <span class="wordmark__big">CHRONO</span>
+          <span class="wordmark__big">CORE</span>
+        </div>
+        <div class="wordmark__bottom">RACE SOFTWARE</div>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero card">
+      <div class="hero__inner">
+        <div class="hero__brand">
+          <img class="brand-mark" src="../img/PRS_Logo.svg" alt="PRS Logo">
+          <p class="sub">Timing • Control • Moxie</p>
+        </div>
+
+        <div class="hero__actions">
+          <button class="btn btn-primary" onclick="goto('race_control')">Start / Race Control</button>
+          <button class="btn" onclick="goto('entrants')">Entrants & Tags</button>
+          <button class="btn" onclick="goto('stats')">Results & Exports</button>
+          <button class="btn" onclick="goto('settings')">Setup & Devices</button>
+          <button class="btn" onclick="goto('about')">About</button>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-left">
+      <div class="status-dot"></div>
+      <div>Mock art showcase</div>
+    </div>
+    <div class="footer-right">Operator UI</div>
+  </footer>
+
+  <div class="version-pill" onclick="goto('about')">v0.1 Preview</div>
+</body>
+</html>

@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ChronoCore — Starting…</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../css/base.css" />
+  <style>
+    :root{ color-scheme: dark; }
+    html,body{ height:100%; margin:0; background:#0c131a; color:#e6ebf0; font-family:var(--sans, system-ui); }
+    .wrap{ height:100%; display:grid; place-items:center; }
+    .card{
+      background:#0f141a; border:1px solid #0b0f13; border-radius:16px;
+      box-shadow:0 0 0 1px #0c1116, 0 10px 24px rgba(0,0,0,.35);
+      padding:20px 22px; min-width:420px;
+      -webkit-app-region: drag;         /* drag anywhere (frameless) */
+    }
+
+    /* Row: [square-mark] [wordmark stack] */
+    .row{
+      display:grid; grid-auto-flow:column; align-items:center; gap:16px;
+    }
+
+    /* Left square mark placeholder — replace with your SVG/PNG when ready */
+    .markbox{
+      width:64px; height:64px; border-radius:12px;
+      border:1px dashed #2a3a47; background:#0d151c;
+      display:grid; place-items:center; opacity:.8;
+    }
+    /* If you have an image later, uncomment and swap:
+    <img class="markimg" src="../img/chronocore_mark.svg" alt="">
+    .markimg{ width:64px; height:64px; display:block; border-radius:12px; }
+    */
+
+    /* ChronoCore wordmark (text) */
+    .wordmark{ line-height:1; text-transform:uppercase; color:#e9f1f7;
+      text-shadow: 0 0 2px rgba(255,255,255,.25), 0 2px 10px rgba(0,0,0,.45);
+    }
+    .wordmark__top{ display:grid; gap:4px; letter-spacing:.06em; }
+    .wordmark__big{ font-weight:800; font-size:24px; }
+    .wordmark__bottom{ margin-top:4px; font-weight:700; font-size:12px; letter-spacing:.18em; opacity:.92; }
+
+    /* Subline + progress bar */
+    .sub{ margin:14px 0 10px; opacity:.85; font-size:14px; letter-spacing:.02em; }
+    .bar{ height:4px; width:100%; background:#12171c; border-radius:999px; overflow:hidden; border:1px solid #0b2230; }
+    .fill{ height:100%; width:40%; background:linear-gradient(90deg, #37b0ff, #a6e1ff); animation:load 1.2s infinite ease-in-out; }
+    @keyframes load { 0%{transform:translateX(-100%);} 100%{transform:translateX(260%);} }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="card">
+      <div class="row">
+        <!-- Left: reserved square for future mark (SVG/PNG) -->
+        <div class="markbox">■</div>
+        <!-- Right: text wordmark, same structure as Operator header -->
+        <div class="wordmark" aria-label="ChronoCore Race Software">
+          <div class="wordmark__top">
+            <span class="wordmark__big">CHRONO</span>
+            <span class="wordmark__big">CORE</span>
+          </div>
+          <div class="wordmark__bottom">RACE SOFTWARE</div>
+        </div>
+      </div>
+
+      <div class="sub">Starting services…</div>
+      <div class="bar"><div class="fill"></div></div>
+    </div>
+  </div>
+</body>
+</html>
+
+<!--When your square logo is ready, replace the <div class="markbox"> with:
+    <img class="markimg" src="../img/chronocore_mark.svg" alt="ChronoCore mark">
+    …and uncomment the .markimg CSS block in the file.   
+    -->

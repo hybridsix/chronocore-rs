@@ -1,388 +1,297 @@
-"""
-PRS Race Timing — Backend API (entrant-based, new schema)
-
-Run:
-    uvicorn backend.server:app --reload --host 0.0.0.0 --port 8000
-
-Env:
-    DB_PATH = absolute path to laps.sqlite (server and sim must match)
-
-This server:
-- Stores a race, entrants (name, car number, org).
-- Tracks which TAG is assigned to which entrant, with time windows.
-- Writes/reads raw passes by (race_id, tag, ts_utc).
-- Builds leaderboard by attributing passes to ENTRANTS (tag can change mid-race).
-- Exposes:
-    GET /healthz
-    GET /passes?race_id=99
-    GET /race/state?race_id=99
-"""
+# backend/server.py
+# =============================================================================
+# ChronoCore Backend — FastAPI app (engine-first)
+#
+# This service exposes:
+#   • /race/state                 → Authoritative in-memory RaceEngine snapshot
+#   • /engine/load                → Initialize a race (roster + tags)
+#   • /engine/flag                → Change race flag (pre|green|yellow|red|white|checkered)
+#   • /engine/pass                → Ingest a timing pass (track|pit_in|pit_out)
+#   • /engine/entrant/enable      → Enable/disable an entrant for this race
+#   • /engine/entrant/status      → Set entrant status (ACTIVE|DISABLED|DNF|DQ)
+#   • /engine/entrant/assign_tag  → Bind/unbind a tag for an entrant
+#
+# Notes:
+#   - Engine is the live authority (fast + consistent). DB mirroring is optional.
+#   - Spectator/Operator UIs should poll /race/state (low-latency, stable contract).
+#   - Static UI is served at /ui (mounts the repo’s ui/ directory).
+# =============================================================================
 
 from __future__ import annotations
-import os
-import sqlite3
-import time
-from math import inf
-from pathlib import Path
-from typing import Any, Dict, List, Optional
 
-import aiosqlite
-from fastapi import FastAPI, HTTPException, Query
+# ---------------------------------------------------------------------------
+# Imports
+# ---------------------------------------------------------------------------
+import os
+from typing import Optional, Dict, Any
+
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi.responses import JSONResponse, RedirectResponse
 from starlette.staticfiles import StaticFiles
 
-# ---------------------------------------------------------------------------
-# Paths / DB plumbing
-# ---------------------------------------------------------------------------
+# RaceEngine singleton (authoritative in-memory state)
+from .race_engine import ENGINE
 
-BASE_DIR = Path(__file__).resolve().parent          # .../backend
-ROOT_DIR = BASE_DIR.parent                          # repo root (contains laps.sqlite)
-UI_DIR   = BASE_DIR / "static"                      # static UI at /ui
-UI_DIR.mkdir(exist_ok=True)
-
-def get_db_path() -> str:
-    """Use DB_PATH if set; else repo-root/laps.sqlite."""
-    env = os.getenv("DB_PATH")
-    return env if env else str(ROOT_DIR / "laps.sqlite")
-
-async def ensure_schema(db: aiosqlite.Connection) -> None:
-    """
-    Single source of truth for our schema.
-    NOTE: You said it's fine to wipe on schema changes — if you see errors,
-    delete laps.sqlite and restart the server to recreate it cleanly.
-    """
-    await db.executescript(r"""
-PRAGMA journal_mode=WAL;
-
--- Races: the timeboxed competition unit the UI views (per race_id)
-CREATE TABLE IF NOT EXISTS races (
-  id              INTEGER PRIMARY KEY,
-  name            TEXT NOT NULL,
-  start_ts_utc    INTEGER NOT NULL,   -- epoch ms
-  end_ts_utc      INTEGER,
-  created_at_utc  INTEGER NOT NULL
-);
-
--- Entrants: identity of a racer (stable across tag changes)
-CREATE TABLE IF NOT EXISTS entrants (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  name            TEXT NOT NULL,      -- Racer Name (e.g., "Totes Mah Goats")
-  car_num         TEXT,               -- Car Number (TEXT so 007 or 75A work)
-  org             TEXT,               -- Team/Org (e.g., "Lazy Gecko")
-  created_at_utc  INTEGER NOT NULL
-);
-
--- Entrant registered to a race
-CREATE TABLE IF NOT EXISTS race_entries (
-  race_id         INTEGER NOT NULL,
-  entrant_id      INTEGER NOT NULL,
-  PRIMARY KEY (race_id, entrant_id),
-  FOREIGN KEY(race_id)   REFERENCES races(id)     ON DELETE CASCADE,
-  FOREIGN KEY(entrant_id)REFERENCES entrants(id) ON DELETE CASCADE
-);
-
--- Which TAG belongs to which entrant; time-bounded so swaps are tracked
-CREATE TABLE IF NOT EXISTS tag_assignments (
-  race_id            INTEGER NOT NULL,
-  entrant_id         INTEGER NOT NULL,
-  tag                TEXT    NOT NULL,
-  effective_from_utc INTEGER NOT NULL,  -- inclusive
-  effective_to_utc   INTEGER,           -- exclusive; NULL = still active
-  FOREIGN KEY(race_id)   REFERENCES races(id)     ON DELETE CASCADE,
-  FOREIGN KEY(entrant_id)REFERENCES entrants(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_tag_assign_race_tag_time
-  ON tag_assignments(race_id, tag, effective_from_utc, effective_to_utc);
-
--- Raw line crossings (decoder/sim write here)
-CREATE TABLE IF NOT EXISTS passes (
-  id              INTEGER PRIMARY KEY AUTOINCREMENT,
-  race_id         INTEGER NOT NULL,
-  tag             TEXT NOT NULL,
-  ts_utc          INTEGER NOT NULL,    -- epoch ms
-  source          TEXT DEFAULT 'decoder',
-  device_id       TEXT,
-  meta_json       TEXT,
-  created_at_utc  INTEGER NOT NULL,
-  FOREIGN KEY(race_id) REFERENCES races(id) ON DELETE CASCADE
-);
-CREATE INDEX IF NOT EXISTS idx_passes_race_tag_ts ON passes(race_id, tag, ts_utc);
-CREATE INDEX IF NOT EXISTS idx_passes_race_ts     ON passes(race_id, ts_utc);
-
--- Live overlay (flag, clock, running, etc.) pushed by sim/decoder
-CREATE TABLE IF NOT EXISTS race_state (
-  race_id          INTEGER PRIMARY KEY,
-  started_at_utc   INTEGER,
-  clock_ms         INTEGER,
-  flag             TEXT,
-  running          INTEGER DEFAULT 0,
-  race_type        TEXT,
-  sim              INTEGER,
-  sim_label        TEXT,
-  source           TEXT
-);
-""")
-    await db.commit()
 
 # ---------------------------------------------------------------------------
 # FastAPI app + CORS + Static
 # ---------------------------------------------------------------------------
+app = FastAPI(
+    title="ChronoCore Backend",
+    description="Engine-first race timing API for ChronoCore.",
+    version="0.1.0",
+)
 
-app = FastAPI(title="PRS Race Timing API", version="0.5.0 (entrant-based)")
+# Allow local development across ports / shells (operator, spectator, etc.)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # loosened for local testing
+    allow_origins=["*"],   # lock this down in production
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-app.mount("/ui", StaticFiles(directory=str(UI_DIR), html=True), name="ui")
+
+# Mount static UI (served at /ui)
+# server.py lives in backend/, so repo root is one level up
+ROOT = os.path.dirname(os.path.dirname(__file__))
+UI_DIR = os.path.join(ROOT, "ui")
+if os.path.isdir(UI_DIR):
+    app.mount("/ui", StaticFiles(directory=UI_DIR, html=True), name="ui")
+
 
 # ---------------------------------------------------------------------------
-# Models used in responses
+# Basic health / convenience routes
 # ---------------------------------------------------------------------------
+@app.get("/")
+def root_redirect():
+    """
+    Convenience: redirect bare root to the UI bundle if present.
+    """
+    return RedirectResponse(url="/ui/") if os.path.isdir(UI_DIR) else JSONResponse({"ok": True})
 
-class StandingsRow(BaseModel):
-    # The fields your UI wants FIRST:
-    position: int
-    car_number: Optional[str] = None
-    name: Optional[str] = None
-    laps: int
-    last: Optional[float] = None   # seconds
-    best: Optional[float] = None   # seconds
-
-    # Useful extras (ignore if not needed in UI):
-    entrant_id: int
-    org: Optional[str] = None
-    team: Optional[str] = None     # alias of org (compat)
-    tag: Optional[str] = None      # left None (entrant-based view)
-
-class RaceStateResponse(BaseModel):
-    race: Dict[str, Any]
-    total_participants: int
-    total_laps: int
-    last_update_utc: Optional[int]
-    standings: List[StandingsRow]
-    # overlay for header widgets:
-    flag: Optional[str] = None
-    clock_ms: Optional[int] = None
-    running: Optional[bool] = None
-    race_type: Optional[str] = None
-    sim: Optional[bool] = None
-    sim_label: Optional[str] = None
-    source: Optional[str] = None
-
-# ---------------------------------------------------------------------------
-# Health
-# ---------------------------------------------------------------------------
+@app.get("/health")
+def health():
+    """
+    Simple liveness probe.
+    """
+    return {"ok": True}
 
 @app.get("/healthz")
-async def healthz() -> Dict[str, Any]:
-    db_path = get_db_path()
+def healthz():
+    """
+    Extended health probe. DB path is informational only (engine-first).
+    """
+    # The engine's journal (if enabled) writes to backend/db/laps.sqlite
+    db_rel = os.path.join("backend", "db", "laps.sqlite")
+    return {"ok": True, "db": db_rel}
+
+
+# ---------------------------------------------------------------------------
+# Engine-first API
+# ---------------------------------------------------------------------------
+@app.get("/race/state")
+def race_state():
+    """
+    Return the authoritative RaceSnapshot (engine-owned, atomic).
+    The snapshot includes: flag, race_id, race_type, clock_ms, running,
+    standings[], last_update_utc, features, etc.
+    """
     try:
-        async with aiosqlite.connect(db_path) as db:
-            db.row_factory = sqlite3.Row
-            await db.execute("SELECT 1")
-        return {"ok": True, "db_path": db_path}
+        return JSONResponse(ENGINE.snapshot())
     except Exception as e:
-        return {"ok": False, "error": str(e), "db_path": db_path}
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.get("/race/current")
+def race_current():
+    """
+    Minimal helper for UIs that auto-follow the active race.
+    """
+    return {"race_id": ENGINE.race_id}
+
+
+@app.post("/engine/load")
+async def engine_load(payload: Dict[str, Any]):
+    """
+    Initialize a race session and roster.
+
+    Body:
+    {
+      "race_id": 1,
+      "race_type": "sprint",              // optional (default "sprint")
+      "entrants": [
+        {
+          "entrant_id": 12,
+          "enabled": true,                // default true
+          "status": "ACTIVE",             // default ACTIVE
+          "tag": "3000123",               // optional (can be null/empty)
+          "car_number": "101",
+          "name": "Team A"
+        }
+      ]
+    }
+    """
+    race_id = payload.get("race_id")
+    if race_id is None:
+        raise HTTPException(status_code=400, detail="race_id required")
+    entrants = payload.get("entrants", [])
+    race_type = payload.get("race_type", "sprint")
+    try:
+        snap = ENGINE.load(int(race_id), entrants, race_type=str(race_type))
+        return JSONResponse(snap)
+    except Exception as e:
+        # Bad entrant data, duplicate IDs, etc.
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/engine/flag")
+async def engine_flag(payload: Dict[str, Any]):
+    """
+    Change race flag. Allowed: pre|green|yellow|red|white|checkered
+
+    Behavior:
+    - First transition to green starts the race clock.
+    - Red still increments laps (your rule).
+    - Checkered freezes clock + standings (leader-based classification).
+    """
+    flag = payload.get("flag")
+    if not flag:
+        raise HTTPException(status_code=400, detail="flag required")
+    try:
+        return JSONResponse(ENGINE.set_flag(str(flag)))
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+@app.post("/engine/pass")
+async def engine_pass(payload: Dict[str, Any]):
+    """
+    Ingest a timing pass from track or pit receivers.
+
+    Body:
+    {
+      "tag": "3000123",
+      "ts_ns": 1696000000999999999,   // optional; server will timestamp if missing
+      "source": "track|pit_in|pit_out",
+      "device_id": "gate-a"           // optional; can be auto-routed via YAML pits.receivers
+    }
+
+    Returns a mini result:
+    {
+      "ok": true,
+      "entrant_id": 12,               // null if unknown and auto_provisional=false
+      "lap_added": true|false,
+      "lap_time_s": 23.481|null,
+      "reason": null|"min_lap"|"dup"|"pit_event"|...
+    }
+    """
+    tag = payload.get("tag")
+    if not tag:
+        raise HTTPException(status_code=400, detail="tag required")
+
+    ts_ns = payload.get("ts_ns")
+    source = payload.get("source", "track")
+    device_id = payload.get("device_id")
+
+    try:
+        res = ENGINE.ingest_pass(str(tag), ts_ns=ts_ns, source=str(source), device_id=device_id)
+        return JSONResponse(res)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+
+@app.post("/engine/entrant/enable")
+async def engine_entrant_enable(payload: Dict[str, Any]):
+    """
+    Enable/disable an entrant for THIS race (roster membership).
+    - If disabled, passes for their tag are ignored.
+    """
+    eid = payload.get("entrant_id")
+    if eid is None:
+        raise HTTPException(status_code=400, detail="entrant_id required")
+
+    enabled = bool(payload.get("enabled", True))
+    try:
+        snap = ENGINE.update_entrant_enable(int(eid), enabled)
+        return JSONResponse(snap)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="entrant not found")
+
+
+@app.post("/engine/entrant/status")
+async def engine_entrant_status(payload: Dict[str, Any]):
+    """
+    Set an entrant's operational status: ACTIVE|DISABLED|DNF|DQ
+    - Status is independent from 'enabled' (roster membership).
+    """
+    eid = payload.get("entrant_id")
+    status = payload.get("status")
+    if eid is None or not status:
+        raise HTTPException(status_code=400, detail="entrant_id and status required")
+    try:
+        snap = ENGINE.update_entrant_status(int(eid), str(status))
+        return JSONResponse(snap)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="entrant not found")
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+
+
+@app.post("/engine/entrant/assign_tag")
+async def engine_entrant_assign_tag(payload: Dict[str, Any]):
+    """
+    Bind/unbind a tag for an entrant (race-local mapping).
+    - Passing null/"" unassigns the tag.
+    - Tag index is rebuilt immediately.
+    """
+    eid = payload.get("entrant_id")
+    if eid is None:
+        raise HTTPException(status_code=400, detail="entrant_id required")
+
+    # Accept explicit null to unbind
+    tag = payload.get("tag", None)
+    try:
+        snap = ENGINE.assign_tag(int(eid), tag)
+        return JSONResponse(snap)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="entrant not found")
+
 
 # ---------------------------------------------------------------------------
-# Recent raw passes (debug)
+# Error handlers (optional sugar for uniform JSON errors)
 # ---------------------------------------------------------------------------
+@app.exception_handler(HTTPException)
+async def http_error_handler(request: Request, exc: HTTPException):
+    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
 
-@app.get("/passes")
-async def get_passes(
-    race_id: int = Query(..., ge=1),
-    limit: int = Query(50, ge=1, le=1000),
-) -> Dict[str, Any]:
-    db_path = get_db_path()
-    if not Path(db_path).exists():
-        raise HTTPException(status_code=404, detail="Database not found")
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = sqlite3.Row
-        await ensure_schema(db)
-        rows: List[Dict[str, Any]] = []
-        sql = """
-        SELECT p.id, p.race_id, p.tag, p.ts_utc, p.source, p.created_at_utc
-        FROM passes p
-        WHERE p.race_id = ?
-        ORDER BY p.id DESC
-        LIMIT ?
-        """
-        async with db.execute(sql, (race_id, limit)) as cur:
-            async for r in cur:
-                rows.append(dict(r))
-        return {"rows": rows}
+@app.exception_handler(Exception)
+async def unhandled_error_handler(request: Request, exc: Exception):
+    # Avoid leaking internals; surface message only
+    return JSONResponse(status_code=500, content={"error": str(exc)})
+
 
 # ---------------------------------------------------------------------------
-# /race/state — entrant-based leaderboard + live overlay
+# Dev tip
 # ---------------------------------------------------------------------------
-
-@app.get("/race/state", response_model=RaceStateResponse)
-async def race_state(
-    race_id: int = Query(..., ge=1),
-    min_lap_seconds: float = Query(3.0, ge=0.0, description="Ignore laps faster than this")
-) -> RaceStateResponse:
-    db_path = get_db_path()
-    if not Path(db_path).exists():
-        raise HTTPException(status_code=404, detail="Database not found")
-
-    async with aiosqlite.connect(db_path) as db:
-        db.row_factory = sqlite3.Row
-        await ensure_schema(db)
-
-        # 1) race header
-        cur = await db.execute("SELECT * FROM races WHERE id=?", (race_id,))
-        race_row = await cur.fetchone()
-        await cur.close()
-        if not race_row:
-            raise HTTPException(status_code=404, detail="race_id not found")
-        race = dict(race_row)
-
-        # 2) entrant meta for display (id -> name, car_num, org)
-        emeta: Dict[int, Dict[str, Optional[str]]] = {}
-        async with db.execute(
-            "SELECT e.id, e.name, e.car_num, e.org "
-            "FROM entrants e JOIN race_entries re ON re.entrant_id=e.id "
-            "WHERE re.race_id=?", (race_id,)
-        ) as cur2:
-            async for r in cur2:
-                emeta[int(r["id"])] = {
-                    "name": r["name"], "car": r["car_num"], "org": r["org"]
-                }
-
-        # 3) compute laps/last/best for each ENTRANT by attributing passes via tag_assignments
-        #    NOTE: SQLite has window functions, so deltas are easy once attributed.
-        sql = """
-        WITH attributed AS (
-          SELECT
-            ta.entrant_id,
-            p.ts_utc
-          FROM passes p
-          JOIN tag_assignments ta
-            ON ta.race_id = p.race_id
-           AND ta.tag     = p.tag
-           AND p.ts_utc  >= ta.effective_from_utc
-           AND (ta.effective_to_utc IS NULL OR p.ts_utc < ta.effective_to_utc)
-          WHERE p.race_id = ?
-        ),
-        ordered AS (
-          SELECT entrant_id, ts_utc,
-                 (ts_utc - LAG(ts_utc) OVER (PARTITION BY entrant_id ORDER BY ts_utc)) / 1000.0 AS lap_s
-          FROM attributed
-        ),
-        good AS (
-          SELECT entrant_id, ts_utc, lap_s
-          FROM ordered
-          WHERE lap_s IS NOT NULL AND lap_s >= ?
-        ),
-        last_lap AS (
-          SELECT entrant_id, lap_s AS last
-          FROM (
-            SELECT entrant_id, lap_s,
-                   ROW_NUMBER() OVER (PARTITION BY entrant_id ORDER BY ts_utc DESC) AS rn
-            FROM good
-          ) q WHERE rn=1
-        ),
-        best_lap AS (
-          SELECT entrant_id, MIN(lap_s) AS best
-          FROM good GROUP BY entrant_id
-        ),
-        lap_counts AS (
-          SELECT entrant_id, COUNT(*) AS laps
-          FROM good GROUP BY entrant_id
-        ),
-        all_ids AS (
-          SELECT entrant_id FROM lap_counts
-          UNION SELECT entrant_id FROM last_lap
-          UNION SELECT entrant_id FROM best_lap
-        )
-        SELECT a.entrant_id,
-               COALESCE(lc.laps, 0) AS laps,
-               l.last,
-               b.best
-        FROM all_ids a
-        LEFT JOIN lap_counts lc ON lc.entrant_id = a.entrant_id
-        LEFT JOIN last_lap   l  ON l.entrant_id  = a.entrant_id
-        LEFT JOIN best_lap   b  ON b.entrant_id  = a.entrant_id
-        """
-        standings_raw: List[Dict[str, Any]] = []
-        async with db.execute(sql, (race_id, float(min_lap_seconds))) as cur3:
-            async for er in cur3:
-                entrant_id = int(er["entrant_id"])
-                laps = int(er["laps"] or 0)
-                last = None if er["last"] is None else float(er["last"])
-                best = None if er["best"] is None else float(er["best"])
-                meta = emeta.get(entrant_id, {})
-                standings_raw.append({
-                    "entrant_id": entrant_id,
-                    "name": meta.get("name"),
-                    "car_number": meta.get("car"),
-                    "org": meta.get("org"),
-                    "team": meta.get("org"),
-                    "laps": laps,
-                    "last": last,
-                    "best": best,
-                })
-
-        # 4) sort & decorate with positions (Position | Car Num | Racer Name | Laps | Last | Best)
-        standings_raw.sort(key=lambda r: (-r["laps"], (r["best"] if r["best"] is not None else inf), r.get("name") or ""))
-
-        standings: List[StandingsRow] = []
-        for i, r in enumerate(standings_raw, start=1):
-            standings.append(StandingsRow(
-                position=i,
-                car_number=r["car_number"],
-                name=r["name"],
-                laps=r["laps"],
-                last=r["last"],
-                best=r["best"],
-                entrant_id=r["entrant_id"],
-                org=r["org"],
-                team=r["team"],
-                tag=None,
-            ))
-
-        # 5) totals + last update
-        cur4 = await db.execute("SELECT COUNT(DISTINCT entrant_id) FROM race_entries WHERE race_id=?", (race_id,))
-        total_participants = int((await cur4.fetchone())[0] or 0)
-        await cur4.close()
-
-        cur5 = await db.execute("SELECT SUM(laps) FROM (SELECT entrant_id, COUNT(*) AS laps FROM ("
-                                "SELECT ta.entrant_id, p.ts_utc FROM passes p "
-                                "JOIN tag_assignments ta ON ta.race_id=p.race_id AND ta.tag=p.tag "
-                                "AND p.ts_utc>=ta.effective_from_utc AND (ta.effective_to_utc IS NULL OR p.ts_utc<ta.effective_to_utc) "
-                                "WHERE p.race_id=? GROUP BY ta.entrant_id, p.ts_utc) GROUP BY entrant_id)", (race_id,))
-        total_laps = int((await cur5.fetchone())[0] or 0)
-        await cur5.close()
-
-        cur6 = await db.execute("SELECT MAX(ts_utc) FROM passes WHERE race_id=?", (race_id,))
-        last_update = (await cur6.fetchone())[0]
-        await cur6.close()
-
-        # 6) live overlay
-        cur7 = await db.execute(
-            "SELECT started_at_utc, clock_ms, flag, running, race_type, sim, sim_label, source "
-            "FROM race_state WHERE race_id=?", (race_id,))
-        rs = await cur7.fetchone()
-        await cur7.close()
-        overlay = dict(zip(
-            ["started_at_utc","clock_ms","flag","running","race_type","sim","sim_label","source"],
-            rs if rs else [None]*8
-        ))
-
-        return RaceStateResponse(
-            race=race,
-            total_participants=total_participants,
-            total_laps=total_laps,
-            last_update_utc=int(last_update) if last_update is not None else None,
-            standings=standings,
-            flag=overlay["flag"],
-            clock_ms=overlay["clock_ms"],
-            running=bool(overlay["running"]) if overlay["running"] is not None else None,
-            race_type=overlay["race_type"],
-            sim=bool(overlay["sim"]) if overlay["sim"] is not None else None,
-            sim_label=overlay["sim_label"],
-            source=overlay["source"],
-        )
+# Run locally:
+#   uvicorn backend.server:app --reload --port 8000
+#
+# Visit:
+#   http://localhost:8000/ui/            (UI bundle, if present)
+#   http://localhost:8000/docs           (Swagger UI)
+#   http://localhost:8000/race/state     (live snapshot)
+#
+# Example sequence (PowerShell):
+#   Invoke-RestMethod -Method Post -Uri http://localhost:8000/engine/load `
+#     -ContentType "application/json" `
+#     -Body (@{ race_id=1; race_type="sprint"; entrants=@(
+#         @{ entrant_id=1; enabled=$true; status="ACTIVE"; tag="3000123"; car_number="101"; name="Team A" },
+#         @{ entrant_id=2; enabled=$true; status="ACTIVE"; tag="30004583"; car_number="7";   name="Team B" }
+#     ) } | ConvertTo-Json -Depth 6)
+#
+#   Invoke-RestMethod -Method Post -Uri http://localhost:8000/engine/flag `
+#     -ContentType "application/json" -Body '{ "flag":"green" }'
+#
+#   Invoke-RestMethod -Method Post -Uri http://localhost:8000/engine/pass `
+#     -ContentType "application/json" -Body '{ "tag":"3000123", "source":"track" }'

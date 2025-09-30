@@ -27,6 +27,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import List, Optional, Tuple
 
+from backend.race_engine import ENGINE
+
 DEFAULT_RACE_ID = 99
 
 # -------------------- helpers --------------------
@@ -226,6 +228,9 @@ CREATE TABLE IF NOT EXISTS race_state (
             (race_id, started_at_utc, clock_ms, flag, int(running), race_type, int(sim), sim_label, "sim")
         )
         self.conn.commit()
+    
+    def emit_pass(tag: str, ts_ns: int | None = None):
+        ENGINE.ingest_pass(tag, ts_ns)
 
 # -------------------- input prompt --------------------
 

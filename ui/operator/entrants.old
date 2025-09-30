@@ -1,0 +1,297 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ChronoCore — Entrants</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- ABSOLUTE paths; order matters: base.css first -->
+  <link rel="stylesheet" href="/ui/css/base.css?v=3">
+  <link rel="stylesheet" href="/ui/css/entrants.css?v=3">
+
+  <!-- base.js must come before any inline script that uses window.PRS -->
+  <script src="/ui/js/base.js?v=3"></script>
+  <script>
+  console.log("stylesheets:", Array.from(document.styleSheets).map(s => s.href));
+</script>
+</head>
+
+  <main>
+    <div class="ent-grid">
+      <!-- Left: form -->
+      <section class="ent-form card">
+        <h2 class="card-title">Add / Edit Entrant</h2>
+
+        <div class="field">
+          <label class="label" for="uid">UID (I-Lap Tag)</label>
+          <div class="row2">
+            <input id="uid" class="input" inputmode="numeric" autocomplete="off" placeholder="e.g., 3000123">
+            <button id="scanBtn" class="button">Scan</button>
+          </div>
+          <div id="scanWrap" class="scanbar" hidden><div class="scanbar-fill"></div></div>
+          <div id="scanHelp" class="muted">Scanner listens up to 10s or until the first new tag appears.</div>
+        </div>
+
+        <div class="field">
+          <label class="label" for="team">Team / Racer Name</label>
+          <input id="team" class="input" autocomplete="off" placeholder="Team name">
+        </div>
+
+        <div class="field">
+          <label class="label" for="car">Car #</label>
+          <input id="car" class="input" inputmode="numeric" autocomplete="off" placeholder="e.g., 101">
+        </div>
+
+        <div class="buttons">
+          <button id="saveBtn" class="button primary">Save / Update</button>
+          <button id="deleteBtn" class="button danger">Delete</button>
+          <button id="clearBtn" class="button">Clear</button>
+        </div>
+        <div class="muted" id="formMsg" aria-live="polite"></div>
+      </section>
+
+      <!-- Right: table -->
+      <section class="card">
+        <h2 class="card-title">Current Entries</h2>
+        <div class="table">
+          <div class="thead ent-thead">
+            <div>UID</div><div>Car #</div><div>Team</div><div class="right">Actions</div>
+          </div>
+          <div class="rows" id="rows"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer>
+    <div class="footer-left">
+      <div class="status-dot" id="netDot" aria-hidden="true"></div>
+      <div id="netMsg">Connecting…</div>
+    </div>
+    <div class="footer-right">
+      API: <a class="link" target="_blank" href="/teams">/teams</a>
+      &nbsp;·&nbsp;
+      <a class="link" target="_blank" href="/laps?limit=10">/laps</a>
+    </div>
+  </footer>
+
+  <script src="/ui/base.js?v=1"></script>
+  <script>
+    // Helpers from base.js
+    const { $, fetchJSON, makePoller, setNetStatus, startWallClock } = window.PRS;
+
+    // wall clock
+    startWallClock("#wallClock");
+
+    // elements
+    const uidEl   = $("#uid");
+    const teamEl  = $("#team");
+    const carEl   = $("#car");
+    const msgEl   = $("#formMsg");
+    const rowsEl  = $("#rows");
+    const netDot  = $("#netDot");
+    const netMsg  = $("#netMsg");
+    const scanBtn = $("#scanBtn");
+    const scanWrap= $("#scanWrap");
+    const scanBar = $(".scanbar-fill");
+
+    let entrants = [];      // [{tag_id, team, car_num}]
+    let scanning = false;
+    let scanTimer = null;
+
+    function toast(text) {
+      // very small toast via base.css .toast if you have it; otherwise status message
+      console.log(text);
+      msgEl.textContent = text;
+    }
+
+    function setFormStatus(ok, text) {
+      msgEl.textContent = text || "";
+      msgEl.style.color = ok ? "var(--ok)" : "var(--error)";
+    }
+
+    function fillForm({tag_id="", team="", car_num=""} = {}) {
+      uidEl.value  = tag_id || "";
+      teamEl.value = team || "";
+      carEl.value  = (car_num ?? "") === null ? "" : (car_num ?? "");
+    }
+
+    function renderTable() {
+      rowsEl.innerHTML = "";
+      entrants
+        .slice()
+        .sort((a,b) => (a.car_num ?? 0) - (b.car_num ?? 0) || (a.tag_id - b.tag_id))
+        .forEach(e => {
+          const row = document.createElement("div");
+          row.className = "row ent-row";
+          row.innerHTML = `
+            <div>${e.tag_id}</div>
+            <div>${e.car_num ?? ""}</div>
+            <div class="name">${e.team ?? ""}</div>
+            <div class="right">
+              <span class="link" data-act="edit" data-tag="${e.tag_id}">Edit</span>
+              &nbsp;·&nbsp;
+              <span class="link" data-act="delete" data-tag="${e.tag_id}">Delete</span>
+            </div>
+          `;
+          rowsEl.appendChild(row);
+        });
+    }
+
+    async function loadEntrants() {
+      try {
+        const data = await fetchJSON("/teams"); // expected { map: { tag_id: {team, car_num} | "Team" } }
+        const map = data?.map || {};
+        const list = [];
+        for (const [tag, payload] of Object.entries(map)) {
+          const t = parseInt(tag, 10);
+          const obj = (typeof payload === "object" && payload) ? payload : { team: String(payload), car_num: null };
+          list.push({ tag_id: t, team: obj.team ?? "", car_num: obj.car_num ?? null });
+        }
+        entrants = list;
+        renderTable();
+        setNetStatus(true, `OK — ${entrants.length} entrants`);
+      } catch (e) {
+        setNetStatus(false, "Disconnected — retrying…");
+      }
+    }
+
+    // periodic refresh
+    const refreshPoller = makePoller(loadEntrants, 2000, () => setNetStatus(false, "Disconnected — retrying…"));
+    refreshPoller.start();
+
+    // Table actions
+    rowsEl.addEventListener("click", async (ev) => {
+      const t = ev.target.closest("[data-act]");
+      if (!t) return;
+      const tag = parseInt(t.dataset.tag, 10);
+      const act = t.dataset.act;
+      const entry = entrants.find(e => e.tag_id === tag);
+      if (!entry) return;
+
+      if (act === "edit") {
+        fillForm(entry);
+        setFormStatus(true, "Loaded entry.");
+      } else if (act === "delete") {
+        if (!confirm(`Delete UID ${tag}?`)) return;
+        try {
+          const r = await fetch(`/admin/transponders/${tag}`, { method: "DELETE" });
+          if (!r.ok) throw new Error(await r.text());
+          fillForm({});
+          await loadEntrants();
+          toast("Deleted.");
+        } catch {
+          setFormStatus(false, "Delete failed (missing backend route?).");
+        }
+      }
+    });
+
+    // Save / Update
+    $("#saveBtn").addEventListener("click", async () => {
+      const tag_id = parseInt(uidEl.value, 10);
+      const team   = teamEl.value.trim();
+      const car_num= carEl.value.trim() === "" ? null : parseInt(carEl.value, 10);
+
+      if (!tag_id || !team) {
+        setFormStatus(false, "UID and Team are required.");
+        return;
+      }
+      try {
+        const r = await fetch("/admin/transponders", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ tag_id, team, car_num })
+        });
+        if (!r.ok) throw new Error(await r.text());
+        setFormStatus(true, "Saved.");
+        await loadEntrants();
+      } catch {
+        setFormStatus(false, "Save failed (missing backend route?).");
+      }
+    });
+
+    $("#deleteBtn").addEventListener("click", async () => {
+      const tag_id = parseInt(uidEl.value, 10);
+      if (!tag_id) { setFormStatus(false, "Enter UID to delete."); return; }
+      if (!confirm(`Delete UID ${tag_id}?`)) return;
+      try {
+        const r = await fetch(`/admin/transponders/${tag_id}`, { method: "DELETE" });
+        if (!r.ok) throw new Error(await r.text());
+        fillForm({});
+        await loadEntrants();
+        setFormStatus(true, "Deleted.");
+      } catch {
+        setFormStatus(false, "Delete failed (missing backend route?).");
+      }
+    });
+
+    $("#clearBtn").addEventListener("click", () => { fillForm({}); setFormStatus(true, "Cleared."); });
+
+    // --- Scanner ---
+    function stopScan() {
+      scanning = false;
+      scanBtn.textContent = "Scan";
+      scanWrap.hidden = true;
+      if (scanTimer) { clearInterval(scanTimer); scanTimer = null; }
+    }
+
+    async function scanTick(startMs, baseline) {
+      const elapsed = Date.now() - startMs;
+      const pct = Math.min(100, (elapsed / 10000) * 100);
+      scanBar.style.width = pct + "%";
+
+      if (elapsed >= 10000) {
+        stopScan();
+        setFormStatus(false, "No new tag detected.");
+        return;
+      }
+
+      try {
+        const data = await fetchJSON("/laps?limit=10");
+        const items = data?.items || data?.rows || data || [];
+        for (const it of items) {
+          const tag = parseInt(it.tag_id ?? it.tag ?? 0, 10);
+          if (!tag) continue;
+          if (tag === parseInt(uidEl.value || "0", 10)) continue;
+          if (!baseline.has(tag)) {
+            const existing = entrants.find(e => e.tag_id === tag);
+            fillForm(existing ? existing : { tag_id: tag });
+            stopScan();
+            setFormStatus(true, `Captured UID ${tag}.`);
+            return;
+          }
+        }
+        setNetStatus(true, "Listening for tag…");
+      } catch {
+        setNetStatus(false, "Scanner: API error.");
+      }
+    }
+
+    scanBtn.addEventListener("click", () => {
+      if (scanning) { stopScan(); return; }
+      scanning = true;
+      scanBtn.textContent = "Stop";
+      scanWrap.hidden = false;
+      scanBar.style.width = "0%";
+      setFormStatus(true, "Scanning for I-Lap passes…");
+
+      (async () => {
+        const baseline = new Set();
+        try {
+          const data = await fetchJSON("/laps?limit=10");
+          const items = data?.items || data?.rows || data || [];
+          for (const it of items) {
+            const tag = parseInt(it.tag_id ?? it.tag ?? 0, 10);
+            if (tag) baseline.add(tag);
+          }
+        } catch {}
+        const start = Date.now();
+        scanTimer = setInterval(() => scanTick(start, baseline), 300);
+      })();
+    });
+
+    // first load
+    loadEntrants();
+  </script>
+</body>
+</html>

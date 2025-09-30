@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>PRS — Entrants</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- Relative paths from /ui/operator/ -->
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/operator.css">  
+  <link rel="stylesheet" href="../css/entrants.css">
+
+  <!-- Core helpers first, then page logic (both defer) -->
+  <script src="../js/base.js" defer></script>
+  <script src="../js/entrants.js" defer></script>
+
+  <script>
+    /* Minimal nav helpers consistent with index */
+    async function goto(screenId) {
+      if (window.pywebview?.api?.goto) {
+        try { await window.pywebview.api.goto(screenId); } catch (e) { console.error(e); }
+      } else {
+        location.href = screenId + ".html";
+      }
+    }
+    async function openSpectator() {
+      if (window.pywebview?.api?.open_spectator) {
+        try { await window.pywebview.api.open_spectator(); return; } catch(e){}
+      }
+      window.open("/ui/spectator/", "_blank");
+    }
+  </script>
+</head>
+<body>
+  <!-- Header matches index structure (no wall clock) -->
+  <header class="app-header">
+    <div class="brand" onclick="goto('index')">
+      <div class="brand-mark"></div>
+      <div class="brand-text">
+        <div class="brand-line1">ChronoCore</div>
+        <div class="brand-line2">Race Software</div>
+      </div>
+    </div>
+    <div class="header-right">
+      <nav class="header-nav">
+        <button class="btn btn-ghost" onclick="goto('index')">Home</button>
+        <button class="btn btn-ghost active">Entrants</button>
+        <button class="btn btn-ghost" onclick="goto('race_control')">Race Control</button>
+        <button class="btn btn-ghost" onclick="openSpectator()">Spectator</button>
+      </nav>
+    </div>
+  </header>
+
+  <main class="app-main entrants-main">
+    <h1 class="page-title">Entrants</h1>
+
+    <div class="ent-grid">
+      <!-- Left: form -->
+      <section class="ent-form card">
+        <h2 class="card-title">Add / Edit Entrant</h2>
+
+        <div class="field">
+          <label class="label" for="uid">UID (I-Lap Tag)</label>
+          <div class="row2">
+            <input id="uid" class="input" inputmode="numeric" autocomplete="off" placeholder="e.g., 3000123">
+            <button id="scanBtn" class="btn btn-primary btn-sm">Scan</button>
+          </div>
+          <div id="scanWrap" class="scanbar" hidden><div class="scanbar-fill"></div></div>
+          <div class="muted small">Scanner listens up to 10s or until the first new tag appears.</div>
+        </div>
+
+        <div class="field">
+          <label class="label" for="team">Team Name</label>
+          <input id="team" class="input" autocomplete="off" placeholder="Team name">
+        </div>
+
+        <div class="field">
+          <label class="label" for="org">Org Name</label>
+          <input id="org" class="input" autocomplete="off" placeholder="Organization / Club">
+        </div>
+
+        <div class="row2">
+          <div class="field">
+            <label class="label" for="car">Car #</label>
+            <input id="car" class="input" inputmode="numeric" autocomplete="off" placeholder="e.g., 101">
+          </div>
+          <div class="field">
+            <label class="label" for="color">Color</label>
+            <div class="color-wrap">
+              <input id="color" type="color" class="color-input" value="#22a6f2">
+              <input id="colorText" class="input" placeholder="#22A6F2" value="#22A6F2">
+            </div>
+          </div>
+        </div>
+
+        <div class="field inline">
+          <input id="enabled" type="checkbox" class="checkbox" checked>
+          <label for="enabled">Enabled</label>
+        </div>
+
+        <div class="buttons">
+          <button id="saveBtn" class="btn btn-primary">Save / Update</button>
+          <button id="deleteBtn" class="btn btn-danger">Delete</button>
+          <button id="clearBtn" class="btn">Clear</button>
+        </div>
+        <div class="muted" id="formMsg" aria-live="polite"></div>
+      </section>
+
+      <!-- Right: table -->
+      <section class="card ent-table-card">
+        <div class="table-header">
+          <h2 class="card-title">Current Entries</h2>
+          <div class="sort-controls">
+            <span class="muted small">Sort:</span>
+            <button class="btn btn-chip" data-sort="team">Team</button>
+            <button class="btn btn-chip" data-sort="org">Org</button>
+            <button class="btn btn-chip" data-sort="car">Car #</button>
+            <button class="btn btn-chip" data-sort="uid">UID</button>
+            <button class="btn btn-chip" data-sort="enabled">Enabled</button>
+          </div>
+        </div>
+
+        <div class="table">
+          <div class="thead ent-thead">
+            <div class="th clickable" data-sort="uid">UID</div>
+            <div class="th clickable" data-sort="org">Org</div>
+            <div class="th clickable" data-sort="team">Team</div>
+            <div class="th clickable" data-sort="car">Car #</div>
+            <div class="th">Color</div>
+            <div class="th clickable" data-sort="enabled">Enabled</div>
+            <div class="th right">Actions</div>
+          </div>
+          <div class="rows scroll" id="rows"></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-left">
+      <div class="status-dot" id="netDot" aria-hidden="true"></div>
+      <div id="netMsg">Connecting…</div>
+    </div>
+    <div class="footer-right">
+      API: <a class="link" target="_blank" href="/teams">/teams</a>
+      &nbsp;·&nbsp;
+      <a class="link" target="_blank" href="/laps?limit=10">/laps</a>
+    </div>
+  </footer>
+</body>
+</html>

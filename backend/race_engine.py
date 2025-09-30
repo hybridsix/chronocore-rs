@@ -1,0 +1,445 @@
+from __future__ import annotations
+import time, json, threading, sqlite3, os
+from typing import Dict, List, Optional, Tuple
+
+UTC_MS = lambda: int(time.time() * 1000)
+
+ALLOWED_FLAGS = {"pre","green","yellow","red","white","checkered"}
+ALLOWED_STATUS = {"ACTIVE","DISABLED","DNF","DQ"}
+
+# ----------------------------- Data structs -----------------------------
+class Entrant:
+    __slots__ = ("entrant_id","enabled","status","tag","car_number","name",
+                 "laps","last_s","best_s","pace_buf","pit_open_at_ms",
+                 "pit_count","last_pit_s")
+    def __init__(self, entrant_id:int, enabled:bool=True, status:str="ACTIVE",
+                 tag:Optional[str]=None, car_number:Optional[str]=None, name:str=""):
+        self.entrant_id = int(entrant_id)
+        self.enabled    = bool(enabled)
+        self.status     = status if status in ALLOWED_STATUS else "ACTIVE"
+        self.tag        = (tag or None)
+        self.car_number = car_number or None
+        self.name       = name or f"Entrant {entrant_id}"
+
+        self.laps: int  = 0
+        self.last_s: Optional[float] = None
+        self.best_s: Optional[float] = None
+        self.pace_buf: List[float]   = []  # last up to 5 laps
+
+        self.pit_open_at_ms: Optional[int] = None
+        self.pit_count: int = 0
+        self.last_pit_s: Optional[float] = None
+
+    def as_snapshot(self, leader_best_s: Optional[float], leader_laps:int) -> Dict:
+        # gap_s only meaningful on same-lap cohort; else 0 with lap_deficit>0
+        lap_deficit = max(0, leader_laps - self.laps)
+        gap_s = 0.0
+        if lap_deficit == 0 and leader_best_s is not None and self.best_s is not None:
+            gap_s = max(0.0, round(self.best_s - leader_best_s, 3))
+
+        pace_5 = None
+        if self.pace_buf:
+            pace_5 = round(sum(self.pace_buf) / len(self.pace_buf), 3)
+
+        return {
+            "entrant_id": self.entrant_id,
+            "enabled": self.enabled,
+            "status": self.status,
+            "tag": self.tag,
+            "car_number": self.car_number,
+            "name": self.name,
+            "laps": self.laps,
+            "last": None if self.last_s is None else round(self.last_s, 3),
+            "best": None if self.best_s is None else round(self.best_s, 3),
+            "pace_5": pace_5,
+            "gap_s": gap_s,
+            "lap_deficit": lap_deficit,
+            "pit_count": self.pit_count,
+            "last_pit_s": None if self.last_pit_s is None else round(self.last_pit_s, 3),
+        }
+
+# ----------------------------- Journal (optional) -----------------------------
+class Journal:
+    def __init__(self, db_path:str, enabled:bool, batch_ms:int, batch_max:int, fsync:bool):
+        self.enabled = enabled
+        self.db_path = db_path
+        self.batch_ms = batch_ms
+        self.batch_max = batch_max
+        self.fsync = fsync
+        self._buf = []
+        self._lock = threading.Lock()
+        self._last_flush = time.time()
+        self._ensure_schema()
+
+    def _ensure_schema(self):
+        if not self.enabled: return
+        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        con = sqlite3.connect(self.db_path)
+        cur = con.cursor()
+        cur.execute("""CREATE TABLE IF NOT EXISTS race_events(
+            id INTEGER PRIMARY KEY,
+            race_id INTEGER NOT NULL,
+            ts_utc INTEGER NOT NULL,
+            clock_ms INTEGER NOT NULL,
+            type TEXT NOT NULL,
+            payload_json TEXT NOT NULL
+        )""")
+        cur.execute("""CREATE TABLE IF NOT EXISTS race_checkpoints(
+            id INTEGER PRIMARY KEY,
+            race_id INTEGER NOT NULL,
+            ts_utc INTEGER NOT NULL,
+            clock_ms INTEGER NOT NULL,
+            snapshot_json TEXT NOT NULL
+        )""")
+        con.commit()
+        con.close()
+
+    def put(self, row:Tuple[int,int,int,str,dict]):
+        # row = (race_id, ts_utc, clock_ms, type, payload_dict)
+        if not self.enabled: return
+        with self._lock:
+            self._buf.append(row)
+            now = time.time()
+            if len(self._buf) >= self.batch_max or (now - self._last_flush) * 1000 >= self.batch_ms:
+                self._flush_locked()
+                self._last_flush = now
+
+    def force_flush(self):
+        if not self.enabled: return
+        with self._lock:
+            self._flush_locked()
+
+    def _flush_locked(self):
+        if not self._buf: return
+        con = sqlite3.connect(self.db_path)
+        cur = con.cursor()
+        cur.executemany("INSERT INTO race_events(race_id,ts_utc,clock_ms,type,payload_json) VALUES(?,?,?,?,?)",
+                        [(r, t, c, typ, json.dumps(p)) for (r,t,c,typ,p) in self._buf])
+        con.commit()
+        if self.fsync:
+            con.execute("PRAGMA wal_checkpoint(FULL);")
+        con.close()
+        self._buf.clear()
+
+    def checkpoint(self, race_id:int, clock_ms:int, snapshot:dict):
+        if not self.enabled: return
+        con = sqlite3.connect(self.db_path)
+        cur = con.cursor()
+        cur.execute("INSERT INTO race_checkpoints(race_id, ts_utc, clock_ms, snapshot_json) VALUES(?,?,?,?)",
+                    (race_id, UTC_MS(), clock_ms, json.dumps(snapshot)))
+        con.commit()
+        if self.fsync:
+            con.execute("PRAGMA wal_checkpoint(FULL);")
+        con.close()
+
+# ----------------------------- Race Engine -----------------------------
+class RaceEngine:
+    def __init__(self, config:dict):
+        self.cfg = config or {}
+        tcfg = self.cfg.get("timing", {})
+        pcfg = self.cfg.get("persistence", {})
+        self.min_lap_s    = float(tcfg.get("min_lap_s", 5.0))
+        self.min_lap_dup  = float(tcfg.get("min_lap_s_dup", 1.0))
+        fcfg = self.cfg.get("features", {})
+        self.feature_pits = bool(fcfg.get("pit_timing", True))
+        self.feature_auto_prov = bool(fcfg.get("auto_provisional", True))
+
+        # persistence
+        db_dir = os.path.join(os.path.dirname(__file__), "db")
+        db_path = os.path.join(db_dir, "laps.sqlite")
+        self.journal = Journal(
+            db_path=db_path,
+            enabled=bool(pcfg.get("enabled", False)),
+            batch_ms=int(pcfg.get("batch_ms", 200)),
+            batch_max=int(pcfg.get("batch_max", 50)),
+            fsync=bool(pcfg.get("fsync", True)),
+        )
+        self.checkpoint_s = int(pcfg.get("checkpoint_s", 15))
+
+        # state
+        self._lock = threading.RLock()
+        self.reset()
+
+        # background checkpoint timer
+        self._last_checkpoint = time.time()
+
+    # ---------- lifecycle ----------
+    def reset(self):
+        with self._lock:
+            self.flag: str = "pre"
+            self.race_id: Optional[int] = None
+            self.race_type: Optional[str] = None
+            self.clock_ms: int = 0
+            self.clock_start_monotonic: Optional[float] = None  # when green started
+            self.running: bool = False
+
+            self.entrants: Dict[int, Entrant] = {}
+            self.tag_to_eid: Dict[str, int] = {}
+            self._next_provisional_id = 1
+            self._provisional_cap = 50
+
+            self._last_update_utc = 0
+            self._events_ring: List[dict] = []  # in-memory trace for debug
+
+    def load(self, race_id:int, entrants:List[dict], race_type:str="sprint") -> dict:
+        with self._lock:
+            self.reset()
+            self.race_id = int(race_id)
+            self.race_type = str(race_type)
+            # install entrants
+            for e in entrants or []:
+                ent = Entrant(
+                    entrant_id=int(e.get("entrant_id")),
+                    enabled=bool(e.get("enabled", True)),
+                    status=str(e.get("status","ACTIVE")).upper() if str(e.get("status","ACTIVE")).upper() in ALLOWED_STATUS else "ACTIVE",
+                    tag=(str(e.get("tag")).strip() if e.get("tag") else None),
+                    car_number=(str(e.get("car_number")).strip() if e.get("car_number") else None),
+                    name=str(e.get("name") or f"Entrant {e.get('entrant_id')}")
+                )
+                self.entrants[ent.entrant_id] = ent
+                if ent.enabled and ent.tag:
+                    self.tag_to_eid[ent.tag] = ent.entrant_id
+            self._emit_flag_change("pre")
+            return self.snapshot()
+
+    # ---------- flag & clock ----------
+    def set_flag(self, flag:str) -> dict:
+        f = str(flag).lower()
+        if f not in ALLOWED_FLAGS:
+            raise ValueError(f"Invalid flag '{flag}'")
+        with self._lock:
+            # handle clock transitions
+            prev = self.flag
+            self.flag = f
+            if f == "green":
+                if not self.running:
+                    self.running = True
+                    self.clock_start_monotonic = time.perf_counter()
+            elif f == "checkered":
+                # freeze at current time
+                self._update_clock()
+                self.running = False
+                self.clock_start_monotonic = None
+            elif f in {"pre","yellow","red","white"}:
+                # no change to running (per our rules)
+                pass
+
+            self._emit_flag_change(self.flag)
+            return self.snapshot()
+
+    def _emit_flag_change(self, flag:str):
+        ev = {"ts_utc": UTC_MS(), "race_clock_ms": self.clock_ms, "event":"flag_change", "flag": flag}
+        self._events_ring.append(ev)
+        if len(self._events_ring) > 500:
+            self._events_ring = self._events_ring[-500:]
+        self.journal.put((self.race_id or 0, ev["ts_utc"], self.clock_ms, "flag_change", {"flag":flag}))
+
+    def _update_clock(self):
+        if self.running and self.clock_start_monotonic is not None:
+            now = time.perf_counter()
+            delta_ms = int((now - self.clock_start_monotonic) * 1000)
+            self.clock_ms += max(0, delta_ms)
+            self.clock_start_monotonic = now
+
+    # ---------- passes & pits ----------
+    def ingest_pass(self, tag:str, ts_ns:Optional[int]=None, source:str="track", device_id:Optional[str]=None) -> dict:
+        tag = str(tag).strip()
+        src = (source or "track").lower()
+        if src not in {"track","pit_in","pit_out"}:
+            src = "track"
+
+        with self._lock:
+            self._update_clock()
+
+            # route device → source if configured
+            if src == "track":
+                # auto-route based on device map only for pit_timing
+                if self.feature_pits and device_id:
+                    devmap = self.cfg.get("pits",{}).get("receivers",{})
+                    if device_id in set(devmap.get("pit_in",[])):  src = "pit_in"
+                    if device_id in set(devmap.get("pit_out",[])): src = "pit_out"
+
+            eid = self.tag_to_eid.get(tag)
+            if eid is None:
+                if self.feature_auto_prov:
+                    if len([e for e in self.entrants.values() if e.name.startswith("Unknown ")]) >= self._provisional_cap:
+                        return {"ok": False, "entrant_id": None, "lap_added": False, "lap_time_s": None,
+                                "reason": "provisional_cap"}
+                    # make "Unknown ####"
+                    suffix = tag[-4:].rjust(4,"0")
+                    new_id = self._alloc_provisional_id()
+                    ent = Entrant(new_id, enabled=True, status="ACTIVE", tag=tag, car_number=None, name=f"Unknown {suffix}")
+                    self.entrants[new_id] = ent
+                    self.tag_to_eid[tag] = new_id
+                    eid = new_id
+                else:
+                    # ignore unknown
+                    return {"ok": True, "entrant_id": None, "lap_added": False, "lap_time_s": None, "reason": "unknown_tag"}
+
+            ent = self.entrants.get(eid)
+            if not ent or not ent.enabled:
+                return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "disabled"}
+
+            # journal this raw event
+            self.journal.put((self.race_id or 0, UTC_MS(), self.clock_ms, "pass", {
+                "tag": tag, "source": src, "device_id": device_id
+            }))
+
+            # pit logic
+            if self.feature_pits and src in {"pit_in","pit_out"}:
+                if src == "pit_in":
+                    # start (or restart) a pit window
+                    ent.pit_open_at_ms = self.clock_ms
+                else:
+                    if ent.pit_open_at_ms is not None:
+                        dur_ms = max(0, self.clock_ms - ent.pit_open_at_ms)
+                        ent.last_pit_s = dur_ms / 1000.0
+                        ent.pit_count += 1
+                        ent.pit_open_at_ms = None
+                return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "pit_event"}
+
+            # track (lap) logic — red still counts per your rule. checkered freezes (no increments)
+            if self.flag == "checkered":
+                return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "checkered_freeze"}
+
+            # derive lap time from entrant’s last hit; we measure by engine clock deltas
+            # store last lap timestamp per entrant (ms) in a shadow dict
+            prev_mark = getattr(ent, "_last_hit_ms", None)
+            setattr(ent, "_last_hit_ms", self.clock_ms)
+
+            lap_added = False
+            lap_time_s = None
+            if prev_mark is not None:
+                delta_s = (self.clock_ms - prev_mark) / 1000.0
+                # reject duplicates quickly
+                if delta_s < self.min_lap_dup:
+                    return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "dup"}
+                if delta_s < self.min_lap_s:
+                    return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "min_lap"}
+                # count the lap
+                ent.laps += 1
+                ent.last_s = delta_s
+                if ent.best_s is None or delta_s < ent.best_s:
+                    ent.best_s = delta_s
+                ent.pace_buf.append(delta_s)
+                if len(ent.pace_buf) > 5:
+                    ent.pace_buf = ent.pace_buf[-5:]
+                lap_added = True
+                lap_time_s = round(delta_s, 3)
+            else:
+                # first crossing sets start mark; no lap yet
+                lap_added = False
+
+            self._last_update_utc = UTC_MS()
+            self._maybe_checkpoint()
+            return {"ok": True, "entrant_id": eid, "lap_added": lap_added, "lap_time_s": lap_time_s, "reason": None}
+
+    def _alloc_provisional_id(self) -> int:
+        # ensure we don't collide with explicit entrant_ids
+        while self._next_provisional_id in self.entrants:
+            self._next_provisional_id += 1
+        eid = self._next_provisional_id
+        self._next_provisional_id += 1
+        return eid
+
+    # ---------- roster management ----------
+    def update_entrant_enable(self, entrant_id:int, enabled:bool) -> dict:
+        with self._lock:
+            ent = self.entrants.get(int(entrant_id))
+            if not ent: raise KeyError("entrant not found")
+            ent.enabled = bool(enabled)
+            # rebuild tag map simply
+            self._rebuild_tag_index()
+            self._last_update_utc = UTC_MS()
+            self.journal.put((self.race_id or 0, self._last_update_utc, self.clock_ms, "entrant_enable",
+                              {"entrant_id": ent.entrant_id, "enabled": ent.enabled}))
+            return self.snapshot()
+
+    def update_entrant_status(self, entrant_id:int, status:str) -> dict:
+        s = str(status).upper()
+        if s not in ALLOWED_STATUS:
+            raise ValueError("invalid status")
+        with self._lock:
+            ent = self.entrants.get(int(entrant_id))
+            if not ent: raise KeyError("entrant not found")
+            ent.status = s
+            self._last_update_utc = UTC_MS()
+            self.journal.put((self.race_id or 0, self._last_update_utc, self.clock_ms, "entrant_status",
+                              {"entrant_id": ent.entrant_id, "status": ent.status}))
+            return self.snapshot()
+
+    def assign_tag(self, entrant_id:int, tag:Optional[str]) -> dict:
+        with self._lock:
+            ent = self.entrants.get(int(entrant_id))
+            if not ent: raise KeyError("entrant not found")
+            ent.tag = (str(tag).strip() if tag else None)
+            self._rebuild_tag_index()
+            self._last_update_utc = UTC_MS()
+            self.journal.put((self.race_id or 0, self._last_update_utc, self.clock_ms, "assign_tag",
+                              {"entrant_id": ent.entrant_id, "tag": ent.tag}))
+            return self.snapshot()
+
+    def _rebuild_tag_index(self):
+        self.tag_to_eid = {}
+        for e in self.entrants.values():
+            if e.enabled and e.tag:
+                self.tag_to_eid[e.tag] = e.entrant_id
+
+    # ---------- snapshot & ordering ----------
+    def snapshot(self) -> dict:
+        with self._lock:
+            # live clock tick (don’t tick if frozen)
+            self._update_clock()
+            self._last_update_utc = UTC_MS()
+            # ordering
+            entrants = list(self.entrants.values())
+            # sort: laps desc → best asc → last asc → entrant_id asc
+            def sort_key(e:Entrant):
+                best = e.best_s if e.best_s is not None else 9e9
+                last = e.last_s if e.last_s is not None else 9e9
+                return (-e.laps, best, last, e.entrant_id)
+            entrants.sort(key=sort_key)
+
+            leader_best = entrants[0].best_s if entrants else None
+            leader_laps = entrants[0].laps if entrants else 0
+
+            rows = [e.as_snapshot(leader_best, leader_laps) for e in entrants if e.enabled]
+
+            snap = {
+                "flag": self.flag,
+                "race_id": self.race_id,
+                "race_type": self.race_type or "sprint",
+                "clock_ms": self.clock_ms,
+                "running": self.running,
+                "standings": rows,
+                "last_update_utc": self._last_update_utc,
+                "source": "engine",
+                "sim": False,
+                "sim_label": "SIMULATOR ACTIVE",
+                "features": {"pit_timing": self.feature_pits}
+            }
+            return snap
+
+    def _maybe_checkpoint(self):
+        now = time.time()
+        if (now - self._last_checkpoint) >= self.checkpoint_s:
+            self.journal.checkpoint(self.race_id or 0, self.clock_ms, self.snapshot())
+            self._last_checkpoint = now
+
+# ----------------------------- singleton + loader -----------------------------
+def _load_yaml(path:str) -> dict:
+    try:
+        import yaml
+        with open(path, "r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    except Exception:
+        return {}
+
+def make_engine() -> RaceEngine:
+    here = os.path.dirname(__file__)
+    cfg_path = os.path.join(here, "config.yaml")
+    cfg = _load_yaml(cfg_path)
+    return RaceEngine(cfg)
+
+# Global singleton for FastAPI to import
+ENGINE = make_engine()

@@ -1,0 +1,74 @@
+# =============================================================================
+# ChronoCore Engine Config
+#
+# This file controls how the RaceEngine behaves during live timing.
+# Every section has safe defaults for club-level racing (10–60 karts).
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# Timing rules
+# ---------------------------------------------------------------------------
+timing:
+  # Minimum valid lap time in seconds.
+  # Any lap shorter than this is ignored (likely a double-hit or glitch).
+  min_lap_s: 5.0
+
+  # Minimum separation in seconds for duplicate tag hits.
+  # If a transponder triggers multiple times at the line within this window,
+  # only the first is counted; others are ignored.
+  min_lap_s_dup: 1.0
+
+
+# ---------------------------------------------------------------------------
+# Feature toggles
+# ---------------------------------------------------------------------------
+features:
+  # Pit lane timing system.
+  # When true, passes can be marked as "pit_in" and "pit_out" to measure pit stops.
+  # If false, all passes are treated as track crossings.
+  pit_timing: true
+
+  # Auto-provisional entrants.
+  # When true, unknown tags create a new entrant named "Unknown ####"
+  # (#### = last 4 digits of tag UID) and their laps are recorded.
+  # When false, unknown tags are simply ignored.
+  auto_provisional: true
+
+
+# ---------------------------------------------------------------------------
+# Persistence / durability
+# ---------------------------------------------------------------------------
+persistence:
+  # Enable event journaling and checkpointing to SQLite.
+  # Strongly recommended for real races — lets you recover after a crash.
+  enabled: true
+
+  # Max time to buffer events before flushing to disk (ms).
+  # Larger values = fewer writes, less disk I/O, but slightly more risk
+  # (you could lose up to batch_ms worth of events if the PC dies).
+  batch_ms: 500
+
+  # Max number of events to buffer before forcing a flush.
+  # Larger = fewer writes, smaller = lower latency.
+  batch_max: 200
+
+  # Write a full engine snapshot every N seconds.
+  # Used for crash recovery (engine can replay from last checkpoint).
+  checkpoint_s: 15
+
+  # Force the OS to flush writes all the way to disk on every commit.
+  # True = maximum durability, slower.
+  # False = faster, but a power loss could drop the last few seconds.
+  fsync: true
+
+
+# ---------------------------------------------------------------------------
+# Pit receiver mapping (optional)
+# ---------------------------------------------------------------------------
+pits:
+  receivers:
+    # Lists of device_id values that should be auto-classified as pit_in/out
+    # if they show up on /engine/pass.
+    # If empty, you must send "source":"pit_in" or "source":"pit_out" manually.
+    pit_in:  []
+    pit_out: []

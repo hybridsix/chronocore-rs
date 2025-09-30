@@ -1,0 +1,69 @@
+/* Entrants page — sits on top of base.css / operator.css */
+
+.page-title{ margin: 8px 0 12px 0; }
+
+/* Grid layout */
+.ent-grid{
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 18px;
+  max-width: 1280px;
+  margin: 0 auto;
+}
+
+/* Form */
+.field{ margin: 10px 0; }
+.label{
+  display:block; font-size:12px; letter-spacing:.12em;
+  text-transform:uppercase; color:#8fb6c9; margin-bottom:6px;
+}
+.row2{ display:grid; grid-template-columns: 1fr 140px; gap:10px; }
+.field.inline{ display:flex; align-items:center; gap:10px; }
+.checkbox{ width:18px; height:18px; }
+
+.color-wrap{ display:grid; grid-template-columns: 48px 1fr; gap:10px; align-items:center; }
+.color-input{ width:48px; height:40px; border:none; padding:0; background:transparent; }
+.small{ font-size: 12px; }
+
+/* Buttons — align with index design language via base tokens */
+.btn{ padding:8px 12px; border-radius:10px; border:1px solid var(--btn-border,#173243); background:#0e151b; color:var(--text); }
+.btn-sm{ padding:6px 10px; }
+.btn-ghost{ background:transparent; border-color:transparent; }
+.btn-ghost.active{ background:#0e151b; border-color: #173243; }
+.btn-primary{ background: linear-gradient(180deg, #0b3042, #0a2230); border-color:#173243; }
+.btn-danger{ background: linear-gradient(180deg, #441818, #2a1111); border-color:#4a1e1e; }
+.btn-chip{ padding:4px 8px; font-size:12px; border-radius:999px; background:#0f141a; border:1px solid #13202a; }
+.buttons{ display:flex; gap:10px; margin-top:12px; }
+
+/* Table */
+.ent-table-card{ display:flex; flex-direction:column; }
+.table-header{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+.table{ width:100%; }
+.ent-thead, .ent-row{
+  display:grid;
+  grid-template-columns: 160px 1fr 1fr 120px 80px 100px 120px;
+  align-items:center;
+}
+.ent-thead{
+  height: 44px; padding: 0 12px; color: #bfefff; font-weight: 700;
+  border-bottom: 1px solid #0b2230;
+}
+.th.clickable{ cursor:pointer; }
+.rows.scroll{
+  max-height: 520px; overflow: auto;
+  border:1px solid #0f141a; border-top:none; border-radius:0 0 10px 10px;
+}
+.rows .ent-row{
+  height: 42px; padding: 0 12px; border-bottom: 1px solid #0f141a;
+}
+.rows .ent-row:nth-child(odd){ background:#141a20; }
+.rows .ent-row:nth-child(even){ background:#0f151b; }
+.rows .ent-row.disabled{ opacity:.55; font-style: italic; }
+.ent-row .right{ text-align:right; font-family: var(--mono); }
+.ent-row .link{ cursor:pointer; }
+
+/* UID capture blip */
+.captured{
+  box-shadow: 0 0 0 2px rgba(33,199,123,.9), 0 0 18px rgba(33,199,123,.6);
+  transition: box-shadow .35s ease-out;
+}
