@@ -11,7 +11,7 @@ ALLOWED_STATUS = {"ACTIVE","DISABLED","DNF","DQ"}
 class Entrant:
     __slots__ = ("entrant_id","enabled","status","tag","car_number","name",
                  "laps","last_s","best_s","pace_buf","pit_open_at_ms",
-                 "pit_count","last_pit_s")
+                 "pit_count","last_pit_s","_last_hit_ms")
     def __init__(self, entrant_id:int, enabled:bool=True, status:str="ACTIVE",
                  tag:Optional[str]=None, car_number:Optional[str]=None, name:str=""):
         self.entrant_id = int(entrant_id)
@@ -29,6 +29,8 @@ class Entrant:
         self.pit_open_at_ms: Optional[int] = None
         self.pit_count: int = 0
         self.last_pit_s: Optional[float] = None
+
+        self._last_hit_ms: Optional[int] = None
 
     def as_snapshot(self, leader_best_s: Optional[float], leader_laps:int) -> Dict:
         # gap_s only meaningful on same-lap cohort; else 0 with lap_deficit>0
@@ -304,8 +306,8 @@ class RaceEngine:
 
             # derive lap time from entrant’s last hit; we measure by engine clock deltas
             # store last lap timestamp per entrant (ms) in a shadow dict
-            prev_mark = getattr(ent, "_last_hit_ms", None)
-            setattr(ent, "_last_hit_ms", self.clock_ms)
+            prev_mark = ent._last_hit_ms
+            ent._last_hit_ms = self.clock_ms
 
             lap_added = False
             lap_time_s = None
