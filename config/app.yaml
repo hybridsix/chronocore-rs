@@ -1,0 +1,26 @@
+server:
+  host: "0.0.0.0"
+  port: 8000
+
+database:
+  path: "laps.sqlite"
+
+engine:
+  min_lap_s_default: 5.0
+  poll_hz_ui: 3
+
+decoder:            # transponder input module
+  enabled: true
+  mode: "serial"    # serial | tcp | hid | mock
+  serial:
+    port: "COM4"
+    baud: 115200
+  tcp:
+    host: "192.168.1.50"
+    port: 3000
+  hid:
+    vendor_id: null
+    product_id: null
+  filters:
+    debounce_ms: 150
+    min_signal: -70

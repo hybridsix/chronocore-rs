@@ -1,0 +1,23 @@
+modes:
+  sprint:
+    label: "Sprint"
+    limit: { type: time, value: 900 }   # 15 minutes
+    min_lap_s: 5.0
+    clock: { start_on_green: true, freeze_on_checkered: true }
+    scoring: { order: "laps_then_time" }
+
+  endurance:
+    label: "Endurance"
+    limit: { type: time, value: 4500 }  # 75 minutes
+    min_lap_s: 5.0
+    clock: { start_on_green: true, freeze_on_checkered: true }
+    scoring: { order: "laps_then_time" }
+
+  qualifying:
+    label: "Qualifying"
+    limit: { type: time, value: 600 }
+    min_lap_s: 5.0
+    clock: { start_on_green: true, freeze_on_checkered: true }
+    scoring:
+      order: "best_lap_asc"
+      require_min_laps: 1

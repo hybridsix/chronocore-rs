@@ -23,16 +23,20 @@ from __future__ import annotations
 # Imports
 # ---------------------------------------------------------------------------
 import os
+import io, csv
 from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, PlainTextResponse
 
 from fastapi.staticfiles import StaticFiles
 
 # RaceEngine singleton (authoritative in-memory state)
 from .race_engine import ENGINE
+
+# For External Read-Only Feed
+from fastapi.responses import JSONResponse
 
 
 # ---------------------------------------------------------------------------
@@ -149,7 +153,7 @@ async def engine_load(payload: Dict[str, Any]):
 @app.post("/engine/flag")
 async def engine_flag(payload: Dict[str, Any]):
     """
-    Change race flag. Allowed: pre|green|yellow|red|white|checkered
+    Change race flag. Allowed: pre|green|yellow|red|white|checkered|blue
 
     Behavior:
     - First transition to green starts the race clock.
@@ -257,6 +261,46 @@ async def engine_entrant_assign_tag(payload: Dict[str, Any]):
         return JSONResponse(snap)
     except KeyError:
         raise HTTPException(status_code=404, detail="entrant not found")
+
+# ---------------------------------------------------------------------------
+# Read-only public feed
+# ---------------------------------------------------------------------------
+
+@app.get("/race/feed")
+def race_feed():
+    """Public read-only race snapshot (CORS/ETag friendly)."""
+    s = ENGINE.snapshot()
+    headers = {
+        "Cache-Control": "no-store",
+        "ETag": f'W/{s.get("last_update_utc", 0)}'
+    }
+    return JSONResponse(s, headers=headers)
+
+
+# ---------------------------------------------------------------------------
+# CSV Export Logic
+# ---------------------------------------------------------------------------
+
+@app.get("/race/{race_id}/export.csv")
+def export_csv(race_id: int):
+    """CSV export of current standings (Google Sheets friendly)."""
+    snap = ENGINE.snapshot()
+    out = io.StringIO()
+    w = csv.writer(out)
+    w.writerow(["position","entrant_id","car_number","name","laps","best","last","pace_5","status"])
+    for i, r in enumerate(snap.get("standings", []), start=1):
+        w.writerow([
+            i,
+            r.get("entrant_id"),
+            r.get("car_number",""),
+            r.get("name",""),
+            r.get("laps",0),
+            r.get("best",""),
+            r.get("last",""),
+            r.get("pace_5",""),
+            r.get("status","")
+        ])
+    return PlainTextResponse(out.getvalue(), media_type="text/csv; charset=utf-8")
 
 
 # ---------------------------------------------------------------------------

@@ -2,6 +2,12 @@ from __future__ import annotations
 import time, json, threading, sqlite3, os
 from typing import Dict, List, Optional, Tuple
 
+try:
+    # Prefer the merged loader (config/app.yaml + race_modes.yaml + event.yaml)
+    from .config_loader import CONFIG
+except Exception:
+    CONFIG = {}
+
 UTC_MS = lambda: int(time.time() * 1000)
 
 ALLOWED_FLAGS = {"pre","green","yellow","red","blue","white","checkered"}
@@ -137,12 +143,25 @@ class Journal:
 # ----------------------------- Race Engine -----------------------------
 class RaceEngine:
     def __init__(self, config:dict):
+        """
+        config may be:
+          - legacy shape (timing/features/persistence)
+          - or merged loader: {"app":{...}, "modes":{...}, "event":{...}}
+        """
         self.cfg = config or {}
-        tcfg = self.cfg.get("timing", {})
-        pcfg = self.cfg.get("persistence", {})
-        self.min_lap_s    = float(tcfg.get("min_lap_s", 5.0))
+
+        # Support both layouts
+        app = self.cfg.get("app", self.cfg) or {}
+        tcfg = (app.get("timing") or app.get("engine") or {})
+        pcfg = (app.get("persistence") or {})
+        fcfg = (app.get("features") or {})
+
+        self._modes = self.cfg.get("modes", {})     # from race_modes.yaml
+        self._event = self.cfg.get("event", {})     # from event.yaml
+
+        # thresholds / features with sane fallbacks
+        self.min_lap_s    = float(tcfg.get("min_lap_s", tcfg.get("min_lap_s_default", 5.0)))
         self.min_lap_dup  = float(tcfg.get("min_lap_s_dup", 1.0))
-        fcfg = self.cfg.get("features", {})
         self.feature_pits = bool(fcfg.get("pit_timing", True))
         self.feature_auto_prov = bool(fcfg.get("auto_provisional", True))
 
@@ -175,6 +194,12 @@ class RaceEngine:
             self.clock_start_monotonic: Optional[float] = None  # when green started
             self.running: bool = False
 
+            # active limit (from mode): type: "time"|"laps"
+            self._limit = None          # {"type":"time"|"laps","value":...}
+            self._limit_ms = None       # precalc for time limit
+            self._limit_laps = None     # precalc for lap limit
+            self._limit_reached = False # guard against repeated triggers
+
             self.entrants: Dict[int, Entrant] = {}
             self.tag_to_eid: Dict[str, int] = {}
             self._next_provisional_id = 1
@@ -182,12 +207,17 @@ class RaceEngine:
 
             self._last_update_utc = 0
             self._events_ring: List[dict] = []  # in-memory trace for debug
+            self._active_mode: Optional[dict] = None
 
     def load(self, race_id:int, entrants:List[dict], race_type:str="sprint") -> dict:
         with self._lock:
             self.reset()
             self.race_id = int(race_id)
             self.race_type = str(race_type)
+
+            # apply mode overrides (e.g., min_lap_s, limits) if present
+            self._apply_mode_cfg(self.race_type)
+
             # install entrants
             for e in entrants or []:
                 ent = Entrant(
@@ -201,8 +231,55 @@ class RaceEngine:
                 self.entrants[ent.entrant_id] = ent
                 if ent.enabled and ent.tag:
                     self.tag_to_eid[ent.tag] = ent.entrant_id
+
             self._emit_flag_change("pre")
             return self.snapshot()
+
+    def _apply_mode_cfg(self, mode_name: str):
+        """Apply YAML mode overrides at race load/arm time (non-destructive)."""
+        m = self._modes.get(mode_name, {})
+        if not m:
+            self._active_mode = {"name": mode_name, "label": mode_name.title()}
+            # clear any previous limit
+            self._limit = None
+            self._limit_ms = None
+            self._limit_laps = None
+            self._limit_reached = False
+            return
+
+        # thresholds
+        if "min_lap_s" in m:
+            self.min_lap_s = float(m["min_lap_s"])
+
+        # light snapshot for UIs/exports
+        self._active_mode = {
+            "name": mode_name,
+            "label": m.get("label", mode_name.title()),
+            "limit": m.get("limit"),
+            "scoring": m.get("scoring"),
+        }
+
+        # extract limit for enforcement
+        lim = m.get("limit") or {}
+        ltype = str(lim.get("type", "")).lower()
+        lval = lim.get("value")
+
+        if ltype in {"time", "laps"} and isinstance(lval, (int, float)) and lval > 0:
+            self._limit = {"type": ltype, "value": lval}
+            if ltype == "time":
+                self._limit_ms = int(float(lval) * 1000)
+                self._limit_laps = None
+            else:
+                self._limit_laps = int(lval)
+                self._limit_ms = None
+            self._limit_reached = False
+        else:
+            # no valid limit configured
+            self._limit = None
+            self._limit_ms = None
+            self._limit_laps = None
+            self._limit_reached = False
+
 
     # ---------- flag & clock ----------
     def set_flag(self, flag:str) -> dict:
@@ -210,7 +287,6 @@ class RaceEngine:
         if f not in ALLOWED_FLAGS:
             raise ValueError(f"Invalid flag '{flag}'")
         with self._lock:
-            # handle clock transitions
             prev = self.flag
             self.flag = f
             if f == "green":
@@ -222,7 +298,7 @@ class RaceEngine:
                 self._update_clock()
                 self.running = False
                 self.clock_start_monotonic = None
-            elif f in {"pre","yellow","red","white"}:
+            elif f in {"pre","yellow","red","white","blue"}:
                 # no change to running (per our rules)
                 pass
 
@@ -242,6 +318,13 @@ class RaceEngine:
             delta_ms = int((now - self.clock_start_monotonic) * 1000)
             self.clock_ms += max(0, delta_ms)
             self.clock_start_monotonic = now
+
+            # Time-limit enforcement
+            if (not self._limit_reached
+                and self._limit_ms is not None
+                and self.flag != "checkered"
+                and self.clock_ms >= self._limit_ms):
+                self._auto_checkered("time_limit")
 
     # ---------- passes & pits ----------
     def ingest_pass(self, tag:str, ts_ns:Optional[int]=None, source:str="track", device_id:Optional[str]=None) -> dict:
@@ -305,7 +388,6 @@ class RaceEngine:
                 return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "checkered_freeze"}
 
             # derive lap time from entrant’s last hit; we measure by engine clock deltas
-            # store last lap timestamp per entrant (ms) in a shadow dict
             prev_mark = ent._last_hit_ms
             ent._last_hit_ms = self.clock_ms
 
@@ -328,14 +410,32 @@ class RaceEngine:
                     ent.pace_buf = ent.pace_buf[-5:]
                 lap_added = True
                 lap_time_s = round(delta_s, 3)
-            else:
-                # first crossing sets start mark; no lap yet
-                lap_added = False
+                # Lap-limit enforcement
+                if (not self._limit_reached
+                    and self._limit_laps is not None
+                    and self.flag != "checkered"
+                    and ent.laps >= self._limit_laps):
+                    self._auto_checkered("lap_limit")
+            # else: first crossing sets start mark; no lap yet
 
             self._last_update_utc = UTC_MS()
             self._maybe_checkpoint()
             return {"ok": True, "entrant_id": eid, "lap_added": lap_added, "lap_time_s": lap_time_s, "reason": None}
 
+
+    # ---------- auto checkered flag section ----------
+    def _auto_checkered(self, reason: str):
+        """Finish the race due to limit; assumes caller holds the lock."""
+        if self.flag == "checkered" or self._limit_reached:
+            return
+        # freeze clock
+        self._update_clock()
+        self.running = False
+        self.clock_start_monotonic = None
+        self.flag = "checkered"
+        self._limit_reached = True
+        # emit event for journal/debug
+        self._emit_flag_change("checkered")
     def _alloc_provisional_id(self) -> int:
         # ensure we don't collide with explicit entrant_ids
         while self._next_provisional_id in self.entrants:
@@ -420,6 +520,16 @@ class RaceEngine:
                 "sim_label": "SIMULATOR ACTIVE",
                 "features": {"pit_timing": self.feature_pits}
             }
+            # Optional: advertise active mode & event meta (helps UIs/exports)
+            if self._active_mode:
+                snap["mode"] = self._active_mode
+            if isinstance(self._event, dict) and self._event:
+                snap["event"] = self._event
+            if self._limit:
+                lim = {"type": self._limit["type"], "value": self._limit["value"]}
+                if self._limit_ms is not None:
+                    lim["remaining_ms"] = max(0, self._limit_ms - self.clock_ms)
+                snap["limit"] = lim
             return snap
 
     def _maybe_checkpoint(self):
@@ -438,6 +548,10 @@ def _load_yaml(path:str) -> dict:
         return {}
 
 def make_engine() -> RaceEngine:
+    # Prefer merged CONFIG if available (new style)
+    if CONFIG:
+        return RaceEngine(CONFIG)
+    # Legacy fallback: backend/config.yaml only
     here = os.path.dirname(__file__)
     cfg_path = os.path.join(here, "config.yaml")
     cfg = _load_yaml(cfg_path)
