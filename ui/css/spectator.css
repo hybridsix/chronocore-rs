@@ -331,3 +331,28 @@
     45deg, #0b0f13 0 10px, #ffffff 10px 20px
   );
 }
+
+/* =========================================================
+   Simulator Pill
+   ========================================================= */
+
+/* Simulator pill: magenta + slow pulse, inherit site font */
+.sim-wrap { margin-left: 12px; }
+#simPill {
+  font: inherit;                     /* match the rest of the UI */
+  background: #d946ef;               /* magenta */
+  color: #0b0f13;                    /* dark text for contrast */
+  border: 1px solid rgba(0,0,0,.15);
+  box-shadow: 0 0 0 0 rgba(217,70,239,.55);
+}
+#simPill.pulsing {
+  animation: simPulse 2.8s ease-in-out infinite;
+}
+
+.hidden { display: none !important; }
+
+@keyframes simPulse {
+  0%   { box-shadow: 0 0 0 0   rgba(217,70,239,.55); transform: translateZ(0); }
+  70%  { box-shadow: 0 0 0 14px rgba(217,70,239,0);  }
+  100% { box-shadow: 0 0 0 0   rgba(217,70,239,0);   }
+}

@@ -29,6 +29,7 @@ from typing import Optional, Dict, Any
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, PlainTextResponse
+from pydantic import BaseModel
 
 from fastapi.staticfiles import StaticFiles
 
@@ -275,6 +276,23 @@ def race_feed():
         "ETag": f'W/{s.get("last_update_utc", 0)}'
     }
     return JSONResponse(s, headers=headers)
+
+# ---------------------------------------------------------------------------
+# Simulator Active 
+# ---------------------------------------------------------------------------
+
+class SimPayload(BaseModel):
+    sim: bool | None = None
+    on: bool | None = None
+    label: str | None = None
+
+@app.post("/engine/sim")
+def engine_sim(payload: SimPayload):
+    """Toggle simulator banner/pill."""
+    on = payload.sim if payload.sim is not None else (payload.on if payload.on is not None else False)
+    snap = ENGINE.set_sim(on, payload.label)
+    return snap
+
 
 
 # ---------------------------------------------------------------------------

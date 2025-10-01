@@ -209,6 +209,9 @@ class RaceEngine:
             self._events_ring: List[dict] = []  # in-memory trace for debug
             self._active_mode: Optional[dict] = None
 
+            self.sim_active: bool = False
+            self.sim_banner: str | None = None
+
     def load(self, race_id:int, entrants:List[dict], race_type:str="sprint") -> dict:
         with self._lock:
             self.reset()
@@ -304,6 +307,16 @@ class RaceEngine:
 
             self._emit_flag_change(self.flag)
             return self.snapshot()
+        
+    # ---------- simulator indicator  ----------
+    def set_sim(self, on: bool, label: str | None = None):
+        with self._lock:
+            self.sim_active = bool(on)
+            # Empty string should clear the label
+            self.sim_banner = (label if (label and label.strip()) else None)
+            self._last_update_utc = UTC_MS()
+            return self.snapshot()
+
 
     def _emit_flag_change(self, flag:str):
         ev = {"ts_utc": UTC_MS(), "race_clock_ms": self.clock_ms, "event":"flag_change", "flag": flag}
@@ -516,8 +529,8 @@ class RaceEngine:
                 "standings": rows,
                 "last_update_utc": self._last_update_utc,
                 "source": "engine",
-                "sim": False,
-                "sim_label": "SIMULATOR ACTIVE",
+                "sim": self.sim_active,
+                "sim_label": self.sim_banner,
                 "features": {"pit_timing": self.feature_pits}
             }
             # Optional: advertise active mode & event meta (helps UIs/exports)

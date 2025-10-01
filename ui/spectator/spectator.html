@@ -19,6 +19,10 @@
            onerror="this.onerror=null;this.src='/ui/PRS_Logo.svg'">
     </div>
     <div class="title">Live Timing — Spectator</div>
+        <!-- Simulator status pill (hidden until state arrives) -->
+    <div class="sim-wrap">
+      <div class="pill hidden" id="simPill" aria-live="polite">SIMULATOR ACTIVE</div>
+    </div>
     <div class="raceclock-wrap">
       <div class="raceclock-label">Race&nbsp;Clock</div>
       <div class="pill pill-xl" id="raceClock" aria-live="polite" aria-label="Race clock">--:--</div>
@@ -159,6 +163,27 @@
       });
     }
 
+    function renderSim(sim, label) {
+      const el = document.querySelector('#simPill');
+      if (!el) return;
+
+      const on = (sim === true);         // only show when sim=true
+
+      if (on) {
+        el.textContent = label && String(label).trim().length ? label : "SIMULATOR ACTIVE";
+        el.title = el.textContent;
+        el.classList.remove('hidden');
+        el.classList.add('pulsing');
+      } else {
+        el.classList.add('hidden');      // remove from layout
+        el.classList.remove('pulsing');
+        el.textContent = "";             // optional: clear text
+        el.removeAttribute('title');
+      }
+    }
+
+
+
     // Poll /race/state at ~3 Hz
     function extractRows(s){ return s?.standings ?? s?.entries ?? s?.rows ?? []; }
     const poller = makePoller(async () => {
@@ -166,6 +191,7 @@
       renderClock(s.clock_ms);
       renderFlag(s.flag);
       renderStandings(extractRows(s));
+      renderSim(s.sim, s.sim_label);
       const n = Array.isArray(s?.standings) ? s.standings.length : 0;
       setNetStatus(true, `OK — ${n} karts`);
     }, 333, () => {
