@@ -186,4 +186,33 @@ main { flex: 1; }
   .hero__inner { grid-template-columns: 1fr; }
   .hero__inner::after { display: none; }
   .hero__brand { align-content: start; transform: none; }
+
+
+  /* ===== Operator: Flag controls ============= */
+/* Row layout for the flag buttons */
+.btnrow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+/* Base button style for flags (separate from .btn used elsewhere) */
+.flagbtn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid #0b2230;
+  background: #0c151c;
+  color: #e6ebf0;
+  cursor: pointer;
+}
+
+/* Optional gentle tints per flag; banner remains the primary indicator */
+.flagbtn[data-flag="green"]     { background: rgba(34,197,94,0.12);   border-color: rgba(34,197,94,0.35); }
+.flagbtn[data-flag="yellow"]    { background: rgba(250,204,21,0.14);  border-color: rgba(250,204,21,0.40); }
+.flagbtn[data-flag="red"]       { background: rgba(239,68,68,0.14);   border-color: rgba(239,68,68,0.40); }
+.flagbtn[data-flag="white"]     { background: rgba(226,232,240,0.10); border-color: rgba(203,213,225,0.35); }
+.flagbtn[data-flag="blue"]      { background: rgba(59,130,246,0.14);  border-color: rgba(59,130,246,0.40); } /* Blue supported */
+.flagbtn[data-flag="checkered"] { background: rgba(148,163,184,0.12); border-color: rgba(148,163,184,0.35); }
+.flagbtn[data-flag="pre"]       { background: rgba(148,163,184,0.10); border-color: rgba(148,163,184,0.30); }
+
 }

@@ -2,75 +2,171 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>ChronoCore — Starting…</title>
+  <title>ChronoCore — Loading…</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!--
+    CSS: make external stylesheet NON-BLOCKING for first paint
+    ----------------------------------------------------------
+    Why this matters:
+      - A normal <link rel="stylesheet"> blocks rendering until the CSS file is fetched + parsed.
+      - On app launch, even “local” files add measurable delay before anything appears.
+    Technique:
+      - Load base.css with media="print" so the browser won’t block painting.
+      - On load, flip media to "all" (activates stylesheet after we’ve shown the splash).
+      - <noscript> fallback preserves styles if JS is disabled.
+    Result:
+      - The splash paints immediately with our inline styles (below),
+        then base.css quietly applies once available—no perceived lag.
+  -->
+  <!-- BEFORE (render-blocking):
   <link rel="stylesheet" href="../css/base.css" />
+  -->
+  <!-- AFTER (non-blocking): -->
+  <link rel="stylesheet" href="../css/base.css" media="print" onload="this.media='all'">
+  <noscript><link rel="stylesheet" href="../css/base.css"></noscript>
+
+  <!--
+    Inline critical styles
+    ----------------------
+    Keep the splash self-sufficient for the first frame:
+      - Avoid external fonts; use a system UI stack
+      - Define the minimal palette/layout we need for a clean first impression
+      - No images required; if you want the PRS mark, inline an SVG (optional)
+  -->
   <style>
-    :root{ color-scheme: dark; }
-    html,body{ height:100%; margin:0; background:#0c131a; color:#e6ebf0; font-family:var(--sans, system-ui); }
-    .wrap{ height:100%; display:grid; place-items:center; }
-    .card{
-      background:#0f141a; border:1px solid #0b0f13; border-radius:16px;
-      box-shadow:0 0 0 1px #0c1116, 0 10px 24px rgba(0,0,0,.35);
-      padding:20px 22px; min-width:420px;
-      -webkit-app-region: drag;         /* drag anywhere (frameless) */
+    :root {
+      /* Minimal palette consistent with the app theme */
+      --bg: #0b1117;
+      --card: #0e151c;
+      --ink: #dbeafe;
+      --sub: #9fc7de;
+      --accent: #22a6f2;
+      --border: #102030;
     }
 
-    /* Row: [square-mark] [wordmark stack] */
-    .row{
-      display:grid; grid-auto-flow:column; align-items:center; gap:16px;
+    /* Ensure we can paint immediately without waiting for base.css tokens */
+    html, body { height: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      /* Use a native system stack; fast and already loaded */
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      display: grid;
+      place-items: center; /* center splash card vertically + horizontally */
     }
 
-    /* Left square mark placeholder — replace with your SVG/PNG when ready */
-    .markbox{
-      width:64px; height:64px; border-radius:12px;
-      border:1px dashed #2a3a47; background:#0d151c;
-      display:grid; place-items:center; opacity:.8;
-    }
-    /* If you have an image later, uncomment and swap:
-    <img class="markimg" src="../img/chronocore_mark.svg" alt="">
-    .markimg{ width:64px; height:64px; display:block; border-radius:12px; }
-    */
+    /* The splash “card” — simple, classy, and cheap to render */
+    .card {
+      width: min(560px, 92vw);
+      padding: 28px 24px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--card);
+      box-shadow: 0 12px 24px rgba(0,0,0,.35);
 
-    /* ChronoCore wordmark (text) */
-    .wordmark{ line-height:1; text-transform:uppercase; color:#e9f1f7;
-      text-shadow: 0 0 2px rgba(255,255,255,.25), 0 2px 10px rgba(0,0,0,.45);
+      /* Gentle entrance so it doesn’t pop harshly */
+      opacity: 0;
+      transform: translateY(6px);
+      animation: rise .25s ease-out forwards;
     }
-    .wordmark__top{ display:grid; gap:4px; letter-spacing:.06em; }
-    .wordmark__big{ font-weight:800; font-size:24px; }
-    .wordmark__bottom{ margin-top:4px; font-weight:700; font-size:12px; letter-spacing:.18em; opacity:.92; }
+    @keyframes rise { to { opacity: 1; transform: none; } }
 
-    /* Subline + progress bar */
-    .sub{ margin:14px 0 10px; opacity:.85; font-size:14px; letter-spacing:.02em; }
-    .bar{ height:4px; width:100%; background:#12171c; border-radius:999px; overflow:hidden; border:1px solid #0b2230; }
-    .fill{ height:100%; width:40%; background:linear-gradient(90deg, #37b0ff, #a6e1ff); animation:load 1.2s infinite ease-in-out; }
-    @keyframes load { 0%{transform:translateX(-100%);} 100%{transform:translateX(260%);} }
+    /* Brand row (inline icon + product name) */
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    /* Inline logo mark — optional; remove if you prefer pure text */
+    .logo { width: 56px; height: 56px; }
+
+    .title {
+      font-size: 22px;
+      font-weight: 800;
+      letter-spacing: .02em;
+    }
+    .sub {
+      color: var(--sub);
+      margin: 6px 0 0 70px; /* align with mark edge */
+    }
+
+    /* Indeterminate progress bar: visually communicates “work in progress” without timers */
+    .bar {
+      margin: 18px 0 0 70px;
+      height: 6px;
+      width: calc(100% - 70px);
+      background: #0c1218;
+      border: 1px solid var(--border);
+      border-radius: 999px;
+      overflow: hidden;
+    }
+    .bar__fill {
+      height: 100%;
+      width: 28%;
+      background: linear-gradient(90deg, rgba(34,166,242,.2), rgba(34,166,242,.5));
+      animation: flow 1.2s ease-in-out infinite;
+    }
+    @keyframes flow {
+      0%   { transform: translateX(-40%); }
+      50%  { transform: translateX(80%);  }
+      100% { transform: translateX(140%); }
+    }
+
+    .hint {
+      margin: 10px 0 0 70px;
+      color: var(--sub);
+      font-size: 14px;
+    }
+
+    /* Optional footer line for a version or tiny tips */
+    .small {
+      font-size: 12px;
+      color: #7aa7c2;
+      margin-left: 70px;
+      margin-top: 6px;
+    }
   </style>
 </head>
-<body>
-  <div class="wrap">
-    <div class="card">
-      <div class="row">
-        <!-- Left: reserved square for future mark (SVG/PNG) -->
-        <div class="markbox">■</div>
-        <!-- Right: text wordmark, same structure as Operator header -->
-        <div class="wordmark" aria-label="ChronoCore Race Software">
-          <div class="wordmark__top">
-            <span class="wordmark__big">CHRONO</span>
-            <span class="wordmark__big">CORE</span>
-          </div>
-          <div class="wordmark__bottom">RACE SOFTWARE</div>
-        </div>
-      </div>
 
-      <div class="sub">Starting services…</div>
-      <div class="bar"><div class="fill"></div></div>
+<body>
+  <!--
+    Splash content
+    --------------
+    Keep it minimal: brand, short status line, and an indeterminate bar.
+    No JS required for “instant paint”—the non-blocking CSS swap handles the rest.
+    If you want auto-redirect-on-ready behavior, we’ll add a tiny script later that
+    probes /health or /race/state; for now we keep it purely visual per your request.
+  -->
+  <div class="card" role="status" aria-live="polite">
+    <div class="brand">
+      <!-- Inline SVG keeps us network-free;
+           Replace with your PRS mark if you like, or remove entirely -->
+      <svg class="logo" viewBox="0 0 64 64" fill="none" aria-hidden="true">
+        <circle cx="32" cy="32" r="30" stroke="url(#g)" stroke-width="2"/>
+        <path d="M18 32h28M32 18v28" stroke="url(#g)" stroke-width="3" stroke-linecap="round"/>
+        <defs>
+          <linearGradient id="g" x1="0" y1="0" x2="64" y2="64">
+            <stop stop-color="#22a6f2"/><stop offset="1" stop-color="#6ee7ff"/>
+          </linearGradient>
+        </defs>
+      </svg>
+      <div class="title">ChronoCore</div>
     </div>
+
+    <p class="sub">Starting services…</p>
+    <div class="bar"><div class="bar__fill"></div></div>
+    <p class="hint">This will only take a moment.</p>
+    <p class="small">Tip: Keep this window visible—Operator Home will load as soon as the engine is ready.</p>
   </div>
+
+  <!--
+    No script block needed for paint speed.
+    If/when you want “auto-advance when /health is OK,” we can add a tiny, deferred script
+    that starts AFTER first paint and will not affect splash immediacy.
+  -->
 </body>
 </html>
-
-<!--When your square logo is ready, replace the <div class="markbox"> with:
-    <img class="markimg" src="../img/chronocore_mark.svg" alt="ChronoCore mark">
-    …and uncomment the .markimg CSS block in the file.   
-    -->

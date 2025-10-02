@@ -5,51 +5,71 @@
   <title>PRS — Operator Console</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Shared design tokens / utilities -->
+  <!-- 
+    CSS imports:
+    - base.css : global variables, tokens, layout utilities
+    - spectator.css : shared flag banner + standings styles
+    - operator.css : operator-specific styles (grid layout, cards, hero area)
+  -->
   <link rel="stylesheet" href="../css/base.css" />
   <link rel="stylesheet" href="../css/spectator.css" />
-
-  <!-- Page-specific styles (cleaned operator.css you just installed) -->
   <link rel="stylesheet" href="../css/operator.css" />
+
+  <!-- 
+    JS imports:
+    - base.js : shared helpers (makePoller, setNetStatus, startWallClock, fmtClock, etc.)
+  -->
+  <script src="../js/base.js" defer></script>
 
   <script>
     /**
-     * Desktop navigation helper:
-     * - In the app window (pywebview), call into the Python API.
-     * - In a normal browser, fall back to simple page navigation.
+     * goto(screenId)
+     * ----------
+     * Operator navigation helper. In the embedded app (pywebview), 
+     * we may call into Python API. In a browser fallback, we just 
+     * redirect to the HTML file.
      */
     async function goto(screenId) {
       if (window.pywebview?.api?.goto) {
-        try { await window.pywebview.api.goto(screenId); }
-        catch (e) { console.error("goto failed:", e); }
+        try {
+          await window.pywebview.api.goto(screenId);
+        } catch (e) {
+          console.error("goto failed:", e);
+        }
       } else {
+        // Fallback: load target page directly
         location.href = screenId + ".html";
       }
     }
-      // Open spectator in external browser, or fallback link
-     async function openSpectator() {
-        if (window.pywebview?.api?.open_spectator) {
-            try { await window.pywebview.api.open_spectator(); return; } catch(e){ console.error(e); }
-            }
-            // Fallback if testing in a normal browser
-        window.open("http://localhost:8000/ui", "_blank");
-  }
 
+    /**
+     * openSpectator()
+     * ----------
+     * Opens the spectator UI in an external browser window.
+     * - If running inside pywebview: call into Python API
+     * - Otherwise: open http://localhost:8000/ui in a new tab
+     */
+    async function openSpectator() {
+      if (window.pywebview?.api?.open_spectator) {
+        try {
+          await window.pywebview.api.open_spectator();
+          return;
+        } catch (e) {
+          console.error(e);
+        }
+      }
+      window.open("http://localhost:8000/ui", "_blank");
+    }
   </script>
 </head>
 
-<!-- "index" class is just a hook if we ever need index-only CSS tweaks -->
 <body class="index">
   <!-- ───────────────────────────────────────────────────────────────
-       Header: ChronoCore wordmark (text) + optional mark (image later)
-       We keep this text-based so it scales crisply; the round clock mark
-       can be added as an SVG via <img class="brand__logo"> when ready.
+       HEADER: wordmark + race clock
        ─────────────────────────────────────────────────────────────── -->
   <header class="app-header">
+    <!-- ChronoCore wordmark (static) -->
     <div class="brand">
-      <!-- Optional mark placeholder (leave commented until you have the SVG) -->
-      <!-- <img class="brand__logo" src="../img/chronocore_mark.svg" alt="ChronoCore mark"> -->
-
       <div class="brand__wordmark" aria-label="ChronoCore Race Software">
         <div class="wordmark__top">
           <span class="wordmark__big">CHRONO</span>
@@ -58,27 +78,33 @@
         <div class="wordmark__bottom">RACE SOFTWARE</div>
       </div>
     </div>
+
+    <!-- Live race clock (populated from /race/state.clock_ms) -->
+    <div class="raceclock-wrap">
+      <div class="raceclock-label">Race Clock</div>
+      <div id="raceClock" class="pill pill-xl">--:--</div>
+    </div>
   </header>
 
   <!-- ───────────────────────────────────────────────────────────────
-       Main: two-column hero card
-       Left  = logo + subline (centered block with a small right nudge)
-       Right = primary actions
+       MAIN: split 2-column layout
+       LEFT = Navigation / Actions
+       RIGHT = Live Race Status
        ─────────────────────────────────────────────────────────────── -->
-  <main class="wrap">
+  <main class="wrap grid2-520">
+    <!-- LEFT COLUMN: Operator actions / navigation -->
     <section class="hero card">
       <div class="hero__inner">
-        <!-- LEFT COLUMN: brand block -->
-        <!-- Centered in its pane; the tiny optical offset is controlled by
-             --brand-nudge-x in operator.css (default: 8px). -->
         <div class="hero__brand">
+          <!-- PRS logo (static asset) -->
           <img class="brand-mark" src="../img/PRS_Logo.svg" alt="PRS Logo">
           <p class="sub">Timing • Control • Moxie</p>
         </div>
 
-        <!-- RIGHT COLUMN: primary actions -->
+        <!-- Navigation buttons (goto() handles routing) -->
         <div class="hero__actions">
-          <button class="btn btn-primary" onclick="goto('race_control')">Start / Race Control</button>
+          <button class="btn btn-primary" onclick="goto('setup')">Race Setup</button>
+          <button class="btn" onclick="goto('race_control')">Start / Race Control</button>
           <button class="btn" onclick="goto('entrants')">Entrants & Tags</button>
           <button class="btn" onclick="goto('stats')">Results & Exports</button>
           <button class="btn" onclick="goto('settings')">Setup & Devices</button>
@@ -86,20 +112,182 @@
         </div>
       </div>
     </section>
+
+    <!-- RIGHT COLUMN: Live race status snapshot -->
+    <section class="card">
+      <h2>Live Status</h2>
+
+      <!-- Flag banner (shares CSS with spectator UI) -->
+      <div class="flagBanner">
+        <div id="flagBanner" class="flag hidden" aria-live="polite">
+          <div class="flag__icon"></div>
+          <div id="flagLabel" class="flag__label">—</div>
+        </div>
+      </div>
+
+      <!-- Key race metadata (from /race/state.event + entrants) -->
+      <div class="kv" style="margin-top:8px">
+        <div class="kvrow">
+          <div class="k">Race</div>
+          <div class="v" id="raceName">—</div>
+        </div>
+        <div class="kvrow">
+          <div class="k">Date / Location</div>
+          <div class="v"><span id="raceDate">—</span> • <span id="raceLoc">—</span></div>
+        </div>
+        <div class="kvrow">
+          <div class="k">Entrants (enabled)</div>
+          <div class="v"><span id="entrantCount">0</span></div>
+        </div>
+        <div class="kvrow">
+          <div class="k">Engine</div>
+          <div class="v"><span id="engineRunning">—</span></div>
+        </div>
+      </div>
+
+      <!-- Collapsible: Top 6 standings preview -->
+      <details style="margin-top:10px">
+        <summary>Top 6 (quick glance)</summary>
+        <!-- Header row -->
+        <div class="thead compact" style="margin-top:8px">
+          <div>#</div><div>Car</div><div>Team</div>
+          <div class="right">Lap</div><div class="right">Last</div><div class="right">Best</div>
+        </div>
+        <!-- Standings rows populated at runtime -->
+        <div id="rows" class="rows compact"></div>
+      </details>
+    </section>
   </main>
 
   <!-- ───────────────────────────────────────────────────────────────
-       Footer: sticky status bar
+       FOOTER: connection status + wall clock + version pill
        ─────────────────────────────────────────────────────────────── -->
   <footer class="app-footer">
     <div class="footer-left">
+      <!-- Network status dot + message -->
       <div class="status-dot" id="netDot"></div>
-      <div id="netMsg">Desktop shell ready</div>
+      <div id="netMsg">Connecting…</div>
     </div>
-    <div class="footer-right">Operator UI</div>
+    <!-- Wall clock (real-world clock, separate from race clock) -->
+    <div id="wallClock" class="pill">--:--:--</div>
   </footer>
 
-  <!-- Anchored version pill (clickable → About) -->
+  <!-- Build version indicator -->
   <div class="version-pill" onclick="goto('about')">v0.1 Preview</div>
+
+  <!-- ───────────────────────────────────────────────────────────────
+       PAGE WIRING (poll /race/state and update DOM)
+       ─────────────────────────────────────────────────────────────── -->
+  <script>
+    // Import helpers from base.js
+    const { startWallClock, setNetStatus, makePoller, fmtClock } = window.PRS;
+
+    // Kick off footer wall clock
+    startWallClock("#wallClock");
+
+    /**
+     * updateFlagBanner(flag)
+     * ----------
+     * Updates the visual banner at the top of the Live Status card.
+     * Clears banner if no flag is active, otherwise applies the CSS
+     * class corresponding to the flag type (flag--green, flag--yellow, etc.).
+     */
+    function updateFlagBanner(flag) {
+      const banner = document.querySelector("#flagBanner");
+      const label  = document.querySelector("#flagLabel");
+      banner.className = "flag";
+      if (!flag) {
+        banner.classList.add("hidden");
+        label.textContent = "";
+        return;
+      }
+      banner.classList.remove("hidden");
+      banner.classList.add(`flag--${flag}`);
+      label.textContent = flag.toUpperCase();
+    }
+
+    /**
+     * renderStandings(state)
+     * ----------
+     * Renders the compact Top-6 standings list inside the Live Status card.
+     * Uses /race/state.standings array. Displays position, car number, team,
+     * lap count, last lap time, and best lap time.
+     */
+    function renderStandings(state) {
+      const rowsEl = document.querySelector("#rows");
+      rowsEl.innerHTML = "";
+      const rows = (state.standings || []).slice(0, 6);
+      rows.forEach((r, i) => {
+        const el = document.createElement("div");
+        el.className = "row compact";
+        const last = r.last != null ? r.last.toFixed(3) : "—";
+        const best = r.best != null ? r.best.toFixed(3) : "—";
+        el.innerHTML = `
+          <div>${i + 1}</div>
+          <div class="car">${r.car_number ?? ""}</div>
+          <div class="name">${r.name || ""}</div>
+          <div class="right">${r.laps ?? 0}</div>
+          <div class="right">${last}</div>
+          <div class="right">${best}</div>
+        `;
+        rowsEl.appendChild(el);
+      });
+    }
+
+    /**
+     * Poller: fetch /race/state every 1s
+     * ----------
+     * On success:
+     * - Update race clock pill (#raceClock) with formatted ms → mm:ss
+     * - Update flag banner with state.flag
+     * - Update event metadata (race name, date, location)
+     * - Count enabled entrants
+     * - Update engine running/idle indicator
+     * - Render Top-6 standings
+     * On error:
+     * - Show "Disconnected — retrying…" in footer
+     * - Clear race clock pill
+     */
+    const poller = makePoller(
+      async () => {
+        const r = await fetch("/race/state", { headers: { Accept: "application/json" } });
+        if (!r.ok) throw new Error(`/race/state failed: ${r.status} ${r.statusText}`);
+        const s = await r.json();
+
+        // Update race clock
+        document.querySelector("#raceClock").textContent =
+          s.clock_ms != null ? fmtClock(s.clock_ms) : "--:--";
+
+        // Update flag banner
+        updateFlagBanner(s.flag);
+
+        // Update event info
+        document.querySelector("#raceName").textContent = s?.event?.name || "—";
+        document.querySelector("#raceDate").textContent = s?.event?.date || "—";
+        document.querySelector("#raceLoc").textContent  = s?.event?.location || "—";
+
+        // Update entrants count
+        document.querySelector("#entrantCount").textContent =
+          (s.standings || []).filter(e => e.enabled !== false).length;
+
+        // Update engine running/idle
+        document.querySelector("#engineRunning").textContent = s.running ? "Running" : "Idle";
+
+        // Render standings preview
+        renderStandings(s);
+
+        // Update footer connection pill
+        setNetStatus(true, "OK");
+      },
+      1000,
+      () => {
+        setNetStatus(false, "Disconnected — retrying…");
+        document.querySelector("#raceClock").textContent = "--:--";
+      }
+    );
+
+    // Start polling loop immediately
+    poller.start();
+  </script>
 </body>
 </html>

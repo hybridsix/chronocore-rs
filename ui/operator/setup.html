@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Operator • Race Setup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!--
+    CSS imports:
+    - base.css: global tokens, type, layout helpers
+    - operator.css: operator-page grids, cards, inputs
+  -->
+  <link rel="stylesheet" href="../css/base.css" />
+  <link rel="stylesheet" href="../css/operator.css" />
+
+  <!--
+    Shared helpers:
+    - base.js exposes PRS namespace: { makePoller, setNetStatus, startWallClock, fmtClock }
+  -->
+  <script src="../js/base.js" defer></script>
+
+  <!--
+    YAML parsing:
+    - We present race presets straight from YAML files (event + race_modes)
+    - js-yaml is small and robust; avoids hand-rolled parsers
+  -->
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js" defer></script>
+
+  <!--
+    Page wiring (all logic lives in this file):
+    - Reads YAML → populates selects
+    - Pulls entrants from /race/state or accepts pasted JSON
+    - Posts /engine/load to merge/replace entrants
+    - One-click Pre + Green flag to launch a race cleanly
+  -->
+  <script src="../js/op_setup.js" defer></script>
+</head>
+
+<body class="setup">
+  <!-- ───────────────────────────────────────────────────────────────
+       HEADER: page title + real-world wall clock
+       ─────────────────────────────────────────────────────────────── -->
+  <header class="app-header">
+    <div class="title">Operator • Race Setup</div>
+    <div class="raceclock-wrap">
+      <div class="raceclock-label">Now</div>
+      <div id="wallClock" class="pill">--:--:--</div>
+    </div>
+  </header>
+
+  <!-- ───────────────────────────────────────────────────────────────
+       MAIN: three cards
+       1) Event & Mode      (YAML → selects)
+       2) Entrants editor   (JSON payload → /engine/load)
+       3) Start controls    (quick Pre/Green helpers)
+       ─────────────────────────────────────────────────────────────── -->
+  <main class="wrap">
+    <!-- Card 1: Event + Race Mode selection -->
+    <section class="card">
+      <h2>Event & Mode</h2>
+
+      <!--
+        grid2: two-column label+selects
+        - Event select populated from event.yaml (list of events OR single event)
+        - Mode select populated from race_modes.yaml (keyed map of modes)
+      -->
+      <div class="grid2">
+        <label>Event
+          <select id="eventSelect" aria-label="Select event"></select>
+        </label>
+
+        <label>Race Mode
+          <select id="modeSelect" aria-label="Select race mode"></select>
+        </label>
+      </div>
+
+      <!--
+        grid3: race metadata
+        - raceName: free text (we derive a default from Event + Mode)
+        - raceDate: defaults to event date (yyyy-mm-dd)
+        - raceLoc : defaults to event location
+      -->
+      <div class="grid3" style="margin-top:8px">
+        <label>Race Name
+          <input id="raceName" type="text" placeholder="Maker Faire Orlando — Sprint #1" />
+        </label>
+
+        <label>Date
+          <input id="raceDate" type="date" />
+        </label>
+
+        <label>Location
+          <input id="raceLoc" type="text" placeholder="Orlando, FL" />
+        </label>
+      </div>
+
+      <!--
+        Mode parameters (read-only preview):
+        We render the selected mode’s parameters (laps, time, cautions, pit rules, etc.)
+        so the operator can sanity-check before loading entrants.
+      -->
+      <details style="margin-top:10px">
+        <summary>Mode Parameters</summary>
+        <div id="modeParams" class="kv"></div>
+      </details>
+    </section>
+
+    <!-- Card 2: Entrants payload -->
+    <section class="card">
+      <h2>Entrants</h2>
+
+      <!--
+        Common workflows:
+        - Pull from current engine state (enabled entrants): fast when re-running a heat
+        - Paste JSON from roster tool (bulk import): for new events or corrected entries
+      -->
+      <div class="btnrow">
+        <button id="btnPullFromState" class="small">Use enabled entrants from /race/state</button>
+        <button id="btnSampleEntrants" class="small">Insert sample JSON</button>
+      </div>
+
+      <!--
+        Entrants payload textbox:
+        - Structure must match /engine/load expectations:
+          { "race_id": <int>, "entrants": [ { entrant fields... }, ... ] }
+        - You decide in backend whether "load" is merge or replace; UI simply sends the body.
+      -->
+      <textarea
+        id="entrantsJson"
+        class="monotext"
+        placeholder='{"race_id":1,"entrants":[{"entrant_id":1,"car_number":11,"name":"Team A","tag":300001,"enabled":true}]}'
+      ></textarea>
+
+      <div class="hint">
+        Posts to <code>/engine/load</code>. Paste from roster, or click “Use enabled entrants” to copy from the current engine state.
+      </div>
+    </section>
+
+    <!-- Card 3: Start helpers -->
+    <section class="card">
+      <h2>Start Race</h2>
+      <!--
+        Recommended rhythm:
+        - Load / Merge entrants
+        - Set Pre (parade/arm)
+        - Go Green when ready
+      -->
+      <div class="btnrow">
+        <button id="btnLoad" class="primary">Load / Merge Entrants</button>
+        <button id="btnPreFlag">Set Pre Flag</button>
+        <button id="btnGreenFlag" class="success">Go Green</button>
+      </div>
+
+      <!--
+        Operator feedback:
+        - op_setup.js writes human-readable status here (success/errors)
+      -->
+      <div id="setupMsg" class="msg" role="status" aria-live="polite"></div>
+    </section>
+  </main>
+
+  <!-- ───────────────────────────────────────────────────────────────
+       FOOTER: connection status + “wall” clock (IRL time)
+       ─────────────────────────────────────────────────────────────── -->
+  <footer class="app-footer">
+    <div class="footer-left">
+      <div class="status-dot" id="netDot"></div>
+      <div id="netMsg">Ready</div>
+    </div>
+    <div id="wallClock" class="pill">--:--:--</div>
+  </footer>
+</body>
+</html>
+

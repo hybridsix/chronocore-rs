@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Operator • Race Control</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/ui/css/base.css">
+  <link rel="stylesheet" href="/ui/css/operator.css">
+  <script src="/ui/js/base.js" defer></script>
+  <script src="/ui/js/op_control.js" defer></script>
+</head>
+<body>
+  <header>
+    <div class="title">Operator • Race Control</div>
+    <div class="raceclock-wrap">
+      <div class="raceclock-label">Race Clock</div>
+      <div id="raceClock" class="pill pill-xl">--:--</div>
+    </div>
+  </header>
+
+  <main class="container grid2-520">
+    <section class="card">
+      <h2>Flags</h2>
+      <div class="flagBanner"><div id="flagBanner" class="flag hidden"><div class="flag__icon"></div><div id="flagLabel" class="flag__label">—</div></div></div>
+      <div class="btnrow">
+        <button class="flagbtn" data-flag="pre">Pre</button>
+        <button class="flagbtn" data-flag="green">Green</button>
+        <button class="flagbtn" data-flag="yellow">Yellow</button>
+        <button class="flagbtn" data-flag="red">Red</button>
+        <button class="flagbtn" data-flag="white">White</button>
+        <button class="flagbtn" data-flag="checkered">Checkered</button>
+      </div>
+      <div class="hint">Posts <code>/engine/flag</code> with <code>{"flag":"…"}</code>.</div>
+    </section>
+
+    <section class="card">
+      <h2>Standings (compact)</h2>
+      <div class="thead compact">
+        <div>#</div><div>Car</div><div>Team</div><div class="right">Lap</div><div class="right">Last</div><div class="right">Best</div>
+      </div>
+      <div id="rows" class="rows compact"></div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-left">
+      <div class="status-dot" id="netDot"></div><div id="netMsg">Connecting…</div>
+    </div>
+    <div id="wallClock" class="pill">--:--:--</div>
+  </footer>
+</body>
+</html>
