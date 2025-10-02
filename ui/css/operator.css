@@ -216,3 +216,11 @@ main { flex: 1; }
 .flagbtn[data-flag="pre"]       { background: rgba(148,163,184,0.10); border-color: rgba(148,163,184,0.30); }
 
 }
+
+/* thin separator used in operator home action column */
+.section-sep {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid #7DFDFE;
+  margin: 10px 0 6px;
+}

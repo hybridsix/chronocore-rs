@@ -12,7 +12,7 @@
     - operator.css : operator-specific styles (grid layout, cards, hero area)
   -->
   <link rel="stylesheet" href="../css/base.css" />
-  <link rel="stylesheet" href="../css/spectator.css" />
+  <!-- <link rel="stylesheet" href="../css/spectator.css" />-->
   <link rel="stylesheet" href="../css/operator.css" />
 
   <!-- 
@@ -58,14 +58,14 @@
           console.error(e);
         }
       }
-      window.open("http://localhost:8000/ui", "_blank");
+      window.open("/ui/spectator/spectator.html", "_blank");
     }
   </script>
 </head>
 
 <body class="index">
   <!-- ───────────────────────────────────────────────────────────────
-       HEADER: wordmark + race clock
+       HEADER: wordmark
        ─────────────────────────────────────────────────────────────── -->
   <header class="app-header">
     <!-- ChronoCore wordmark (static) -->
@@ -78,19 +78,12 @@
         <div class="wordmark__bottom">RACE SOFTWARE</div>
       </div>
     </div>
-
-    <!-- Live race clock (populated from /race/state.clock_ms) -->
-    <div class="raceclock-wrap">
-      <div class="raceclock-label">Race Clock</div>
-      <div id="raceClock" class="pill pill-xl">--:--</div>
-    </div>
   </header>
 
   <!-- ───────────────────────────────────────────────────────────────
        MAIN: split 2-column layout
        LEFT = Navigation / Actions
-       RIGHT = Live Race Status
-       ─────────────────────────────────────────────────────────────── -->
+       ────────────────────────────────────────────────────────────── -->
   <main class="wrap grid2-520">
     <!-- LEFT COLUMN: Operator actions / navigation -->
     <section class="hero card">
@@ -108,55 +101,14 @@
           <button class="btn" onclick="goto('entrants')">Entrants & Tags</button>
           <button class="btn" onclick="goto('stats')">Results & Exports</button>
           <button class="btn" onclick="goto('settings')">Setup & Devices</button>
+            <!-- separator between operator tools and spectator link -->
+            <hr class="section-sep" aria-hidden="true">
           <button class="btn" onclick="openSpectator()">Open Spectator View</button>
         </div>
       </div>
     </section>
 
-    <!-- RIGHT COLUMN: Live race status snapshot -->
-    <section class="card">
-      <h2>Live Status</h2>
 
-      <!-- Flag banner (shares CSS with spectator UI) -->
-      <div class="flagBanner">
-        <div id="flagBanner" class="flag hidden" aria-live="polite">
-          <div class="flag__icon"></div>
-          <div id="flagLabel" class="flag__label">—</div>
-        </div>
-      </div>
-
-      <!-- Key race metadata (from /race/state.event + entrants) -->
-      <div class="kv" style="margin-top:8px">
-        <div class="kvrow">
-          <div class="k">Race</div>
-          <div class="v" id="raceName">—</div>
-        </div>
-        <div class="kvrow">
-          <div class="k">Date / Location</div>
-          <div class="v"><span id="raceDate">—</span> • <span id="raceLoc">—</span></div>
-        </div>
-        <div class="kvrow">
-          <div class="k">Entrants (enabled)</div>
-          <div class="v"><span id="entrantCount">0</span></div>
-        </div>
-        <div class="kvrow">
-          <div class="k">Engine</div>
-          <div class="v"><span id="engineRunning">—</span></div>
-        </div>
-      </div>
-
-      <!-- Collapsible: Top 6 standings preview -->
-      <details style="margin-top:10px">
-        <summary>Top 6 (quick glance)</summary>
-        <!-- Header row -->
-        <div class="thead compact" style="margin-top:8px">
-          <div>#</div><div>Car</div><div>Team</div>
-          <div class="right">Lap</div><div class="right">Last</div><div class="right">Best</div>
-        </div>
-        <!-- Standings rows populated at runtime -->
-        <div id="rows" class="rows compact"></div>
-      </details>
-    </section>
   </main>
 
   <!-- ───────────────────────────────────────────────────────────────
@@ -166,7 +118,7 @@
     <div class="footer-left">
       <!-- Network status dot + message -->
       <div class="status-dot" id="netDot"></div>
-      <div id="netMsg">Connecting…</div>
+      <div id="netMsg"></div>
     </div>
     <!-- Wall clock (real-world clock, separate from race clock) -->
     <div id="wallClock" class="pill">--:--:--</div>
@@ -179,115 +131,55 @@
        PAGE WIRING (poll /race/state and update DOM)
        ─────────────────────────────────────────────────────────────── -->
   <script>
-    // Import helpers from base.js
-    const { startWallClock, setNetStatus, makePoller, fmtClock } = window.PRS;
+   window.addEventListener('DOMContentLoaded', () => {
+  // PRS is guaranteed to exist now because deferred scripts run before this event
 
-    // Kick off footer wall clock
-    startWallClock("#wallClock");
+  // Pull only what we actually use on the Home page
+  const { setNetStatus, makePoller } = window.PRS;
 
-    /**
-     * updateFlagBanner(flag)
-     * ----------
-     * Updates the visual banner at the top of the Live Status card.
-     * Clears banner if no flag is active, otherwise applies the CSS
-     * class corresponding to the flag type (flag--green, flag--yellow, etc.).
-     */
-    function updateFlagBanner(flag) {
-      const banner = document.querySelector("#flagBanner");
-      const label  = document.querySelector("#flagLabel");
-      banner.className = "flag";
-      if (!flag) {
-        banner.classList.add("hidden");
-        label.textContent = "";
-        return;
-      }
-      banner.classList.remove("hidden");
-      banner.classList.add(`flag--${flag}`);
-      label.textContent = flag.toUpperCase();
+  /**
+   * startSimpleWallClock(selector)
+   * ------------------------------
+   * Lightweight real-world clock for the footer.
+   * We use this here to keep Operator Home decoupled from race UI helpers.
+   */
+  function startSimpleWallClock(selector){
+    const el = document.querySelector(selector);
+    if (!el) return;
+    const fmt = (n) => String(n).padStart(2, "0");
+    function tick(){
+      const d = new Date();
+      el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
     }
+    tick();
+    setInterval(tick, 1000);
+  }
 
-    /**
-     * renderStandings(state)
-     * ----------
-     * Renders the compact Top-6 standings list inside the Live Status card.
-     * Uses /race/state.standings array. Displays position, car number, team,
-     * lap count, last lap time, and best lap time.
-     */
-    function renderStandings(state) {
-      const rowsEl = document.querySelector("#rows");
-      rowsEl.innerHTML = "";
-      const rows = (state.standings || []).slice(0, 6);
-      rows.forEach((r, i) => {
-        const el = document.createElement("div");
-        el.className = "row compact";
-        const last = r.last != null ? r.last.toFixed(3) : "—";
-        const best = r.best != null ? r.best.toFixed(3) : "—";
-        el.innerHTML = `
-          <div>${i + 1}</div>
-          <div class="car">${r.car_number ?? ""}</div>
-          <div class="name">${r.name || ""}</div>
-          <div class="right">${r.laps ?? 0}</div>
-          <div class="right">${last}</div>
-          <div class="right">${best}</div>
-        `;
-        rowsEl.appendChild(el);
-      });
+  // Kick off the footer wall clock immediately
+  startSimpleWallClock("#wallClock");
+
+  /**
+   * Lightweight reachability check
+   * ------------------------------
+   * We don't render live race widgets on Home, but it's still useful
+   * to reflect whether the engine answers. This poller only updates the
+   * footer status text and DOES NOT touch any other DOM.
+   */
+  const poller = makePoller(
+    async () => {
+      const r = await fetch("/race/state", { headers: { Accept: "application/json" } });
+      if (!r.ok) throw new Error(`/race/state failed: ${r.status} ${r.statusText}`);
+      // If we can fetch state, mark footer OK (no extra UI here)
+      setNetStatus(true, "OK");
+    },
+    2000, // lighter cadence is fine here
+    () => {
+      setNetStatus(false, "Disconnected — retrying…");
     }
+  );
+  poller.start();
+  });
+</script>
 
-    /**
-     * Poller: fetch /race/state every 1s
-     * ----------
-     * On success:
-     * - Update race clock pill (#raceClock) with formatted ms → mm:ss
-     * - Update flag banner with state.flag
-     * - Update event metadata (race name, date, location)
-     * - Count enabled entrants
-     * - Update engine running/idle indicator
-     * - Render Top-6 standings
-     * On error:
-     * - Show "Disconnected — retrying…" in footer
-     * - Clear race clock pill
-     */
-    const poller = makePoller(
-      async () => {
-        const r = await fetch("/race/state", { headers: { Accept: "application/json" } });
-        if (!r.ok) throw new Error(`/race/state failed: ${r.status} ${r.statusText}`);
-        const s = await r.json();
-
-        // Update race clock
-        document.querySelector("#raceClock").textContent =
-          s.clock_ms != null ? fmtClock(s.clock_ms) : "--:--";
-
-        // Update flag banner
-        updateFlagBanner(s.flag);
-
-        // Update event info
-        document.querySelector("#raceName").textContent = s?.event?.name || "—";
-        document.querySelector("#raceDate").textContent = s?.event?.date || "—";
-        document.querySelector("#raceLoc").textContent  = s?.event?.location || "—";
-
-        // Update entrants count
-        document.querySelector("#entrantCount").textContent =
-          (s.standings || []).filter(e => e.enabled !== false).length;
-
-        // Update engine running/idle
-        document.querySelector("#engineRunning").textContent = s.running ? "Running" : "Idle";
-
-        // Render standings preview
-        renderStandings(s);
-
-        // Update footer connection pill
-        setNetStatus(true, "OK");
-      },
-      1000,
-      () => {
-        setNetStatus(false, "Disconnected — retrying…");
-        document.querySelector("#raceClock").textContent = "--:--";
-      }
-    );
-
-    // Start polling loop immediately
-    poller.start();
-  </script>
 </body>
 </html>

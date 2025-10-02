@@ -5,59 +5,34 @@
   <title>ChronoCore — Loading…</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!--
-    CSS: make external stylesheet NON-BLOCKING for first paint
-    ----------------------------------------------------------
-    Why this matters:
-      - A normal <link rel="stylesheet"> blocks rendering until the CSS file is fetched + parsed.
-      - On app launch, even “local” files add measurable delay before anything appears.
-    Technique:
-      - Load base.css with media="print" so the browser won’t block painting.
-      - On load, flip media to "all" (activates stylesheet after we’ve shown the splash).
-      - <noscript> fallback preserves styles if JS is disabled.
-    Result:
-      - The splash paints immediately with our inline styles (below),
-        then base.css quietly applies once available—no perceived lag.
-  -->
-  <!-- BEFORE (render-blocking):
-  <link rel="stylesheet" href="../css/base.css" />
-  -->
-  <!-- AFTER (non-blocking): -->
+  <!-- Non-blocking load of base.css -->
   <link rel="stylesheet" href="../css/base.css" media="print" onload="this.media='all'">
   <noscript><link rel="stylesheet" href="../css/base.css"></noscript>
 
-  <!--
-    Inline critical styles
-    ----------------------
-    Keep the splash self-sufficient for the first frame:
-      - Avoid external fonts; use a system UI stack
-      - Define the minimal palette/layout we need for a clean first impression
-      - No images required; if you want the PRS mark, inline an SVG (optional)
-  -->
   <style>
     :root {
-      /* Minimal palette consistent with the app theme */
       --bg: #0b1117;
       --card: #0e151c;
-      --ink: #dbeafe;
-      --sub: #9fc7de;
-      --accent: #22a6f2;
+      --ink: #dbeafe;   /* main text */
+      --sub: #9fc7de;   /* secondary text */
       --border: #102030;
+
+      /* Brand block geometry */
+      --logo: 64px;     /* logo display width */
+      --gap:  12px;     /* gap between logo and text stack */
+      --gutter: calc(var(--logo) + var(--gap)); /* left indent for sub/hints/progress */
     }
 
-    /* Ensure we can paint immediately without waiting for base.css tokens */
     html, body { height: 100%; }
     body {
       margin: 0;
       background: var(--bg);
       color: var(--ink);
-      /* Use a native system stack; fast and already loaded */
       font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
       display: grid;
-      place-items: center; /* center splash card vertically + horizontally */
+      place-items: center;
     }
 
-    /* The splash “card” — simple, classy, and cheap to render */
     .card {
       width: min(560px, 92vw);
       padding: 28px 24px;
@@ -65,49 +40,80 @@
       border-radius: 16px;
       background: var(--card);
       box-shadow: 0 12px 24px rgba(0,0,0,.35);
-
-      /* Gentle entrance so it doesn’t pop harshly */
       opacity: 0;
       transform: translateY(6px);
       animation: rise .25s ease-out forwards;
     }
     @keyframes rise { to { opacity: 1; transform: none; } }
 
-    /* Brand row (inline icon + product name) */
-    .brand {
+    /* --- Brand row: logo on left, stacked text on right (matches home) --- */
+    .hero__brand {
       display: flex;
       align-items: center;
-      gap: 14px;
-      margin-bottom: 14px;
+      gap: var(--gap);
+      margin-bottom: 8px;
+      margin-left: 15%;
     }
 
-    /* Inline logo mark — optional; remove if you prefer pure text */
-    .logo { width: 56px; height: 56px; }
+    .hero__brand .logo {
+      width: var(--logo);
+      height: auto;
+      /* Invert black SVG to match light text on dark bg */
+      filter: invert(1);
+      flex: 0 0 var(--logo);
+    }
 
-    .title {
-      font-size: 22px;
+    .brand-text {
+      display: flex;
+      flex-direction: column;
+      line-height: 1.05;
+    }
+
+    .hero__title {
+      margin: 0;
+      text-transform: uppercase;
       font-weight: 800;
       letter-spacing: .02em;
+      font-size: 22px;          /* tune to match home */
     }
-    .sub {
+    .hero__title span { display: block; }  /* force the two-line stack */
+
+    .hero__kicker {
+      margin-top: 2px;
       color: var(--sub);
-      margin: 6px 0 0 70px; /* align with mark edge */
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: .12em;     /* tracking for the small line */
+      text-transform: uppercase;
     }
 
-    /* Indeterminate progress bar: visually communicates “work in progress” without timers */
+    /* Align the supporting lines to the text block left edge (not the card) */
+    .sub, .bar, .hint, .small { 
+      margin-left: 0; 
+    }
+
+    .sub {
+      color: var(--sub);
+      margin-top: 8px;
+      margin-left: 40px;   /* bump it right by 40px */
+      text-align: left;    /* ensure text doesn’t re-center */
+      }
+
     .bar {
-      margin: 18px 0 0 70px;
+      margin-top: 14px;
       height: 6px;
-      width: calc(100% - 70px);
+      width: calc(100% - var(--gutter));
       background: #0c1218;
       border: 1px solid var(--border);
       border-radius: 999px;
       overflow: hidden;
+      margin: 14px auto 0;   /* auto left/right = center horizontally */
+      width: 80%;            /* or whatever % of card width looks good */
     }
     .bar__fill {
       height: 100%;
       width: 28%;
-      background: linear-gradient(90deg, rgba(34,166,242,.2), rgba(34,166,242,.5));
+      background: linear-gradient(90deg, rgba(219,234,254,.2), rgba(219,234,254,.55));
       animation: flow 1.2s ease-in-out infinite;
     }
     @keyframes flow {
@@ -117,56 +123,36 @@
     }
 
     .hint {
-      margin: 10px 0 0 70px;
+      margin-top: 10px;
       color: var(--sub);
       font-size: 14px;
     }
 
-    /* Optional footer line for a version or tiny tips */
     .small {
       font-size: 12px;
       color: #7aa7c2;
-      margin-left: 70px;
       margin-top: 6px;
     }
   </style>
 </head>
 
 <body>
-  <!--
-    Splash content
-    --------------
-    Keep it minimal: brand, short status line, and an indeterminate bar.
-    No JS required for “instant paint”—the non-blocking CSS swap handles the rest.
-    If you want auto-redirect-on-ready behavior, we’ll add a tiny script later that
-    probes /health or /race/state; for now we keep it purely visual per your request.
-  -->
   <div class="card" role="status" aria-live="polite">
-    <div class="brand">
-      <!-- Inline SVG keeps us network-free;
-           Replace with your PRS mark if you like, or remove entirely -->
-      <svg class="logo" viewBox="0 0 64 64" fill="none" aria-hidden="true">
-        <circle cx="32" cy="32" r="30" stroke="url(#g)" stroke-width="2"/>
-        <path d="M18 32h28M32 18v28" stroke="url(#g)" stroke-width="3" stroke-linecap="round"/>
-        <defs>
-          <linearGradient id="g" x1="0" y1="0" x2="64" y2="64">
-            <stop stop-color="#22a6f2"/><stop offset="1" stop-color="#6ee7ff"/>
-          </linearGradient>
-        </defs>
-      </svg>
-      <div class="title">ChronoCore</div>
+    <!-- Brand row identical in structure to home: logo + stacked title + kicker -->
+    <div class="hero__brand">
+      <img class="logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo">
+      <div class="brand-text">
+        <h1 class="hero__title">
+          <span>Chrono</span>
+          <span>Core</span>
+        </h1>
+        <div class="hero__kicker">Race Software</div>
+      </div>
     </div>
-
-    <p class="sub">Starting services…</p>
     <div class="bar"><div class="bar__fill"></div></div>
-    <p class="hint">This will only take a moment.</p>
-    <p class="small">Tip: Keep this window visible—Operator Home will load as soon as the engine is ready.</p>
+        <p class="sub">Starting services…</p>
+    <!-- <p class="hint">This will only take a moment.</p>
+    <p class="small">Tip: keep this window visible — Operator Home loads as soon as the engine is ready.</p> -->
   </div>
-
-  <!--
-    No script block needed for paint speed.
-    If/when you want “auto-advance when /health is OK,” we can add a tiny, deferred script
-    that starts AFTER first paint and will not affect splash immediacy.
-  -->
 </body>
 </html>

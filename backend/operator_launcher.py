@@ -33,7 +33,7 @@ SCREENS = {
 
 BACKEND_URL   = "http://127.0.0.1:8000"
 HEALTH_URL    = f"{BACKEND_URL}/healthz"
-SPECTATOR_URL = f"{BACKEND_URL}/ui/spectator/"
+SPECTATOR_URL = f"{BACKEND_URL}/ui/spectator/spectator.html"
 
 _backend_proc: subprocess.Popen | None = None
 _splash_win: webview.Window | None = None
@@ -126,9 +126,9 @@ def _bootstrap():
     # Create the main window now that services are up
     api = Api()
     _main_win = webview.create_window(
-        title="PRS — Operator Console",
+        title="ChronoCoreRS — Operator Console",
         url=SCREENS["home"].as_uri(),
-        width=1280, height=800,
+        width=1920, height=1080,
         resizable=True, confirm_close=True,
         js_api=api,
     )
