@@ -1,0 +1,140 @@
+# ChronoCore Operator’s Guide
+
+This guide provides step-by-step instructions for race-day staff to run the system, troubleshoot tags, and manage flags.  
+It complements the Technical Reference Guide but stays non-technical and focused on workflows.
+
+---
+
+## 1. Pre-Race Setup
+
+- Start the backend server:  
+  ```bash
+  uvicorn backend.server:app --reload --port 8000
+  ```
+- Open Operator Console UI (`/ui/operator/index.html`).
+- Confirm network & timing receivers are connected.
+- Load the race session (entrant list & race ID).
+
+---
+
+## 2. Pre-Race Mode (Flag = Pre)
+
+- Flag starts in **pre**.  
+- Send karts out for parade/test laps.  
+- Watch standings list: each kart’s tag should appear at least once.  
+- Verify all transponders are working before going green.  
+
+**If a kart’s tag is missing:**  
+- Check hardware placement.  
+- If needed, reassign a tag: `/engine/entrant/assign_tag`.  
+
+---
+
+## 3. Race Start (Flag = Green)
+
+- Announce countdown.  
+- Set flag to **green**.  
+- Race clock starts; standings reset to begin scoring.  
+- First pass after green arms each kart.  
+- Second valid pass (≥ min lap time) starts Lap 1.  
+
+---
+
+## 4. During Race
+
+- **Yellow** → Caution, laps still count, marshals enforce rules.  
+- **Red** → Race halted, laps still increment if karts cross.  
+- **White** → Final lap indicator (optional).  
+- Monitor standings (laps, last, best, pace).  
+- Watch for provisional entrants (“Unknown ####”). Assign them mid-race if needed.  
+- Pit timing (if enabled): verify pit in/out events are captured.  
+
+---
+
+## 5. Race Finish (Flag = Checkered)
+
+- When leader crosses line under checkered, standings and clock freeze.  
+- Additional passes are ignored (classification locked).  
+- Snapshot is now official race result.  
+
+---
+
+## 6. Post-Race Actions
+
+- Export results (CSV or DB snapshot).  
+- Mark DNFs or DQs if necessary.  
+- Clear race session before loading next race.  
+
+---
+
+## 7. Troubleshooting Quick Reference
+
+- **Entrant missing from standings:** check enabled flag or tag assignment.  
+- **Unknown entrant created:** system saw a new tag; assign it to correct racer.  
+- **Clock not running:** verify flag is green.  
+- **Race froze too early:** check for accidental checkered flag.  
+
+---
+
+## 8. Flags & Spectator Screen (2025-09-30)
+
+**Flag meanings shown on the spectator screen:**  
+- **Green** – Race On  
+- **Yellow** – Caution  
+- **Red** – Race Stopped  
+- **White** – Final Lap  
+- **Checkered** – Finish  
+- **Blue** – Driver Swap (used in endurance races for mandatory pit cycles)  
+
+**Changing flags during a race:**  
+- Normally, the Operator Console has flag buttons to click.  
+- If needed, flags can also be set directly via the API (for example, if the UI is not responding).  
+
+**Via PowerShell (API call):**
+```powershell
+Invoke-RestMethod `
+  -Method POST `
+  -Uri "http://localhost:8000/engine/flag" `
+  -Body (@{ flag = "green" } | ConvertTo-Json) `
+  -ContentType "application/json"
+```
+
+Replace `"green"` with the desired flag: `"yellow"`, `"red"`, `"white"`, `"checkered"`, `"blue"`.
+
+---
+
+## 9. Choosing and Using Decoders
+
+The race timing system can work with several different hardware decoders. You only need one active at a time. This is controlled in the configuration file (`config/config.yaml`).
+
+1. **Locate the config file**  
+   - Navigate to the `config/` folder and open `config.yaml`.
+
+2. **Find the `app.decoder` section**  
+   It looks like this:  
+   ```yaml
+   app:
+     decoder:
+       enabled: true
+       mode: ilap_serial
+   ```
+
+3. **Set the decoder mode**  
+   Change the `mode:` line to match the hardware you are using:  
+   - `ilap_serial` → I-Lap (default, most PRS events use this)  
+   - `ambrc_serial` → AMB/MyLaps (older RC-style timing)  
+   - `trackmate_serial` → Trackmate IR timing loop  
+   - `cano_tcp` → UHF readers like Impinj/Core Speedway, connected by network  
+   - `tcp_line` → Generic TCP feed (advanced / simulator)  
+   - `mock` → Test generator (no hardware needed)  
+
+4. **Check serial or TCP settings**  
+   - For USB/serial devices (I-Lap, Trackmate, AMBrc), make sure the `port` is set correctly (`COM3`, `/dev/ttyUSB0`, etc.).  
+   - For networked decoders (cano_tcp, tcp_line), set the `host` and `port`.  
+
+5. **Restart the backend service**  
+   After changing the file, restart the backend so it reloads the config.  
+   The current status can be checked with `/decoder/status`.  
+
+---
+

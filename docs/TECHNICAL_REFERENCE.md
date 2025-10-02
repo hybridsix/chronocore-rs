@@ -1,0 +1,224 @@
+# ChronoCore Technical Reference Guide
+
+This document provides a comprehensive reference to the design, architecture, and operation of the ChronoCore Race Software.  
+It is intended for engineers, contributors, and technically curious operators who want to understand the internals of the system.  
+Lightweight summaries are included for quick readers, while detailed flows and appendices support deeper study.
+
+---
+
+## 1. System Overview
+High-level description of what the software does, major components, and intended use cases.  
+**TBD**
+
+---
+
+## 2. Architecture
+Overview of the backend engine, persistence layer, frontend clients, and interfaces to timing hardware.  
+**TBD**
+
+---
+
+## 3. Decoder Subsystems
+
+All hardware decoders present timing passes into the engine via a uniform interface:
+
+```python
+ENGINE.ingest_pass(tag=<str>, device_id=<optional str>, source="track")
+```
+
+The backend implements several decoder classes in `backend/decoder.py`. Each runs in its own thread, parses hardware output, and emits standardized passes.
+
+### 3.1 Supported Decoder Types (2025)
+
+| Mode              | Class                   | Transport  | Notes |
+|-------------------|-------------------------|------------|-------|
+| `ilap_serial`     | `ILapSerialDecoder`     | USB/serial | Default PRS decoder. SOH-framed lines beginning with `@`. Optional `init_7digit` command resets decoder clock. |
+| `ambrc_serial`    | `AMBRcSerialDecoder`    | USB/serial | AMB/MyLaps legacy protocol. Accepts CSV, key=val, or regex-defined formats. |
+| `trackmate_serial`| `TrackmateSerialDecoder`| USB/serial | Trackmate IR system. Typically `<tag>` or `<decoder>,<tag>`. |
+| `cano_tcp`        | `CANOTcpDecoder`        | TCP line   | Covers CANO protocol (used by some DIY and Impinj Speedway bridges). One line per pass. |
+| `tcp_line`        | `TCPLineDecoder`        | TCP line   | Alias for CANO TCP, kept for backward compatibility. |
+| `mock`            | `MockDecoder`           | internal   | Emits a fake tag on a timer; useful for testing without hardware. |
+
+### 3.2 Configuration (`config/config.yaml`)
+
+Example:
+
+```yaml
+app:
+  decoder:
+    enabled: true
+    mode: ilap_serial
+
+    serial:
+      port: "COM3"
+      baud: 9600
+      timeout_s: 0.25
+
+    tcp:
+      host: "127.0.0.1"
+      port: 3000
+
+    ilap:
+      init_7digit: true
+
+    # Regex override (AMBrc, advanced)
+    # line_regex: "(?i)decoder=(?P<decoder>\\w+).*?tag=(?P<tag>\\w+)"
+
+    reconnect_delay_s: 2.0
+    mock_tag: "3000999"
+    mock_period_s: 6.0
+```
+
+- **Switching decoders**: Change `mode:` to the desired type.  
+- **Serial devices**: Confirm `port` is correct for the host system.  
+- **TCP devices**: Configure `host` and `port`.  
+- **Regex hook**: Provides flexibility for vendor-specific AMBrc variants.  
+- **Pit routing**: `routing.pit_in_receivers` and `routing.pit_out_receivers` can auto-classify passes from specific device IDs.
+
+---
+
+## 4. Race Engine
+
+### 4.1 Logical Flow
+The following describes the authoritative race loop and how it processes events in real time.
+
+**ChronoCore Race Engine — Logical Flow**
+
+1. **Initialization (`engine.load`)**  
+   The operator creates a new race with a unique `race_id` and roster of entrants.  
+   Each entrant has: `entrant_id`, enabled/disabled flag, status (`ACTIVE`, `DISABLED`, `DNF`, `DQ`),  
+   a car number, a name, and optionally a tag UID.  
+   Only enabled entrants are eligible to score laps. The engine builds a race-local tag → entrant map.
+
+2. **Flags and Clock (`engine.set_flag`)**  
+   Race control sets flags (pre, green, yellow, red, white, checkered).  
+   - First transition to green starts the race clock (monotonic timer).  
+   - Red flag: laps still count, but marshals manage discipline.  
+   - Yellow flag: no special logic; cars may pass if needed.  
+   - Checkered: when the leader next crosses, the race clock and standings freeze.
+
+3. **Pass Ingestion (`engine.ingest_pass`)**  
+   A pass arrives with `{ tag, ts_ns?, source, device_id? }`.  
+   - If the tag belongs to an enabled entrant, it is processed.  
+   - If unknown and `auto_provisional = true`, a new provisional entrant is created as `"Unknown ####"`.  
+   - If the entrant is disabled, the pass is ignored.  
+   - **Track passes**: compute lap time, apply filters (`min_lap_s`, `min_lap_s_dup`), update `laps/last/best/pace_5`.  
+   - **Pit passes** (if pit_timing enabled): `pit_in` starts a pit window; `pit_out` closes the window, computes pit time, increments `pit_count`.
+
+4. **Standings Calculation (`engine.snapshot`)**  
+   Called for `/race/state` endpoint.  
+   - Updates clock (unless frozen).  
+   - Entrants are ordered: `laps desc → best asc → last asc → entrant_id asc`.  
+   - Each entrant snapshot includes: `laps`, `last`, `best`, `pace_5`, `gap_s`, `lap_deficit`, `pit_count`, `last_pit_s`.  
+   - Snapshot also reports global state (`flag`, `race_id`, `clock`, `running`, `last_update_utc`).
+
+5. **Event Logging (Journal)**  
+   If persistence is enabled, every pass, flag change, and roster change is appended to SQLite as an event row.  
+   - Every *N* seconds (`checkpoint_s`), a full snapshot is written as a checkpoint.  
+   - On crash recovery: load last checkpoint, replay events to rebuild state.
+
+6. **Roster Management**  
+   Entrants can be enabled/disabled mid-race (`enabled = false` → passes ignored).  
+   - Status (`ACTIVE`, `DISABLED`, `DNF`, `DQ`) can be updated mid-race for classification.  
+   - Tags can be reassigned mid-race (useful for swapping transponders).
+
+7. **Post-Race Analysis**  
+   `/race/state` gives the live, authoritative view.  
+   The SQLite journal provides historical detail for exports, replay, and audits.  
+   Operator can merge or reassign provisionals to real entrants without losing data.
+
+**Summary**  
+The RaceEngine keeps live scoring fast and authoritative in RAM, while optional persistence ensures data durability.  
+Standings are always consistent, flag changes are logged, and provisional entrants capture surprises.  
+This design balances speed, safety, and flexibility for real-world race control.
+
+---
+
+## 5. Persistence and Recovery
+
+ChronoCore uses an SQLite event journal to ensure data durability and enable crash recovery. Every significant event (like a pass, flag change, or roster modification) is logged as an event row.
+
+- **Checkpoints**: Every N seconds (`checkpoint_s`), the engine writes a full snapshot of the race state to the database. This ensures that in the event of a crash, we can reload the last checkpoint and replay subsequent events to reconstruct the race.
+
+- **Recovery**: On restart, the engine loads the last checkpoint and replays all events from that point forward, ensuring no data loss and consistent standings.
+
+This persistence layer balances speed and reliability, providing a durable record for audits and post-race analysis.
+
+---
+
+## 6. Database Schema
+
+The core race data is stored in an SQLite database. Key tables include:
+
+- **`passes`**: Stores each timing pass event with fields like `tag`, `timestamp`, `entrant_id`, and `lap_number`.
+
+- **`transponders`**: Maps physical transponder tags to entrants and their car numbers.
+
+- **`events`**: Logs all flag changes, roster updates, and other significant race events for auditing and replay.
+
+Future sections can include example queries, migration scripts, and how to extend the schema.
+
+---
+
+## 7. API Endpoints
+
+ChronoCore exposes a set of REST endpoints via FastAPI. Below is a detailed reference of each endpoint, including methods, parameters, responses, and key notes.
+
+### 7.1 API Reference Table
+
+| Endpoint          | Method | Params / Body                                  | Response                                            | Notes                                                                 |
+|-------------------|--------|------------------------------------------------|-----------------------------------------------------|-----------------------------------------------------------------------|
+| `/race/state`     | GET    | None                                           | `{ race_id, race_type, flag, running, clock_ms, ... }` | Returns the authoritative snapshot of current race state.            |
+|                   |        |                                                | `standings: [ { entrant_id, tag, car_number, ... } ]`| UIs poll this at ~3 Hz for live updates.                              |
+|                   |        |                                                | `last_update_utc, features`                         |                                                                       |
+| `/engine/flag`    | POST   | `{ "flag": "pre" | "green" | "yellow" ... }` | `{ "ok": true }`                                     | Sets the current race flag. `green` starts the clock; `checkered` freezes it. `blue` is informational only. |
+| `/engine/pass`    | POST   | `{ tag, ts_ns?, source, device_id? }`          | `{ ok, entrant_id, lap_added, lap_time_s, reason }` | Ingests a timing pass. Adds a lap if Δt ≥ min_lap_s (default ~5.0s).  |
+| `/engine/load`    | POST   | `{ race_id, entrants: [ ... ] }`               | `{ "ok": true }`                                     | Initializes a new race session with a given roster.                   |
+| `/engine/snapshot`| GET    | None                                           | Same as `/race/state` response                      | Alias for `/race/state`.                                              |
+
+### 7.2 Spectator UI Contract
+- **Single source of truth:** `/race/state` only.
+- **Flag classes:** `.flag.flag--{lowercase_color}` plus modifiers:
+  - `.flag.is-pulsing` for attention states (yellow, red, blue, checkered).
+  - `.flag.flag--green.flash` one-shot on entering green.
+- **Accessibility:** Banner label shows `"Color - Meaning"` (e.g., *“White - Final Lap”*, *“Blue - Driver Swap”*).
+
+### 7.3 Static Pathing
+- FastAPI mounts UI at `/ui`.
+- Expected structure: **TBD**
+
+---
+
+## 8. Frontend Clients
+Spectator and operator UIs, polling strategy, flag banner logic, and leaderboard updates.  
+**TBD**
+
+---
+
+## 9. Configuration
+YAML configuration, profiles, fallback mechanisms, and safety defaults.  
+**TBD**
+
+---
+
+## 10. Simulation Tools
+Dummy data loader, simulator feed, and testing strategies.  
+**TBD**
+
+---
+
+## 11. Rules Integration
+How the engine relates to PRS rules, penalties, and race types.  
+**TBD**
+
+---
+
+## 12. Appendices
+- Migration scripts (e.g., `migrate_add_car_num.py`)  
+- Dummy loaders (`load_dummy_from_xlsx.py`)  
+- Example database exports  
+- Future feature roadmap  
+
+---
+
+_Last updated: September 2025_
