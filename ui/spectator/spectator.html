@@ -19,7 +19,7 @@
            onerror="this.onerror=null;this.src='/ui/PRS_Logo.svg'">
     </div>
     <div class="title">Live Timing — Spectator</div>
-        <!-- Simulator status pill (hidden until state arrives) -->
+    <!-- Simulator status pill (hidden until state arrives) -->
     <div class="sim-wrap">
       <div class="pill hidden" id="simPill" aria-live="polite">SIMULATOR ACTIVE</div>
     </div>
@@ -65,7 +65,12 @@
       async function fetchJSON(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error(r.status); return r.json(); }
       function makePoller(fn,ms,onErr){ let t=null; const tick=async()=>{ try{await fn();}catch(e){onErr&&onErr(e);} finally{ t=setTimeout(tick,ms);} }; return { start(){ if(!t) tick(); }, stop(){ if(t) clearTimeout(t); t=null; } }; }
       function setNetStatus(ok,msg){ const d=$("#netDot"), m=$("#netMsg"); if(d) d.style.background = ok ? "var(--ok)" : "var(--error)"; if(m) m.textContent = msg || (ok?"OK":"Disconnected"); }
-      function fmtClock(ms){ if(ms==null) return "--:--"; const s=Math.max(0,Math.floor(ms/1000)); const m=Math.floor(s/60); const ss=s%60; return `${String(m).padStart(2,"0")}:${String(ss).padStart(2,"0")}`; }
+      function fmtClock(ms){
+        if(ms==null) return "--:--";
+        const s=Math.max(0,Math.floor(ms/1000));
+        const m=Math.floor(s/60), ss=s%60;
+        return `${String(m).padStart(2,"0")}:${String(ss).padStart(2,"0")}`;
+      }
       function startWallClock(sel){ const el=$(sel); const up=()=>{ const d=new Date(); el.textContent = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`; }; up(); const id=setInterval(up,1000); return ()=>clearInterval(id); }
       window.PRS = { $, fetchJSON, makePoller, setNetStatus, fmtClock, startWallClock };
     })();
@@ -83,14 +88,18 @@
       blue:      "Blue - Driver Swap"
     };
 
-
-
     // Footer wall clock
     startWallClock("#wallClock");
 
-    // Renderers
-    function renderClock(clock_ms) {
-      $("#raceClock").textContent = (clock_ms == null) ? "--:--" : fmtClock(clock_ms);
+    // --- Smooth race clock state -------------------------------------------
+    let running = false;
+    let lastSnapTime = 0;  // ms (Date.now()) when snapshot arrived
+    let lastClockMs  = 0;  // snapshot.clock_ms at that moment
+
+    function renderClockTick(){
+      let ms = lastClockMs;
+      if (running) ms += (Date.now() - lastSnapTime);
+      $("#raceClock").textContent = fmtClock(ms);
     }
 
     function renderFlag(flag) {
@@ -110,17 +119,13 @@
       }
 
       const prev = host.dataset.currentFlag || '';
-
-      // Base class -> color + effects come from CSS
       host.className = `flag flag--${f}`;
 
-      // Continuous pulse on caution/attention states
       const pulsing = new Set(['yellow','red','blue','checkered']);
       if (pulsing.has(f)) host.classList.add('is-pulsing'); else host.classList.remove('is-pulsing');
 
-      // One-shot flash when entering GREEN
       if (f === 'green' && prev !== 'green') {
-        host.classList.remove('flash'); void host.offsetWidth; // restart animation
+        host.classList.remove('flash'); void host.offsetWidth;
         host.classList.add('flash');
         host.addEventListener('animationend', (e) => {
           if (e.animationName === 'greenFlash') host.classList.remove('flash');
@@ -129,20 +134,18 @@
         host.classList.remove('flash');
       }
 
-      // Label + accessible title
       const text = FLAG_TITLES[f] || (f.charAt(0).toUpperCase() + f.slice(1));
       lbl.textContent = text;
       host.setAttribute('title', text);
       host.setAttribute('aria-label', text);
-
       host.dataset.currentFlag = f;
     }
-
 
     function renderStandings(rows) {
       const rowsEl = $("#rows");
       rowsEl.innerHTML = "";
       if (!Array.isArray(rows) || !rows.length) return;
+
       rows.forEach((r, i) => {
         const el = document.createElement("div");
         el.className = "row";
@@ -166,39 +169,47 @@
     function renderSim(sim, label) {
       const el = document.querySelector('#simPill');
       if (!el) return;
-
-      const on = (sim === true);         // only show when sim=true
-
+      const on = (sim === true);
       if (on) {
         el.textContent = label && String(label).trim().length ? label : "SIMULATOR ACTIVE";
         el.title = el.textContent;
         el.classList.remove('hidden');
         el.classList.add('pulsing');
       } else {
-        el.classList.add('hidden');      // remove from layout
+        el.classList.add('hidden');
         el.classList.remove('pulsing');
-        el.textContent = "";             // optional: clear text
+        el.textContent = "";
         el.removeAttribute('title');
       }
     }
 
-
-
-    // Poll /race/state at ~3 Hz
+    // Poll /race/state at ~3 Hz and tick clock locally at 10 Hz
     function extractRows(s){ return s?.standings ?? s?.entries ?? s?.rows ?? []; }
     const poller = makePoller(async () => {
       const s = await fetchJSON("/race/state");
-      renderClock(s.clock_ms);
+
+      // Update smooth clock state
+      running      = !!s.running;
+      lastClockMs  = s.clock_ms || 0;
+      lastSnapTime = Date.now();
+
       renderFlag(s.flag);
       renderStandings(extractRows(s));
       renderSim(s.sim, s.sim_label);
+
       const n = Array.isArray(s?.standings) ? s.standings.length : 0;
       setNetStatus(true, `OK — ${n} karts`);
     }, 333, () => {
       setNetStatus(false, "Disconnected — retrying…");
-      renderClock(null);
+      // Keep last good clock rendered; don't blank it here
     });
     poller.start();
+
+    // Local clock ticker
+    setInterval(renderClockTick, 100);
+
+    // Initial placeholder render
+    renderClockTick();
   </script>
 </body>
 </html>
