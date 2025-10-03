@@ -1,0 +1,199 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ChronoCore — Setup</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Reuse your operator styles + shared helpers -->
+  <link rel="stylesheet" href="../css/operator.css" />
+  <script src="../js/base.js" defer></script>
+  <!-- The simplest possible page to verify manual engine host + role -->
+  <style>
+    /* Page-local nudges so the form breathes nicely inside your card */
+    .setup-grid { display: grid; gap: 14px; }
+    .row { display: grid; grid-template-columns: 160px 1fr; gap: 10px; align-items: center; }
+    .row label { color: #9aa7b3; }
+    .row input[type="text"], .row select {
+      background: #0f141a; color: #e6ebf0; border: 1px solid #0b2230; border-radius: 8px;
+      padding: 10px 12px; width: 100%;
+    }
+    .actions { display: flex; gap: 8px; }
+    .note { color: #9aa7b3; font-size: 14px; }
+    .ok { color: #9ae6b4; }
+    .err { color: #fca5a5; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div class="brand">
+      <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" />
+      <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+        <div class="wordmark__top">
+          <span class="wordmark__big">CHRONO</span>
+          <span class="wordmark__big">CORE</span>
+        </div>
+        <div class="wordmark__bottom">RACE SOFTWARE</div>
+      </div>
+    </div>
+    <!-- Right side empty on Setup -->
+    <div></div>
+  </header>
+
+  <main>
+    <div class="wrap">
+      <section class="card" style="padding: 18px;">
+        <h2 style="margin:0 0 12px 0;">Setup</h2>
+
+        <div class="setup-grid">
+          <!-- Role -->
+          <div class="row">
+            <label for="role">Machine role</label>
+            <select id="role" name="role">
+              <option value="spectator">Spectator</option>
+              <option value="operator">Operator</option>
+              <option value="hybrid">Hybrid</option>
+            </select>
+          </div>
+
+          <!-- Engine host -->
+          <div class="row">
+            <label for="engineHost">Engine host</label>
+            <input id="engineHost" type="text" placeholder="e.g. 192.168.1.50:8000" />
+          </div>
+
+          <!-- Test + Save -->
+          <div class="row">
+            <label aria-hidden="true"></label>
+            <div class="actions">
+              <button class="btn" id="btnTest">Test Connection</button>
+              <button class="btn btn-primary" id="btnSave">Save</button>
+            </div>
+          </div>
+
+          <!-- Status line -->
+          <div class="row">
+            <label aria-hidden="true"></label>
+            <div class="note" id="statusNote">Enter host and click “Test”.</div>
+          </div>
+
+          <hr class="section-sep" />
+
+          <!-- Convenience -->
+          <div class="row">
+            <label aria-hidden="true"></label>
+            <div class="actions">
+              <button class="btn" id="btnOpenSpectator">Open Spectator</button>
+              <button class="btn" id="btnHome">Back to Home</button>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-left">
+      <div class="status-dot" id="netDot"></div>
+      <div id="netMsg"></div>
+    </div>
+    <div class="footer-right">
+      <div id="wallClock" class="pill">--:--:--</div>
+    </div>
+  </footer>
+
+  <script>
+    // Page wiring (safe timing)
+    window.addEventListener('DOMContentLoaded', () => {
+      const { setNetStatus, makePoller, startWallClock } = window.PRS;
+
+      // Footer utilities
+      startWallClock('#wallClock');
+      const poller = makePoller(
+        async () => {
+          const r = await fetch('/race/state', { headers: { Accept: 'application/json' } });
+          if (!r.ok) throw new Error(r.status);
+          setNetStatus(true, 'OK');
+        },
+        2000,
+        () => setNetStatus(false, 'Disconnected — retrying…')
+      );
+      poller.start();
+
+      // Elements
+      const roleEl = document.querySelector('#role');
+      const hostEl = document.querySelector('#engineHost');
+      const note = document.querySelector('#statusNote');
+      const btnTest = document.querySelector('#btnTest');
+      const btnSave = document.querySelector('#btnSave');
+      const btnHome = document.querySelector('#btnHome');
+      const btnOpenSpectator = document.querySelector('#btnOpenSpectator');
+
+      // Helpers: read/write current client settings
+      function loadClientSettings() {
+        // Today: from localStorage; Future: from YAML via pywebview or backend API
+        const role = localStorage.getItem('cc.role') || 'spectator';
+        const host = localStorage.getItem('cc.engine_host') || '';
+        roleEl.value = role;
+        hostEl.value = host;
+      }
+
+      function saveClientSettings(role, host) {
+        localStorage.setItem('cc.role', role);
+        localStorage.setItem('cc.engine_host', host);
+
+        // If desktop app exposes a save hook, call it as well so it can persist to YAML.
+        if (window.pywebview?.api?.save_client_settings) {
+          try { window.pywebview.api.save_client_settings(role, host); } catch {}
+        }
+      }
+
+      async function testHost(host) {
+        const url = `http://${host}/race/state`; // health check; change to /health if you add it
+        const t0 = performance.now();
+        try {
+          const r = await fetch(url, { cache: 'no-store' });
+          if (!r.ok) throw new Error(String(r.status));
+          await r.json();
+          const ms = Math.round(performance.now() - t0);
+          note.innerHTML = `<span class="ok">OK</span> — ${host} responded in ${ms} ms`;
+          return true;
+        } catch (e) {
+          note.innerHTML = `<span class="err">Failed</span> — could not reach ${host}`;
+          return false;
+        }
+      }
+
+      // Init
+      loadClientSettings();
+      note.textContent = 'Enter host and click “Test”.';
+
+      // Wire buttons
+      btnTest.addEventListener('click', async () => {
+        const host = hostEl.value.trim();
+        if (!host) { note.textContent = 'Please enter a host (e.g., 192.168.1.50:8000).'; return; }
+        await testHost(host);
+      });
+
+      btnSave.addEventListener('click', async () => {
+        const role = roleEl.value;
+        const host = hostEl.value.trim();
+        if (!host) { note.textContent = 'Please enter a host before saving.'; return; }
+        const ok = await testHost(host);   // optional: require success before saving
+        if (ok) {
+          saveClientSettings(role, host);
+          note.innerHTML = `<span class="ok">Saved</span> — role=${role}, engine=${host}`;
+        }
+      });
+
+      btnHome.addEventListener('click', () => {
+        location.href = '/ui/operator/index.html';
+      });
+
+      btnOpenSpectator.addEventListener('click', () => {
+        // If your spectator page supports using a remote engine, you’ll read cc.engine_host there.
+        window.open('/ui/spectator/spectator.html', '_blank');
+      });
+    });
+  </script>
+</body>
+</html>

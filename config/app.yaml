@@ -24,3 +24,26 @@ decoder:            # transponder input module
   filters:
     debounce_ms: 150
     min_signal: -70
+
+# ─────────────────────────────────────────────────────────────────────
+# Client (per-machine) UI/runtime preferences
+# NOTE:
+# - This is NOT race data; it configures how this machine behaves.
+# - Safe for end users to edit on a spectator PC.
+# - We keep it manual-only for now: no auto-discovery in this phase.
+# ─────────────────────────────────────────────────────────────────────
+client:
+  # Which UI role should this machine default to?
+  #   spectator → hide/disable operator-only actions; Spectator is the primary flow
+  #   operator  → full operator tools; normal console behavior
+  #   hybrid    → show everything; operator chooses per session
+  role: spectator
+
+  # Where is the race engine running? Use hostname:port or IP:port.
+  # Examples: "192.168.1.50:8000", "scorerpc.local:8000"
+  engine_host: "192.168.1.50:8000"
+
+  # Discovery behavior (manual only in this phase).
+  # Reserved for future: auto (mDNS/broadcast).
+  engine_discovery: manual
+

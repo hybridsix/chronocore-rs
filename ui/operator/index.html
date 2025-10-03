@@ -67,18 +67,22 @@
   <!-- ───────────────────────────────────────────────────────────────
        HEADER: wordmark
        ─────────────────────────────────────────────────────────────── -->
-  <header class="app-header">
-    <!-- ChronoCore wordmark (static) -->
-    <div class="brand">
-      <div class="brand__wordmark" aria-label="ChronoCore Race Software">
-        <div class="wordmark__top">
-          <span class="wordmark__big">CHRONO</span>
-          <span class="wordmark__big">CORE</span>
-        </div>
-        <div class="wordmark__bottom">RACE SOFTWARE</div>
+<header class="app-header">
+  <!-- ChronoCore brand (logo + wordmark) -->
+  <div class="brand">
+    <!-- Logo on the left -->
+    <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo">
+
+    <!-- Stacked wordmark on the right -->
+    <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+      <div class="wordmark__top">
+        <span class="wordmark__big">CHRONO</span>
+        <span class="wordmark__big">CORE</span>
       </div>
+      <div class="wordmark__bottom">RACE SOFTWARE</div>
     </div>
-  </header>
+  </div>
+</header>
 
   <!-- ───────────────────────────────────────────────────────────────
        MAIN: split 2-column layout
@@ -96,7 +100,7 @@
 
         <!-- Navigation buttons (goto() handles routing) -->
         <div class="hero__actions">
-          <button class="btn btn-primary" onclick="goto('setup')">Race Setup</button>
+          <button class="btn btn-primary" onclick="goto('race_setup')">Race Setup</button>
           <button class="btn" onclick="goto('race_control')">Start / Race Control</button>
           <button class="btn" onclick="goto('entrants')">Entrants & Tags</button>
           <button class="btn" onclick="goto('stats')">Results & Exports</button>

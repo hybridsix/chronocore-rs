@@ -1,81 +1,88 @@
 /* ==========================================================================
    Operator Console — page styles
    - Dark theme + sticky footer layout
-   - Two-column hero: brand (left) / actions (right)
-   - ChronoCore header wordmark
+   - Header: logo + stacked wordmark (compact, left-aligned)
+   - Main "hero" card: two columns (brand left / actions right)
+   - Utility bits: section separator, flag button styles
    ========================================================================== */
 
-/* ===== Global layout vars ===== */
+/* ===== Global layout / tokens ===== */
 :root {
-  --footer-h: 48px;        /* footer height for consistent spacing */
-  --brand-nudge-x: 8px;    /* tiny optical push to the right; tweak (px) */
+  --footer-h: 48px;             /* footer height for consistent spacing */
+  --brand-nudge-x: 8px;         /* tiny optical push for hero brand (px) */
+  /* color tokens come from base.css; provide dark fallbacks */
+  --bg: #0c131a;
+  --text: #e6ebf0;
+  --muted: #9aa7b3;
 }
 
-/* ===== Base layout & theme ===== */
+/* ===== Base page layout ===== */
 html, body { height: 100%; }
 
 body {
   margin: 0;
-  display: flex;                 /* header | main | footer */
+  display: flex;                /* header → main → footer */
   flex-direction: column;
-  background: var(--bg, #0c131a);
-  color: var(--text, #e6ebf0);
-  font-family: var(--sans, system-ui, Segoe UI, Roboto, Arial, sans-serif);
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--sans, system-ui, "Segoe UI", Roboto, Arial, sans-serif);
   font-size: var(--fs-base, 16px);
 }
 
-/* ===== Header ===== */
+/* ===== Header (compact, left-aligned brand row) ===== */
 .app-header {
   display: flex;
   align-items: center;
-  padding: 10px 16px;
+  padding: 8px 16px;            /* Y then X: tighten vertical height */
   border-bottom: 1px solid #0b2230;
 }
 
-/* ChronoCore wordmark in header */
-.brand {
-  display: inline-grid;
-  grid-auto-flow: column;
+/* Header brand: logo (fixed) + stacked wordmark */
+.app-header .brand {
+  display: flex;
   align-items: center;
   gap: 12px;
 }
-.brand__logo {
-  height: 36px;
-  width: auto;
-  display: block;
-  filter: drop-shadow(0 2px 6px rgba(0,0,0,.45));
+
+/* Header logo only (scoped) — keeps black SVG white on dark header */
+.app-header .brand-logo {
+  width: 64px;                  /* adjust to taste without growing header */
+  height: auto;
+  flex: 0 0 auto;
+  filter: invert(1);
 }
-.brand__wordmark {
+
+/* Wordmark stack (two big lines + small kicker) */
+.app-header .brand__wordmark {
+  display: flex;
+  flex-direction: column;
   line-height: 1;
-  color: #e9f1f7;
-  text-transform: uppercase;
-  text-shadow:
-    0 0 2px rgba(255,255,255,0.25),
-    0 2px 10px rgba(0,0,0,0.45);
 }
-.wordmark__top {
+.app-header .wordmark__top {
   display: grid;
-  gap: 4px;
+  gap: 2px;                     /* space between CHRONO / CORE */
   letter-spacing: 0.06em;
 }
-.wordmark__big {
-  display: block;
+.app-header .wordmark__big {
+  margin: 0;
+  line-height: 1;
   font-weight: 800;
-  font-size: clamp(18px, 3.0vw, 28px);
+  font-size: clamp(18px, 3vw, 28px);
 }
-.wordmark__bottom {
-  margin-top: 4px;
+.app-header .wordmark__bottom {
+  margin-top: 3px;
+  line-height: 1;
   font-weight: 700;
   font-size: clamp(11px, 1.4vw, 14px);
   letter-spacing: 0.18em;
   opacity: 0.92;
 }
 
-/* ===== Main grows to push footer to bottom ===== */
+/* ===== Main grows to push footer down ===== */
 main { flex: 1; }
 .wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
 
-/* ===== Card ===== */
+/* ===== Cards ===== */
 .card {
   background: #0f141a;
   border: 1px solid #0b0f13;
@@ -83,15 +90,17 @@ main { flex: 1; }
   box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0,0,0,.35);
 }
 
-/* ===== Hero layout (two columns) ===== */
+/* ===== Hero (two-column layout) ===== */
 .hero { padding: 0; }
 
 .hero__inner {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 360px; /* left pane grows, right pane fixed */
+  grid-template-columns: 1fr 360px;  /* left grows, right fixed */
   min-height: 320px;
 }
+
+/* vertical divider between columns */
 .hero__inner::after {
   content: "";
   position: absolute;
@@ -102,33 +111,36 @@ main { flex: 1; }
   opacity: .9;
 }
 
-/* ===== Left pane: brand block (logo + subline) ===== */
+/* Left pane: brand block (centered within left column) */
 .hero__brand {
   display: grid;
-  justify-items: center;         /* center horizontally in left pane */
-  align-content: start;          /* top aligned */
+  justify-items: center;
+  align-content: start;
   text-align: center;
   gap: 10px;
   padding: 24px;
-  transform: translateX(var(--brand-nudge-x));
+  transform: translateX(var(--brand-nudge-x)); /* tiny optical nudge */
 }
+
 .hero__brand .brand-mark {
   height: 84px;
   width: auto;
   display: block;
 }
+
 .hero__brand .sub {
   margin: 0;
-  color: var(--muted, #9aa7b3);
+  color: var(--muted);
 }
 
-/* ===== Right pane: action buttons ===== */
+/* Right pane: action buttons */
 .hero__actions {
   display: grid;
   gap: 12px;
   align-content: start;
   padding: 24px;
 }
+
 .btn {
   appearance: none;
   border: 1px solid #0b2230;
@@ -143,60 +155,62 @@ main { flex: 1; }
 }
 .btn:hover { filter: brightness(1.08); }
 .btn:active { transform: translateY(1px); }
-.btn-primary {
+.btn.btn-primary {
   background: linear-gradient(180deg, rgba(0,180,255,.22), rgba(0,180,255,.06));
   color: #dff3ff;
+}
+
+/* Section separator (between operator tools and spectator link) */
+.section-sep {
+  width: 100%;
+  border: 0;
+  border-top: 1px solid rgba(160,190,210,0.25);
+  margin: 10px 0 6px;
 }
 
 /* ===== Sticky footer ===== */
 .app-footer {
   display: flex;
-  justify-content: space-between;
+  justify-content: space-between;      /* room for right-aligned widgets if needed */
   align-items: center;
   padding: 10px 16px;
   border-top: 1px solid #0b2230;
   font-size: 14px;
   min-height: var(--footer-h);
 }
+
 .footer-left { display: flex; align-items: center; gap: 8px; }
 .footer-right { opacity: .8; }
+
+/* Net status dot (color is driven by JS via CSS vars or class) */
 .status-dot {
   width: 10px; height: 10px; border-radius: 50%;
   background: var(--ok, #17c964);
 }
 
-/* ===== Anchored version pill ===== */
+/* Version pill floating above footer */
 .version-pill {
   position: fixed;
   left: 16px;
-  bottom: calc(var(--footer-h, 48px) + 8px);
+  bottom: calc(var(--footer-h) + 8px);
   padding: 4px 10px;
   border-radius: 999px;
   background: #12171c;
   border: 1px solid #0b2230;
   font-size: 12px;
-  color: var(--text, #e6ebf0);
+  color: var(--text);
   opacity: .95;
   cursor: pointer;
 }
 .version-pill:hover { filter: brightness(1.08); }
 
-/* ===== Responsive ===== */
-@media (max-width: 900px) {
-  .hero__inner { grid-template-columns: 1fr; }
-  .hero__inner::after { display: none; }
-  .hero__brand { align-content: start; transform: none; }
-
-
-  /* ===== Operator: Flag controls ============= */
-/* Row layout for the flag buttons */
+/* ===== Flag controls (operator) — standalone, NOT limited to small screens ===== */
 .btnrow {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-/* Base button style for flags (separate from .btn used elsewhere) */
 .flagbtn {
   padding: 8px 12px;
   border-radius: 10px;
@@ -206,21 +220,22 @@ main { flex: 1; }
   cursor: pointer;
 }
 
-/* Optional gentle tints per flag; banner remains the primary indicator */
 .flagbtn[data-flag="green"]     { background: rgba(34,197,94,0.12);   border-color: rgba(34,197,94,0.35); }
 .flagbtn[data-flag="yellow"]    { background: rgba(250,204,21,0.14);  border-color: rgba(250,204,21,0.40); }
 .flagbtn[data-flag="red"]       { background: rgba(239,68,68,0.14);   border-color: rgba(239,68,68,0.40); }
 .flagbtn[data-flag="white"]     { background: rgba(226,232,240,0.10); border-color: rgba(203,213,225,0.35); }
-.flagbtn[data-flag="blue"]      { background: rgba(59,130,246,0.14);  border-color: rgba(59,130,246,0.40); } /* Blue supported */
+.flagbtn[data-flag="blue"]      { background: rgba(59,130,246,0.14);  border-color: rgba(59,130,246,0.40); }
 .flagbtn[data-flag="checkered"] { background: rgba(148,163,184,0.12); border-color: rgba(148,163,184,0.35); }
 .flagbtn[data-flag="pre"]       { background: rgba(148,163,184,0.10); border-color: rgba(148,163,184,0.30); }
 
-}
-
-/* thin separator used in operator home action column */
-.section-sep {
-  width: 100%;
-  border: 0;
-  border-top: 1px solid #7DFDFE;
-  margin: 10px 0 6px;
+/* ===== Responsive tweaks ===== */
+@media (max-width: 900px) {
+  .hero__inner {
+    grid-template-columns: 1fr;        /* stack columns on small screens */
+  }
+  .hero__inner::after { display: none; } /* hide divider */
+  .hero__brand {                          /* remove optical nudge on narrow */
+    align-content: start;
+    transform: none;
+  }
 }

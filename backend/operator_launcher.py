@@ -24,6 +24,7 @@ def ui(path: str) -> str:
 SCREENS = {
     "splash":       OP_UI_DIR / "splash.html",
     "home":         OP_UI_DIR / "index.html",
+    "race_setup":   OP_UI_DIR / "race_setup.html",
     "race_control": OP_UI_DIR / "race_control.html",
     "entrants":     OP_UI_DIR / "entrants.html",
     "stats":        OP_UI_DIR / "stats.html",
@@ -129,7 +130,9 @@ def _bootstrap():
         title="ChronoCoreRS — Operator Console",
         url=SCREENS["home"].as_uri(),
         width=1920, height=1080,
-        resizable=True, confirm_close=True,
+        resizable=True, 
+        confirm_close=False,
+        on_top=False,
         js_api=api,
     )
     api.window = _main_win
