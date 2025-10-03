@@ -213,6 +213,78 @@ How the engine relates to PRS rules, penalties, and race types.
 
 ---
 
+## 11. Engine Host Discovery
+
+## Background
+
+Older builds assumed the Operator UI always talked to `localhost:8000`. This created confusion when running the UI remotely or in the field.
+
+The system now defines **engine host resolution policy** in `app.yaml` as the single source of truth. UIs follow the same precedence rules everywhere.
+
+## Location
+
+Defaults live in:
+
+- `config/app.yaml` → `app.client.engine`
+- `config/config.yaml` → (deprecated; may mirror for legacy tools)
+
+## Precedence Order
+
+1. **Same-origin** (if `prefer_same_origin: true` and UI is served by the engine)  
+2. **Device override** (if `allow_client_override: true` and set in localStorage `cc.engine_host`)  
+3. **Policy fallback** (from YAML):  
+   - `mode: fixed` → `fixed_host`  
+   - `mode: localhost` → `127.0.0.1:8000`  
+   - `mode: auto` → try same-origin, then fixed_host, then localhost  
+4. **Last resort**: same-origin again if available.
+
+## Example Configurations
+
+### Development laptop
+
+```yaml
+app:
+  client:
+    engine:
+      mode: localhost
+      allow_client_override: true
+```
+
+### Field deployment (fixed IP)
+
+```yaml
+app:
+  client:
+    engine:
+      mode: fixed
+      fixed_host: "10.77.0.10:8000"
+      allow_client_override: false
+```
+
+### Mixed environment
+
+```yaml
+app:
+  client:
+    engine:
+      mode: auto
+      fixed_host: "10.77.0.10:8000"
+      prefer_same_origin: true
+      allow_client_override: true
+```
+
+## Operator UI Behavior
+
+- **Settings page** shows the configured host and whether overrides are allowed.  
+- **Footer status pill** always displays the *effective engine host* and connection status.  
+- **Race Control and Setup** pages always use the resolved host; they do not hardcode `localhost`.
+
+## Notes for Developers
+
+- The launcher (desktop, `file://`) must bootstrap the YAML defaults, since same-origin is not possible there.  
+- Browser-served UIs can skip host strings entirely when `prefer_same_origin` is true.
+
+
 ## 12. Appendices
 - Migration scripts (e.g., `migrate_add_car_num.py`)  
 - Dummy loaders (`load_dummy_from_xlsx.py`)  

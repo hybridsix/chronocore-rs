@@ -1,23 +1,44 @@
+# =============================================================================
+# race_modes.yaml — Race mode definitions (limits, labels, min lap)
+# =============================================================================
+# Each mode defines its guardrails and operator-facing label. The engine will
+# combine these with app.yaml defaults (e.g., default_min_lap_s) as needed.
+#
+# Keys:
+#   label        : UI label
+#   min_lap_s    : minimum lap time in seconds for filtering
+#   limit        : time or lap cap
+#     type       : "time" | "laps"
+#     value      : seconds (when type=="time") or integer laps (when "laps")
+#   scoring      : optional per-mode hints
+# =============================================================================
+
 modes:
+
   sprint:
-    label: "Sprint"
-    limit: { type: time, value: 900 }   # 15 minutes
-    min_lap_s: 5.0
-    clock: { start_on_green: true, freeze_on_checkered: true }
-    scoring: { order: "laps_then_time" }
+    label: "PRS Sprint"
+    min_lap_s: 15
+    limit:
+      type: time
+      value: 600         # 10 minutes
+    scoring:
+      # Example: disallow fastest lap bonus in sprint
+      fastest_lap_bonus: false
 
   endurance:
     label: "Endurance"
-    limit: { type: time, value: 4500 }  # 75 minutes
-    min_lap_s: 5.0
-    clock: { start_on_green: true, freeze_on_checkered: true }
-    scoring: { order: "laps_then_time" }
-
-  qualifying:
-    label: "Qualifying"
-    limit: { type: time, value: 600 }
-    min_lap_s: 5.0
-    clock: { start_on_green: true, freeze_on_checkered: true }
+    min_lap_s: 12
+    limit:
+      type: time
+      value: 3600        # 60 minutes
     scoring:
-      order: "best_lap_asc"
-      require_min_laps: 1
+      fastest_lap_bonus: true
+
+  laps15:
+    label: "15 Laps"
+    min_lap_s: 10
+    limit:
+      type: laps
+      value: 15
+
+# End of race_modes.yaml

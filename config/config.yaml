@@ -1,135 +1,26 @@
 # =============================================================================
-# ChronoCore Engine Config
+# config.yaml — Deprecated compatibility wrapper
+# =============================================================================
+# Historical note:
+#   Older builds loaded a single config.yaml. The platform now separates
+#   concerns into:
+#     - app.yaml        : platform/runtime defaults & host policy
+#     - race_modes.yaml : mode definitions
+#     - event.yaml      : event identity & branding
 #
-# This file controls how the RaceEngine behaves during live timing.
-# Every section has safe defaults for club-level racing (10–60 karts).
+# Guidance:
+#   Keep this file in the repo for clarity, but do NOT add live settings here.
+#   If you must keep parity for legacy tools, mirror ONLY the app.client.engine
+#   block below and add a big banner like this one.
 # =============================================================================
 
-# ---------------------------------------------------------------------------
-# Timing rules
-# ---------------------------------------------------------------------------
-timing:
-  # Minimum valid lap time in seconds.
-  # Any lap shorter than this is ignored (likely a double-hit or glitch).
-  min_lap_s: 1.0
-
-  # Minimum separation in seconds for duplicate tag hits.
-  # If a transponder triggers multiple times at the line within this window,
-  # only the first is counted; others are ignored.
-  min_lap_s_dup: 1.0
-
-# ---------------------------------------------------------------------------
-# Feature toggles
-# ---------------------------------------------------------------------------
-features:
-  # Pit lane timing system.
-  # When true, passes can be marked as "pit_in" and "pit_out" to measure pit stops.
-  # If false, all passes are treated as track crossings.
-  pit_timing: true
-
-  # Auto-provisional entrants.
-  # When true, unknown tags create a new entrant named "Unknown ####"
-  # (#### = last 4 digits of tag UID) and their laps are recorded.
-  # When false, unknown tags are simply ignored.
-  auto_provisional: true
-
-# ---------------------------------------------------------------------------
-# Persistence / durability
-# ---------------------------------------------------------------------------
-persistence:
-  # Enable event journaling and checkpointing to SQLite.
-  # Strongly recommended for real races — lets you recover after a crash.
-  enabled: true
-
-  # Max time to buffer events before flushing to disk (ms).
-  # Larger values = fewer writes, less disk I/O, but slightly more risk
-  # (you could lose up to batch_ms worth of events if the PC dies).
-  batch_ms: 500
-
-  # Max number of events to buffer before forcing a flush.
-  # Larger = fewer writes, smaller = lower latency.
-  batch_max: 200
-
-  # Write a full engine snapshot every N seconds.
-  # Used for crash recovery (engine can replay from last checkpoint).
-  checkpoint_s: 15
-
-  # Force the OS to flush writes all the way to disk on every commit.
-  # True = maximum durability, slower.
-  # False = faster, but a power loss could drop the last few seconds.
-  fsync: true
-
-# ---------------------------------------------------------------------------
-# Pit receiver mapping (optional)
-# ---------------------------------------------------------------------------
-pits:
-  receivers:
-    # Lists of device_id values that should be auto-classified as pit_in/out
-    # if they show up on /engine/pass.
-    # If empty, you must send "source":"pit_in" or "source":"pit_out" manually.
-    pit_in:  []
-    pit_out: []
-
-# ---------------------------------------------------------------------------
-# Application-level settings
-# ---------------------------------------------------------------------------
 app:
-  # Decoder configuration controls how passes are read from hardware or test sources.
-  decoder:
-    # Master enable switch. If false, no decoder is started.
-    enabled: true
+  client:
+    engine:
+      mode: localhost
+      fixed_host: "10.77.0.10:8000"
+      prefer_same_origin: true
+      allow_client_override: true
 
-    # Decoder type/mode to use.
-    # Options:
-    #   ilap_serial     (I-Lap USB/serial decoder, default)
-    #   ambrc_serial    (AMB/MyLaps legacy serial)
-    #   trackmate_serial (Trackmate IR counter via USB-serial)
-    #   cano_tcp        (CANO-style or DIY TCP bridge)
-    #   tcp_line        (Generic TCP line reader)
-    #   mock            (built-in tag generator for testing)
-    mode: ilap_serial
-
-    # Serial port configuration (for ilap_serial, trackmate_serial, ambrc_serial, etc.)
-    serial:
-      port: "COM3"      # Example for Windows. On Linux: "/dev/ttyUSB0"
-      baud: 9600
-      bytesize: 8
-      parity: "N"
-      stopbits: 1
-      timeout_s: 0.25
-
-    # TCP line-based input (one pass per line).
-    # Useful for networked decoders or simulators.
-    tcp:
-      host: "127.0.0.1"
-      port: 3000
-
-    # iLAP-specific options.
-    ilap:
-      init_7digit: true   # Send INIT command on startup (resets decoder clock)
-
-    # AMB/MyLaps (legacy AMBrc) notes:
-    #   Often outputs CSV like "<decoder>,<tag>,<secs>"
-    #   Or key=val tokens (decoder=xx tag=12345 time=12.345)
-    #   Custom regex can be provided below if needed.
-    # line_regex: "(?i)decoder=(?P<decoder>\\w+).*?tag=(?P<tag>\\w+)"
-
-    # Trackmate notes:
-    #   Usually just sends "<tag>" or "<decoder>,<tag>" per line.
-
-    # Impinj / Core Speedway (UHF RFID):
-    #   Typically available via TCP bridge.
-    #   Configure mode: cano_tcp and set host/port above.
-
-    # Delay before attempting to reconnect after a decoder error (seconds).
-    reconnect_delay_s: 2.0
-
-    # Mock generator (for testing without hardware).
-    mock_tag: "3000999"
-    mock_period_s: 6.0
-
-    # Pit routing by decoder_id (optional).
-    # Any passes from these decoder_ids are auto-marked pit_in/pit_out.
-    routing:
-      pit_in_receivers: []
-      pit_out_receivers: []
+# Everything else lives in app.yaml / race_modes.yaml / event.yaml
+# End of config.yaml

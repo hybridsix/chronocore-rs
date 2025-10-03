@@ -138,3 +138,49 @@ The race timing system can work with several different hardware decoders. You on
 
 ---
 
+## 10. Engine Host Setup (2025 Update)
+
+The Operator UI needs to know which **engine host** to talk to. This can be:
+
+- **Same-origin** (if you open the Operator UI directly from the engine’s built-in web server)  
+- **Local engine** (developer testing on your laptop)  
+- **Fixed host** (a kiosk or field deployment where the engine runs on a set IP/port)  
+
+### Where to Configure
+
+Engine host defaults now live in **`config/app.yaml`** under `app.client.engine`.
+
+```yaml
+app:
+  client:
+    engine:
+      mode: fixed
+      fixed_host: "10.77.0.10:8000"
+      prefer_same_origin: true
+      allow_client_override: false
+```
+
+### Keys
+
+- `mode`:  
+  - `localhost` → always use `127.0.0.1:8000` (developer testing)  
+  - `fixed` → always use `fixed_host` (field deployment)  
+  - `auto` → use same-origin if possible; otherwise fall back to `fixed_host`, then `localhost`  
+
+- `fixed_host`: The IP:port of your engine server, required if `mode` is `fixed`.  
+
+- `prefer_same_origin`: When true, pages opened via the engine web server ignore host strings and just use same-origin.  
+
+- `allow_client_override`: When true, operators can set a custom engine host in the **Settings** page. When false, the field is read-only.  
+
+### Effective Engine Display
+
+The Operator UI footer always shows the **Effective Engine** host it is connected to. This string comes from the resolution rules above.
+
+- Example (localhost): `Engine: 127.0.0.1:8000`  
+- Example (fixed): `Engine: 10.77.0.10:8000`  
+- Example (same-origin): `Engine: same-origin`  
+
+If you see “Disconnected — retrying…” in the footer, check this host setting first.  
+
+---

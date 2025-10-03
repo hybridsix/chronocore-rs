@@ -1,4 +1,22 @@
+# =============================================================================
+# event.yaml — Event identity & branding
+# =============================================================================
+# This file is strictly about the event you’re running:
+#   - Metadata (name, date, location, timezone)
+#   - Branding (optional)
+# Host discovery / engine policy is NOT configured here; see app.yaml instead.
+# =============================================================================
+
 event:
   name: "Maker Faire Orlando"
+  date: "2025-11-08"           # ISO format recommended
   location: "Orlando, FL"
-  date: "2025-11-08"
+  timezone: "America/New_York" # Used for clocks and reporting
+
+  branding:
+    # Optional pointers used by UIs (relative URLs served by /ui or absolute)
+    logo_svg: "/ui/assets/CCRS_Logo.svg"
+    primary_color: "#00D3FF"
+    accent_color: "#FFEF00"
+
+# End of event.yaml

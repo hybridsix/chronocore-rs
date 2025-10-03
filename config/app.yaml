@@ -1,49 +1,114 @@
-server:
-  host: "0.0.0.0"
-  port: 8000
+# =============================================================================
+# app.yaml — Platform & runtime defaults (single source of truth for the app)
+# =============================================================================
+# This file defines:
+#   - Client → Engine host discovery policy (how UIs find the engine)
+#   - Engine behavior defaults (persistence, features, unknown tag policy, etc.)
+#   - Hardware integrations (decoders, pit receivers)
+#   - UI defaults (theme bits that are not per-event)
+#
+# Separation of concerns:
+#   - Event identity (name/date/location/branding) → event.yaml
+#   - Race mode definitions (limits, labels, min lap) → race_modes.yaml
+#   - Legacy/transition configs (historical) → config.yaml (deprecated)
+# =============================================================================
 
-database:
-  path: "laps.sqlite"
+app:
 
-engine:
-  min_lap_s_default: 5.0
-  poll_hz_ui: 3
+  # ---------------------------------------------------------------------------
+  # Client → Engine Host Resolution (DEFAULT POLICY)
+  # The Operator/Spectator UIs use this policy to determine which engine host
+  # to talk to. Devices may be allowed to override locally, but these are the
+  # defaults system-wide.
+  # Precedence (deterministic):
+  #   1) If prefer_same_origin == true AND page is served by the engine (http/s),
+  #      use same-origin (no host string).
+  #   2) If allow_client_override == true AND a device override exists
+  #      (e.g., localStorage "cc.engine_host"), use that.
+  #   3) Otherwise use this policy:
+  #        - mode: fixed      → fixed_host
+  #        - mode: localhost  → "127.0.0.1:8000"
+  #        - mode: auto       → same-origin if available; else fixed_host if set;
+  #                             else "127.0.0.1:8000"
+  # Recommended:
+  #   - Development: mode: localhost
+  #   - Field kiosks/desktop: mode: fixed (and set fixed_host)
+  #   - Mixed: mode: auto with prefer_same_origin: true
+  # ---------------------------------------------------------------------------
+  client:
+    engine:
+      mode: localhost            # one of: auto | localhost | fixed
+      fixed_host: "10.77.0.10:8000"  # required when mode: fixed (or auto fallback)
+      prefer_same_origin: true   # pages served by engine use same-origin
+      allow_client_override: true  # allow Settings UI to save per-device override
 
-decoder:            # transponder input module
-  enabled: true
-  mode: "serial"    # serial | tcp | hid | mock
-  serial:
-    port: "COM4"
-    baud: 115200
-  tcp:
-    host: "192.168.1.50"
-    port: 3000
-  hid:
-    vendor_id: null
-    product_id: null
-  filters:
-    debounce_ms: 150
-    min_signal: -70
+  # ---------------------------------------------------------------------------
+  # Engine defaults (runtime behavior)
+  # ---------------------------------------------------------------------------
+  engine:
+    # Minimum lap sanity filter if a mode does not define min_lap_s explicitly.
+    default_min_lap_s: 10
 
-# ─────────────────────────────────────────────────────────────────────
-# Client (per-machine) UI/runtime preferences
-# NOTE:
-# - This is NOT race data; it configures how this machine behaves.
-# - Safe for end users to edit on a spectator PC.
-# - We keep it manual-only for now: no auto-discovery in this phase.
-# ─────────────────────────────────────────────────────────────────────
-client:
-  # Which UI role should this machine default to?
-  #   spectator → hide/disable operator-only actions; Spectator is the primary flow
-  #   operator  → full operator tools; normal console behavior
-  #   hybrid    → show everything; operator chooses per session
-  role: spectator
+    # Behavior for unknown tags (i.e., a pass arrives with a tag that is not
+    # mapped to an entrant). If allow is true, engine can auto-create a temp
+    # entrant ("Unknown <TAG>") so practice and scrutineering are painless.
+    unknown_tags:
+      allow: true
+      auto_create_name: "Unknown"
 
-  # Where is the race engine running? Use hostname:port or IP:port.
-  # Examples: "192.168.1.50:8000", "scorerpc.local:8000"
-  engine_host: "192.168.1.50:8000"
+    # Persistence / journaling. If enabled, the engine writes to SQLite so that
+    # restarts do not lose history. Disable for ephemeral dev sessions.
+    persistence:
+      enabled: true
+      sqlite_path: "backend/db/laps.sqlite"
+      journal_passes: true   # append raw pass events
+      snapshot_on_checkered: true  # write a snapshot when race ends
 
-  # Discovery behavior (manual only in this phase).
-  # Reserved for future: auto (mDNS/broadcast).
-  engine_discovery: manual
+    # Optional scoring extensions (future-friendly; safe to ignore if unused).
+    scoring:
+      break_ties_by_best_lap: true
+      include_pit_time_in_total: true
+
+  # ---------------------------------------------------------------------------
+  # Hardware integrations
+  # ---------------------------------------------------------------------------
+  hardware:
+
+    # Decoder configuration. The active decoder may be chosen elsewhere (e.g.
+    # CLI flag or environment), but defaults live here.
+    decoders:
+      # Preferred (I-Lap) serial reader defaults:
+      ilap_serial:
+        port: "COM3"         # e.g., "/dev/ttyUSB0" on Linux
+        baudrate: 115200
+        init_7digit: true     # send '7-digit init' on connect
+        min_lap_s: 10         # local filter (extra safety on the reader thread)
+      # Other example decoder (placeholder / future):
+      ambrc_serial:
+        port: "COM4"
+        baudrate: 19200
+        min_lap_s: 10
+
+    # Pit in/out receivers mapping (optional). If provided, the engine can infer
+    # pit entries/exits from device_id in /engine/pass.
+    pits:
+      enabled: false
+      receivers:
+        # device_id: role (one of: pit_in | pit_out)
+        # "rx-01": pit_in
+        # "rx-02": pit_out
+
+  # ---------------------------------------------------------------------------
+  # UI defaults (non event-specific)
+  # ---------------------------------------------------------------------------
+  ui:
+    theme: "default-dark"
+    show_sim_pill: true
+    # Caution copy used consistently across pages
+    net_status_text:
+      ok: "OK"
+      connecting: "Connecting…"
+      disconnected: "Disconnected — retrying…"
+
+# End of app.yaml
 
