@@ -1,134 +1,270 @@
-// ui/js/op_control.js
-// =====================================================================
-// Race Control page wiring
-// - One-click flag buttons → POST /engine/flag
-// - Live race clock + flag banner (poll /race/state)
-// - Compact standings list (operator glance; spectator not required)
-// =====================================================================
+/* ============================================================================
+ * Operator — Race Control
+ * ----------------------------------------------------------------------------
+ * Responsibilities:
+ *  - Poll the engine state and keep the UI in sync (flag banner, clock, table)
+ *  - Post flag changes (pre/green/yellow/red/white/blue/checkered)
+ *  - Show deterministic net status copy and the effective engine host
+ *
+ * Dependencies:
+ *  - base.js (window.PRS namespace with helpers like $, $$, startWallClock,
+ *             setNetStatus, fmtClock, fetchJSON, and our new url() resolver)
+ *  - CSS: base.css + spectator.css (flag theme classes) + operator.css
+ *
+ * Notes:
+ *  - All network calls use PRS.url()/PRS.fetchJSON(), so host is YAML-driven.
+ *  - We keep comments verbose for field debuggability.
+ * ==========================================================================*/
 
-(() => {
-  // --- Shortcuts & shared helpers from base.js (we own the stack; no fallbacks) ---
-  const $ = (s) => document.querySelector(s);
-  const { startWallClock, setNetStatus, makePoller, fmtClock } = window.PRS;
+(function () {
+  "use strict";
 
-  // --- Footer wall clock (real-world time; not the race clock) ---
-  startWallClock("#wallClock");
+  // ---------------------------------------------------------------------------
+  // Safe references and tiny fallbacks (don’t fight existing helpers)
+  // ---------------------------------------------------------------------------
+  const PRS = (window.PRS = window.PRS || {});
+  const $ = PRS.$ || ((sel, root) => (root || document).querySelector(sel));
+  const $$ = PRS.$$ || ((sel, root) => Array.from((root || document).querySelectorAll(sel)));
 
-  // --- Engine endpoints used by this page ---
-  const EP = { state: "/race/state", flag: "/engine/flag" };
+  // DOM cache — we keep these here to avoid repeated lookups inside the poller.
+  let elFlagBanner, elClock, elRows, elNetMsg, elNetDot, elEngineHost;
 
-  /**
-   * postFlag(flag)
-   * --------------
-   * Fire-and-forget flag change to the engine.
-   * Assumes the backend immediately updates state.flag and any timers as needed.
-   */
-  async function postFlag(flag) {
-    const r = await fetch(EP.flag, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ flag }),
-    });
-    if (!r.ok) throw new Error(`Flag post failed: ${r.status} ${r.statusText}`);
-    setNetStatus(true, `Flag → ${flag}`);
-  }
+  // Current UI state cache to reduce churn/reflows.
+  let currentFlag = "";
+  let lastClockMs = -1;
 
-  // --- Wire up all .flagbtn buttons to POST /engine/flag with their data-flag value ---
-  document.querySelectorAll(".flagbtn").forEach((btn) => {
-    btn.addEventListener("click", () => postFlag(btn.dataset.flag));
+  // Polling handle
+  let pollTimer = null;
+
+  // ---------------------------------------------------------------------------
+  // DOM ready
+  // ---------------------------------------------------------------------------
+  document.addEventListener("DOMContentLoaded", () => {
+    // Core elements used across updates
+    elFlagBanner = $("#flagBanner");
+    elClock = $("#raceClock");
+    elRows = $("#rows");
+    elNetMsg = $("#netMsg");
+    elNetDot = $("#netDot");
+    elEngineHost = $("#engineHost"); // Optional: place to show effective engine host
+
+    // Start a visible wall clock in the footer (provided by base.js)
+    if (typeof PRS.startWallClock === "function") PRS.startWallClock();
+
+    // Show the effective engine host for operator confidence
+    if (elEngineHost && typeof PRS.effectiveEngineLabel === "function") {
+      elEngineHost.textContent = PRS.effectiveEngineLabel();
+      elEngineHost.setAttribute("title", "Effective Engine Host");
+    }
+
+    // Wire up all flag buttons (data-flag="pre|green|yellow|red|white|blue|checkered")
+    bindFlagButtons();
+
+    // Initial status: attempting connection
+    PRS.setNetStatus("connecting", elNetMsg, elNetDot);
+
+    // Begin polling engine state
+    startPolling();
   });
 
-  /**
-   * updateFlagBanner(flag)
-   * ----------------------
-   * Visualize the current flag state with shared CSS variants:
-   *   .flag--pre, .flag--green, .flag--yellow, .flag--red, .flag--white, .flag--blue, .flag--checkered
-   * When no flag is provided, hide the banner entirely.
-   */
-  function updateFlagBanner(flag) {
-    const banner = $("#flagBanner");
-    const label = $("#flagLabel");
-
-    banner.className = "flag"; // reset base class (clears prior flag--* modifiers)
-    if (!flag) {
-      banner.classList.add("hidden");
-      label.textContent = "";
-      return;
-    }
-
-    banner.classList.remove("hidden");
-    banner.classList.add(`flag--${flag}`);
-    label.textContent = flag.toUpperCase();
-  }
-
-  /**
-   * renderStandings(state)
-   * ----------------------
-   * Render a compact operator-focused table of the current standings.
-   * We display: position, car number, team, current lap, last, best.
-   * Note: we trust the engine's order in state.standings (authoritative).
-   */
-  function renderStandings(state) {
-    const rowsEl = $("#rows");
-    rowsEl.innerHTML = "";
-
-    const rows = state.standings || [];
-    rows.forEach((r, i) => {
-      const el = document.createElement("div");
-      el.className = "row compact";
-      const last = r.last != null ? r.last.toFixed(3) : "—";
-      const best = r.best != null ? r.best.toFixed(3) : "—";
-      el.innerHTML = `
-        <div>${i + 1}</div>
-        <div class="car">${r.car_number ?? ""}</div>
-        <div class="name">${r.name || ""}</div>
-        <div class="right">${r.laps ?? 0}</div>
-        <div class="right">${last}</div>
-        <div class="right">${best}</div>
-      `;
-      rowsEl.appendChild(el);
+  // ---------------------------------------------------------------------------
+  // Event wiring
+  // ---------------------------------------------------------------------------
+  function bindFlagButtons() {
+    const buttons = $$('[data-flag]');
+    buttons.forEach(btn => {
+      btn.addEventListener("click", async () => {
+        const flag = (btn.getAttribute("data-flag") || "").toLowerCase();
+        if (!flag) return;
+        await postFlag(flag);
+      });
     });
   }
 
-  /**
-   * Poller: /race/state every 1s
-   * ----------------------------
-   * On success:
-   *  - Update #raceClock text via fmtClock(clock_ms)
-   *  - Update flag banner
-   *  - Render compact standings
-   *  - Mark footer status OK
-   * On failure:
-   *  - Show disconnected status
-   *  - Clear the race clock display
-   */
-  const poller = makePoller(
-    async () => {
-      const r = await fetch(EP.state, { headers: { Accept: "application/json" } });
-      if (!r.ok) throw new Error(`/race/state failed: ${r.status} ${r.statusText}`);
-      const s = await r.json();
+  // ---------------------------------------------------------------------------
+  // Networking — all through YAML-driven resolver
+  // ---------------------------------------------------------------------------
 
-      // Race clock pill (engine-owned, authoritative)
-      $("#raceClock").textContent = s.clock_ms != null ? fmtClock(s.clock_ms) : "--:--";
+  // Poll /race/state, update UI. Called on an interval.
+  async function pollState() {
+    try {
+      const snapshot = await PRS.fetchJSON("/race/state");
+      // If we got here, network is up
+      PRS.setNetStatus("ok", elNetMsg, elNetDot);
 
-      // Flag banner mirrors engine flag (supports "blue" as well)
-      updateFlagBanner(s.flag);
+      // 1) Flag banner
+      if (snapshot && snapshot.flag) {
+        updateFlagBanner(String(snapshot.flag).toLowerCase());
+      }
 
-      // Compact standings for operator glance
-      renderStandings(s);
+      // 2) Race clock
+      const ms = (snapshot && typeof snapshot.clock_ms === "number") ? snapshot.clock_ms : 0;
+      updateClock(ms);
 
-      // Footer connection pill
-      setNetStatus(true, "OK");
-    },
-    1000,
-    () => {
-      setNetStatus(false, "Disconnected — retrying…");
-      $("#raceClock").textContent = "--:--";
+      // 3) Standings table
+      if (snapshot && Array.isArray(snapshot.standings)) {
+        renderStandings(snapshot.standings);
+      }
+
+      // 4) Optional: show current mode / limit if the UI has elements for it
+      const elMode = $("#modeLabel");
+      if (elMode && snapshot && snapshot.race_type) {
+        elMode.textContent = snapshot.race_type; // e.g., "sprint"
+      }
+      const elCap = $("#modeCap");
+      if (elCap && snapshot && snapshot.limit) {
+        // snapshot.limit might look like { type: 'time'|'laps', value: N }
+        const { type, value } = snapshot.limit || {};
+        if (type === "time") elCap.textContent = `${Math.floor((value || 0) / 60)} min cap`;
+        else if (type === "laps") elCap.textContent = `${value || 0} laps cap`;
+        else elCap.textContent = "";
+      }
+
+    } catch (err) {
+      // Network error or non-2xx response
+      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      // Keep UI as-is; poller will retry.
     }
-  );
+  }
 
-  // --- Launch the polling loop immediately on page load ---
-  poller.start();
+  // Post /engine/flag with {flag}
+  async function postFlag(flag) {
+    try {
+      PRS.setNetStatus("connecting", elNetMsg, elNetDot);
+      const res = await fetch(PRS.url("/engine/flag"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flag })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      // Fast feedback: update banner immediately (poller will confirm)
+      updateFlagBanner(flag);
+      PRS.setNetStatus("ok", elNetMsg, elNetDot);
+    } catch (e) {
+      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Poll loop — prefer PRS.makePoller if present; otherwise setInterval fallback
+  // ---------------------------------------------------------------------------
+  function startPolling() {
+    // If base.js provides a makePoller with jitter/backoff, use it
+    if (typeof PRS.makePoller === "function") {
+      PRS.makePoller(pollState, 1000); // ~1s cadence; base.js may smooth this
+      return;
+    }
+    // Simple fallback
+    clearInterval(pollTimer);
+    pollTimer = setInterval(pollState, 1000);
+    // Run once immediately so the UI isn’t empty
+    pollState();
+  }
+
+  // ---------------------------------------------------------------------------
+  // UI updates
+  // ---------------------------------------------------------------------------
+
+  // Apply .flag--{name} on #flagBanner and keep a readable label inside
+  function updateFlagBanner(flag) {
+    if (!elFlagBanner) return;
+    if (flag === currentFlag) return;
+
+    // Remove any previous flag class
+    elFlagBanner.classList.remove(
+      "flag--pre","flag--green","flag--yellow","flag--red",
+      "flag--white","flag--checkered","flag--blue","flag--none"
+    );
+
+    // Apply new flag class (spectator.css provides colors/animations)
+    elFlagBanner.classList.add(`flag--${flag}`);
+
+    // Update inner label if there’s a dedicated text node
+    const label = $("#flagLabel", elFlagBanner);
+    if (label) label.textContent = flag.toUpperCase();
+
+    // ARIA live region support
+    elFlagBanner.setAttribute("aria-live", "polite");
+    elFlagBanner.setAttribute("aria-label", `Flag: ${flag}`);
+
+    currentFlag = flag;
+  }
+
+  // Format and render the race clock. Uses base.js fmtClock if available.
+  function updateClock(ms) {
+    if (!elClock) return;
+    if (ms === lastClockMs) return;
+    lastClockMs = ms;
+
+    // Prefer PRS.fmtClock which handles mm:ss.t (or mm:ss)
+    let text = "";
+    if (typeof PRS.fmtClock === "function") {
+      text = PRS.fmtClock(ms);
+    } else {
+      // very simple fallback: mm:ss
+      const totalSec = Math.max(0, Math.floor(ms / 1000));
+      const m = Math.floor(totalSec / 60).toString().padStart(2, "0");
+      const s = (totalSec % 60).toString().padStart(2, "0");
+      text = `${m}:${s}`;
+    }
+    elClock.textContent = text;
+  }
+
+  // Render compact standings rows into <tbody id="rows">
+  // Expected fields: position, car, team, laps, last_ms, best_ms (names may vary;
+  // we’re defensive here and try common variants).
+  function renderStandings(rows) {
+    if (!elRows || !Array.isArray(rows)) return;
+
+    // Build a single HTML string for minimal reflow
+    let html = "";
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i] || {};
+      // Common keys with fallbacks
+      const pos = r.position != null ? r.position : i + 1;
+      const car = r.car != null ? r.car : (r.car_num || r.number || "");
+      const team = r.team != null ? r.team : (r.name || r.driver || "");
+      const laps = r.laps != null ? r.laps : (r.total_laps || 0);
+      const lastMs = r.last_ms != null ? r.last_ms : (r.last || 0);
+      const bestMs = r.best_ms != null ? r.best_ms : (r.best || 0);
+
+      const lastStr = formatLap(lastMs);
+      const bestStr = formatLap(bestMs);
+
+      html += `
+        <tr>
+          <td class="pos">${pos}</td>
+          <td class="car">${escapeHtml(String(car ?? ""))}</td>
+          <td class="team">${escapeHtml(String(team ?? ""))}</td>
+          <td class="laps">${laps}</td>
+          <td class="lap last">${lastStr}</td>
+          <td class="lap best">${bestStr}</td>
+        </tr>`;
+    }
+
+    elRows.innerHTML = html;
+  }
+
+  // Format a lap time in ms to a short string (e.g., 1:23.456).
+  function formatLap(ms) {
+    const n = Number(ms);
+    if (!isFinite(n) || n <= 0) return "–";
+    const totalMs = Math.floor(n);
+    const minutes = Math.floor(totalMs / 60000);
+    const seconds = Math.floor((totalMs % 60000) / 1000);
+    const millis = totalMs % 1000;
+    return `${minutes}:${String(seconds).padStart(2, "0")}.${String(millis).padStart(3, "0")}`;
+  }
+
+  function escapeHtml(s) {
+    return s
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#039;");
+  }
 })();
+
 
 

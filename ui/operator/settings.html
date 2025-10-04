@@ -1,199 +1,312 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>ChronoCore — Setup</title>
+  <title>ChronoCore — Settings & Devices</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Reuse your operator styles + shared helpers -->
-  <link rel="stylesheet" href="../css/operator.css" />
-  <script src="../js/base.js" defer></script>
-  <!-- The simplest possible page to verify manual engine host + role -->
-  <style>
-    /* Page-local nudges so the form breathes nicely inside your card */
-    .setup-grid { display: grid; gap: 14px; }
-    .row { display: grid; grid-template-columns: 160px 1fr; gap: 10px; align-items: center; }
-    .row label { color: #9aa7b3; }
-    .row input[type="text"], .row select {
-      background: #0f141a; color: #e6ebf0; border: 1px solid #0b2230; border-radius: 8px;
-      padding: 10px 12px; width: 100%;
-    }
-    .actions { display: flex; gap: 8px; }
-    .note { color: #9aa7b3; font-size: 14px; }
-    .ok { color: #9ae6b4; }
-    .err { color: #fca5a5; }
-  </style>
+
+  <!-- Shared styles: base first, then operator look; spectator.css only if you reuse flag styles -->
+<link rel="stylesheet" href="../css/base.css" />
+<link rel="stylesheet" href="../css/operator.css" />
+
+  <!-- Optional: if you want the same flag banner classes available here -->
+  <!-- <link rel="stylesheet" href="/ui/css/spectator.css" /> -->
 </head>
-<body>
-  <header class="app-header">
-    <div class="brand">
-      <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" />
-      <div class="brand__wordmark" aria-label="ChronoCore Race Software">
-        <div class="wordmark__top">
-          <span class="wordmark__big">CHRONO</span>
-          <span class="wordmark__big">CORE</span>
+<body class="page settings">
+  <header class="appHeader">
+    <div class="brandRow">
+      <div class="brand">
+        <img src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" class="logo" />
+        <div class="brandText">
+          <div class="brandTop">Chrono</div>
+          <div class="brandBottom">Core</div>
+          <div class="brandKicker">Race Software</div>
         </div>
-        <div class="wordmark__bottom">RACE SOFTWARE</div>
+      </div>
+      <div class="headerRight">
+        <!-- Show effective engine host so operators know what we’re talking to -->
+        <div class="pill">
+          <strong>Engine:</strong> <span id="engineHost">—</span>
+        </div>
       </div>
     </div>
-    <!-- Right side empty on Setup -->
-    <div></div>
   </header>
 
-  <main>
-    <div class="wrap">
-      <section class="card" style="padding: 18px;">
-        <h2 style="margin:0 0 12px 0;">Setup</h2>
-
-        <div class="setup-grid">
-          <!-- Role -->
-          <div class="row">
-            <label for="role">Machine role</label>
-            <select id="role" name="role">
-              <option value="spectator">Spectator</option>
-              <option value="operator">Operator</option>
-              <option value="hybrid">Hybrid</option>
-            </select>
-          </div>
-
-          <!-- Engine host -->
-          <div class="row">
-            <label for="engineHost">Engine host</label>
-            <input id="engineHost" type="text" placeholder="e.g. 192.168.1.50:8000" />
-          </div>
-
-          <!-- Test + Save -->
-          <div class="row">
-            <label aria-hidden="true"></label>
-            <div class="actions">
-              <button class="btn" id="btnTest">Test Connection</button>
-              <button class="btn btn-primary" id="btnSave">Save</button>
-            </div>
-          </div>
-
-          <!-- Status line -->
-          <div class="row">
-            <label aria-hidden="true"></label>
-            <div class="note" id="statusNote">Enter host and click “Test”.</div>
-          </div>
-
-          <hr class="section-sep" />
-
-          <!-- Convenience -->
-          <div class="row">
-            <label aria-hidden="true"></label>
-            <div class="actions">
-              <button class="btn" id="btnOpenSpectator">Open Spectator</button>
-              <button class="btn" id="btnHome">Back to Home</button>
-            </div>
+  <main class="content content--narrow">
+    <section class="card">
+      <h2>Client Role</h2>
+      <p class="muted">
+        Choose how this station should behave. This setting is local to this device.
+      </p>
+      <div class="grid grid-2">
+        <label class="stack">
+          <span class="label">Role</span>
+          <select id="role">
+            <option value="operator">Operator (default)</option>
+            <option value="spectator">Spectator</option>
+            <option value="hybrid">Hybrid</option>
+          </select>
+        </label>
+        <div class="stack">
+          <span class="label">Notes</span>
+          <div class="muted small">
+            <ul class="tight">
+              <li><b>Operator</b>: full control UI</li>
+              <li><b>Spectator</b>: read-only leaderboard</li>
+              <li><b>Hybrid</b>: both UIs available</li>
+            </ul>
           </div>
         </div>
-      </section>
-    </div>
+      </div>
+      <div class="row gap">
+        <button id="btnSaveRole" class="btn">Save Role</button>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Engine Host</h2>
+      <p class="muted">
+        The Operator UI talks to a running engine. Defaults come from <code>app.yaml</code> (<code>app.client.engine</code>).
+        If overrides are allowed by policy, you can set a per-device host here.
+      </p>
+
+      <div class="grid grid-3">
+        <label class="stack">
+          <span class="label">Policy</span>
+          <input id="policySummary" class="input" type="text" value="—" readonly />
+          <span class="help small muted">From <code>app.yaml</code> (mode, same-origin, fixed host)</span>
+        </label>
+
+        <label class="stack">
+          <span class="label">Effective Engine</span>
+          <input id="effectiveHost" class="input" type="text" value="—" readonly />
+          <span class="help small muted">Where this page is currently pointing</span>
+        </label>
+
+        <label class="stack">
+          <span class="label">Override (per device)</span>
+          <input id="engineInput" class="input" type="text" placeholder="host:port (e.g., 10.77.0.10:8000)" />
+          <span id="overrideHelp" class="help small muted">Saved to this device only</span>
+        </label>
+      </div>
+
+      <div class="row gap">
+        <button id="btnTest" class="btn">Test Connection</button>
+        <button id="btnSave" class="btn btn--primary">Save Override</button>
+        <button id="btnClear" class="btn btn--subtle">Clear Override</button>
+      </div>
+
+      <div id="testResult" class="muted small" aria-live="polite"></div>
+    </section>
+
+    <section class="card">
+      <h2>Quick Links</h2>
+      <div class="row gap">
+        <button id="gotoHome" class="btn">Operator Home</button>
+        <button id="openSpectator" class="btn">Open Spectator View</button>
+      </div>
+    </section>
   </main>
 
-  <footer class="app-footer">
-    <div class="footer-left">
-      <div class="status-dot" id="netDot"></div>
-      <div id="netMsg"></div>
+  <footer class="appFooter">
+    <div class="footerLeft">
+      <span id="wallClock">--:--:--</span>
     </div>
-    <div class="footer-right">
-      <div id="wallClock" class="pill">--:--:--</div>
+    <div class="footerRight">
+      <span id="netMsg" class="netMsg">Connecting…</span>
+      <span id="netDot" class="netDot connecting" aria-label="Connecting…" title="Connecting…"></span>
     </div>
   </footer>
 
+  <!-- Base helpers must be loaded before the inline script -->
+  <script src="/ui/js/base.js"></script>
+
   <script>
-    // Page wiring (safe timing)
-    window.addEventListener('DOMContentLoaded', () => {
-      const { setNetStatus, makePoller, startWallClock } = window.PRS;
+    (function () {
+      'use strict';
 
-      // Footer utilities
-      startWallClock('#wallClock');
-      const poller = makePoller(
-        async () => {
-          const r = await fetch('/race/state', { headers: { Accept: 'application/json' } });
-          if (!r.ok) throw new Error(r.status);
-          setNetStatus(true, 'OK');
-        },
-        2000,
-        () => setNetStatus(false, 'Disconnected — retrying…')
-      );
-      poller.start();
+      const PRS = (window.PRS = window.PRS || {});
+      const $ = PRS.$ || ((sel, root) => (root || document).querySelector(sel));
 
-      // Elements
-      const roleEl = document.querySelector('#role');
-      const hostEl = document.querySelector('#engineHost');
-      const note = document.querySelector('#statusNote');
-      const btnTest = document.querySelector('#btnTest');
-      const btnSave = document.querySelector('#btnSave');
-      const btnHome = document.querySelector('#btnHome');
-      const btnOpenSpectator = document.querySelector('#btnOpenSpectator');
+      // Cache important DOM elements
+      const elRole         = $('#role');
+      const btnSaveRole    = $('#btnSaveRole');
 
-      // Helpers: read/write current client settings
-      function loadClientSettings() {
-        // Today: from localStorage; Future: from YAML via pywebview or backend API
-        const role = localStorage.getItem('cc.role') || 'spectator';
-        const host = localStorage.getItem('cc.engine_host') || '';
-        roleEl.value = role;
-        hostEl.value = host;
-      }
+      const elPolicy       = $('#policySummary');
+      const elEffective    = $('#effectiveHost');
+      const elInput        = $('#engineInput');
+      const elOverrideHelp = $('#overrideHelp');
 
-      function saveClientSettings(role, host) {
-        localStorage.setItem('cc.role', role);
-        localStorage.setItem('cc.engine_host', host);
+      const btnTest        = $('#btnTest');
+      const btnSave        = $('#btnSave');
+      const btnClear       = $('#btnClear');
+      const elTestResult   = $('#testResult');
 
-        // If desktop app exposes a save hook, call it as well so it can persist to YAML.
-        if (window.pywebview?.api?.save_client_settings) {
-          try { window.pywebview.api.save_client_settings(role, host); } catch {}
+      const elNetMsg       = $('#netMsg');
+      const elNetDot       = $('#netDot');
+      const elWallClock    = $('#wallClock');
+      const elEngineHost   = $('#engineHost');
+
+      document.addEventListener('DOMContentLoaded', init);
+      // In some environments base.js may be loaded late; run init immediately too.
+      init();
+
+      function init() {
+        // Start footer wall clock if available
+        if (typeof PRS.startWallClock === 'function') {
+          PRS.startWallClock(elWallClock);
         }
-      }
 
-      async function testHost(host) {
-        const url = `http://${host}/race/state`; // health check; change to /health if you add it
-        const t0 = performance.now();
+        // Show effective engine host for confidence
+        if (elEngineHost && typeof PRS.effectiveEngineLabel === 'function') {
+          elEngineHost.textContent = PRS.effectiveEngineLabel();
+          elEngineHost.setAttribute('title', 'Effective Engine Host');
+        }
+
+        // Initialize role
         try {
-          const r = await fetch(url, { cache: 'no-store' });
-          if (!r.ok) throw new Error(String(r.status));
-          await r.json();
-          const ms = Math.round(performance.now() - t0);
-          note.innerHTML = `<span class="ok">OK</span> — ${host} responded in ${ms} ms`;
-          return true;
-        } catch (e) {
-          note.innerHTML = `<span class="err">Failed</span> — could not reach ${host}`;
-          return false;
+          const savedRole = localStorage.getItem('cc.role');
+          if (savedRole) elRole.value = savedRole;
+        } catch {}
+
+        // Initialize policy summary
+        try {
+          // These flags are exposed by base.js from app.yaml
+          const mode = (PRS && PRS.PREFER_SAME_ORIGIN != null && PRS.ALLOW_OVERRIDE != null && PRS.EFFECTIVE_ENGINE != null)
+            ? (window.PRS_BOOT && window.PRS_BOOT.app && window.PRS_BOOT.app.client && window.PRS_BOOT.app.client.engine && window.PRS_BOOT.app.client.engine.mode)
+              || 'auto'
+            : 'auto';
+
+          const prefer = PRS.PREFER_SAME_ORIGIN ? 'same-origin ✓' : 'same-origin ✗';
+          // We cannot know fixed_host safely without the bootstrap; display EFFECTIVE for clarity.
+          const fixedInfo = (PRS.EFFECTIVE_ENGINE && PRS.EFFECTIVE_ENGINE !== 'same-origin' && PRS.EFFECTIVE_ENGINE !== '127.0.0.1:8000')
+            ? `fixed-ish: ${PRS.EFFECTIVE_ENGINE}`
+            : 'fixed: (see app.yaml)';
+
+          elPolicy.value = `mode=${mode} | ${prefer} | ${fixedInfo}`;
+        } catch {
+          elPolicy.value = 'mode=auto | same-origin ✓';
         }
+
+        // Effective engine string (read-only)
+        if (elEffective && typeof PRS.effectiveEngineLabel === 'function') {
+          elEffective.value = PRS.effectiveEngineLabel();
+        }
+
+        // Override field: honor allow/disallow from YAML
+        if (!PRS.ALLOW_OVERRIDE) {
+          elInput.value = '';
+          elInput.readOnly = true;
+          elInput.placeholder = 'Overrides disabled by policy (app.yaml)';
+          elOverrideHelp.textContent = 'Overrides disabled by policy (app.yaml)';
+          btnSave.disabled = true;
+          btnClear.disabled = true;
+        } else {
+          // Load existing override if present
+          try {
+            const ov = localStorage.getItem('cc.engine_host') || '';
+            elInput.value = ov;
+          } catch {}
+        }
+
+        // Wire role save
+        if (btnSaveRole) {
+          btnSaveRole.addEventListener('click', () => {
+            try {
+              localStorage.setItem('cc.role', elRole.value);
+              flashResult('Role saved.');
+            } catch {
+              flashResult('Unable to save role in this environment.');
+            }
+          });
+        }
+
+        // Wire Test Connection:
+        // IMPORTANT: for testing we intentionally do NOT use PRS.url()
+        // because the operator is testing the TYPED host, not the resolved one.
+        if (btnTest) {
+          btnTest.addEventListener('click', async () => {
+            const candidate = (elInput.value || '').trim();
+            if (!candidate) {
+              flashResult('Enter a host:port to test.');
+              return;
+            }
+            PRS.setNetStatus('connecting', elNetMsg, elNetDot);
+            try {
+              const u = /^https?:\/\//i.test(candidate)
+                ? `${candidate.replace(/\/+$/, '')}/race/state`
+                : `http://${candidate.replace(/\/+$/, '')}/race/state`;
+
+              const r = await fetch(u, { cache: 'no-cache' });
+              if (!r.ok) throw new Error(`HTTP ${r.status}`);
+              const j = await r.json().catch(() => ({}));
+              flashResult(`Connected: ${u} ${j && j.flag ? `(flag=${j.flag})` : ''}`);
+              PRS.setNetStatus('ok', elNetMsg, elNetDot);
+            } catch (e) {
+              flashResult('Connection failed. Check host/IP, port, and network.');
+              PRS.setNetStatus('disconnected', elNetMsg, elNetDot);
+            }
+          });
+        }
+
+        // Wire Save Override (only if allowed by policy)
+        if (btnSave) {
+          btnSave.addEventListener('click', () => {
+            if (!PRS.ALLOW_OVERRIDE) return;
+            const candidate = (elInput.value || '').trim();
+            if (!candidate) {
+              // Clearing override is via the Clear button
+              flashResult('Nothing to save. Use Clear to remove an override.');
+              return;
+            }
+            try {
+              localStorage.setItem('cc.engine_host', candidate);
+              flashResult('Override saved. Reload pages to apply.');
+            } catch {
+              flashResult('Unable to save override in this environment.');
+            }
+          });
+        }
+
+        // Wire Clear Override (only if allowed)
+        if (btnClear) {
+          btnClear.addEventListener('click', () => {
+            if (!PRS.ALLOW_OVERRIDE) return;
+            try {
+              localStorage.removeItem('cc.engine_host');
+              elInput.value = '';
+              flashResult('Override cleared. Reload pages to apply.');
+            } catch {
+              flashResult('Unable to clear override in this environment.');
+            }
+          });
+        }
+
+        // Quick links
+        $('#gotoHome')?.addEventListener('click', () => goto('/ui/operator/index.html'));
+        $('#openSpectator')?.addEventListener('click', () => goto('/ui/spectator/spectator.html'));
+
+        // Initial net state (we didn’t call the engine yet, but the page is ready)
+        PRS.setNetStatus('ok', elNetMsg, elNetDot);
       }
 
-      // Init
-      loadClientSettings();
-      note.textContent = 'Enter host and click “Test”.';
-
-      // Wire buttons
-      btnTest.addEventListener('click', async () => {
-        const host = hostEl.value.trim();
-        if (!host) { note.textContent = 'Please enter a host (e.g., 192.168.1.50:8000).'; return; }
-        await testHost(host);
-      });
-
-      btnSave.addEventListener('click', async () => {
-        const role = roleEl.value;
-        const host = hostEl.value.trim();
-        if (!host) { note.textContent = 'Please enter a host before saving.'; return; }
-        const ok = await testHost(host);   // optional: require success before saving
-        if (ok) {
-          saveClientSettings(role, host);
-          note.innerHTML = `<span class="ok">Saved</span> — role=${role}, engine=${host}`;
+      // Navigation: prefer pywebview bridge, then fall back to location.href
+      function goto(path) {
+        const href = typeof path === 'string' ? path : '/';
+        if (window.pywebview && window.pywebview.api && typeof window.pywebview.api.goto === 'function') {
+          try { window.pywebview.api.goto(href); return; } catch {}
         }
-      });
+        location.href = href;
+      }
 
-      btnHome.addEventListener('click', () => {
-        location.href = '/ui/operator/index.html';
-      });
-
-      btnOpenSpectator.addEventListener('click', () => {
-        // If your spectator page supports using a remote engine, you’ll read cc.engine_host there.
-        window.open('/ui/spectator/spectator.html', '_blank');
-      });
-    });
+      function flashResult(msg) {
+        if (!msg) return;
+        elTestResult.textContent = msg;
+        elTestResult.classList.add('pulse');
+        setTimeout(() => elTestResult.classList.remove('pulse'), 1200);
+      }
+    })();
   </script>
 </body>
 </html>
+

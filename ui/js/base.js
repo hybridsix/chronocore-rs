@@ -12,6 +12,139 @@
   // Guard: keep existing PRS if reloaded (hot reload / multiple pages)
   const PRS = (window.PRS = window.PRS || {});
 
+  /* ---------------------------------------------------------------------------
+ * Engine host resolver + status text normalizer (YAML-driven)
+ * Depends on optional bootstrap object injected by the server/launcher:
+ *   window.PRS_BOOT or window.__PRS_BOOTSTRAP
+ * Looks under:
+ *   app.client.engine.*   (mode, fixed_host, prefer_same_origin, allow_client_override)
+ *   app.ui.net_status_text (ok, connecting, disconnected)
+ * -------------------------------------------------------------------------*/
+(function () {
+  const PRS = (window.PRS = window.PRS || {});
+  const BOOT =
+    window.PRS_BOOT || window.BOOTSTRAP || window.__PRS_BOOTSTRAP || {};
+
+  // Read YAML-backed defaults if provided by bootstrap
+  const appCfg = (BOOT && BOOT.app) || {};
+  const yamlClient = ((appCfg.client || {}).engine || {});
+  const yamlUI = (appCfg.ui || {});
+
+  // Client policy (with safe defaults)
+  const MODE = (yamlClient.mode || "auto").toLowerCase(); // auto | localhost | fixed
+  const FIXED = (yamlClient.fixed_host || "").trim();
+  const PREFER_SAME = yamlClient.prefer_same_origin !== false; // default true
+  const ALLOW_OVERRIDE = !!yamlClient.allow_client_override;
+
+  function sameOriginAllowed() {
+    // Only meaningful when pages are served via http(s) (not file://)
+    return /^https?:/i.test(location.protocol) && PREFER_SAME;
+  }
+
+  function getDeviceOverride() {
+    if (!ALLOW_OVERRIDE) return "";
+    try {
+      return (localStorage.getItem("cc.engine_host") || "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  function resolveFromPolicy() {
+    const LOCALHOST = "127.0.0.1:8000";
+    if (MODE === "fixed" && FIXED) return FIXED;
+    if (MODE === "localhost") return LOCALHOST;
+    // MODE === auto
+    if (sameOriginAllowed()) return "same-origin";
+    if (FIXED) return FIXED;
+    return LOCALHOST;
+  }
+
+  function resolveEngineHost() {
+    // 1) Prefer same-origin if allowed and applicable
+    if (sameOriginAllowed()) return "same-origin";
+    // 2) Device override (if allowed)
+    const override = getDeviceOverride();
+    if (override) return override;
+    // 3) YAML policy fallback
+    return resolveFromPolicy();
+  }
+
+  const EFFECTIVE = resolveEngineHost();
+  PRS.ALLOW_OVERRIDE = ALLOW_OVERRIDE;
+  PRS.PREFER_SAME_ORIGIN = PREFER_SAME;
+  PRS.EFFECTIVE_ENGINE = EFFECTIVE;
+
+  // Build a URL for API calls. Returns relative paths when on same-origin.
+  function url(path) {
+    const p = String(path || "/").replace(/^\/+/, "");
+    if (EFFECTIVE === "same-origin") return "/" + p;
+    const base = EFFECTIVE.match(/^https?:\/\//i)
+      ? EFFECTIVE
+      : "http://" + EFFECTIVE;
+    return base.replace(/\/+$/, "") + "/" + p;
+  }
+  PRS.url = PRS.url || url;
+
+  // Net status texts (from YAML ui.net_status_text, with sensible defaults)
+  const netTexts = (yamlUI.net_status_text || {});
+  const TEXTS = {
+    ok: netTexts.ok || "OK",
+    connecting: netTexts.connecting || "Connecting…",
+    disconnected: netTexts.disconnected || "Disconnected — retrying…",
+  };
+  PRS.NET_TEXT = PRS.NET_TEXT || TEXTS;
+
+  // Small helper for displaying the effective host in a footer, etc.
+  PRS.effectiveEngineLabel =
+    PRS.effectiveEngineLabel ||
+    function () {
+      return EFFECTIVE === "same-origin" ? "same-origin" : EFFECTIVE;
+    };
+
+  // Patch/define setNetStatus to use standardized texts and classes
+  const prevSetNetStatus = PRS.setNetStatus;
+  PRS.setNetStatus = function setNetStatus(
+    state,
+    elMsg = document.getElementById("netMsg"),
+    elDot = document.getElementById("netDot")
+  ) {
+    const s = String(state || "").toLowerCase();
+    const text =
+      s === "ok"
+        ? TEXTS.ok
+        : s === "connecting"
+        ? TEXTS.connecting
+        : TEXTS.disconnected;
+
+    if (elMsg) elMsg.textContent = text;
+
+    if (elDot) {
+      elDot.classList.remove("ok", "connecting", "disconnected");
+      elDot.classList.add(s === "ok" ? "ok" : s === "connecting" ? "connecting" : "disconnected");
+      elDot.setAttribute("aria-label", text);
+      elDot.title = text;
+    }
+
+    // Allow any prior behavior to run (non-breaking)
+    if (typeof prevSetNetStatus === "function") {
+      try {
+        prevSetNetStatus(state, elMsg, elDot);
+      } catch {}
+    }
+  };
+
+  // Provide a safe JSON fetch wrapper if one isn't already defined
+  if (!PRS.fetchJSON) {
+    PRS.fetchJSON = async function (path, opts) {
+      const u = url(path);
+      const r = await fetch(u, opts);
+      if (!r.ok) throw new Error(`HTTP ${r.status} for ${u}`);
+      return r.json();
+    };
+  }
+})();
+
   /* -----------------------------------------------------------------------
      DOM helpers
      --------------------------------------------------------------------- */
