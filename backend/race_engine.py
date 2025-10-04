@@ -1,6 +1,8 @@
 from __future__ import annotations
 import time, json, threading, sqlite3, os
 from typing import Dict, List, Optional, Tuple
+from pathlib import Path
+from backend.db_schema import ensure_schema
 
 try:
     # Prefer the merged loader (config/app.yaml + race_modes.yaml + event.yaml)
@@ -165,17 +167,28 @@ class RaceEngine:
         self.feature_pits = bool(fcfg.get("pit_timing", True))
         self.feature_auto_prov = bool(fcfg.get("auto_provisional", True))
 
-        # persistence
-        db_dir = os.path.join(os.path.dirname(__file__), "db")
-        db_path = os.path.join(db_dir, "laps.sqlite")
+        # persistence (forward-only: require app.engine.persistence)
+        try:
+            engine_cfg = app["engine"]
+            pcfg = engine_cfg["persistence"]
+        except KeyError as e:
+            raise RuntimeError("Missing required config: app.engine.persistence") from e
+
+        if "sqlite_path" not in pcfg:
+            raise RuntimeError("Missing required config: app.engine.persistence.sqlite_path")
+
+        db_path = Path(pcfg["sqlite_path"])  # explicit, no legacy/default paths
+        ensure_schema(db_path, recreate=bool(pcfg.get("recreate_on_boot", False)))
+
         self.journal = Journal(
-            db_path=db_path,
+            db_path=str(db_path),
             enabled=bool(pcfg.get("enabled", False)),
             batch_ms=int(pcfg.get("batch_ms", 200)),
             batch_max=int(pcfg.get("batch_max", 50)),
             fsync=bool(pcfg.get("fsync", True)),
         )
         self.checkpoint_s = int(pcfg.get("checkpoint_s", 15))
+
 
         # state
         self._lock = threading.RLock()

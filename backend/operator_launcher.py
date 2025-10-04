@@ -8,12 +8,28 @@ import urllib.request
 import urllib.error
 import webbrowser
 import webview  # requires: pywebview, PySide6, qtpy
+import yaml
+from backend.db_schema import ensure_schema
 
 # --------------------------------------------------------------------------------------
 # Paths
 # --------------------------------------------------------------------------------------
 ROOT = pathlib.Path(__file__).resolve().parents[1]   # repo root
 OP_UI_DIR   = ROOT / "ui" / "operator"
+
+
+# Forward-only configuration: require app.engine.persistence.sqlite_path
+APP_YAML = ROOT / "app.yaml"
+with open(APP_YAML, 'r', encoding='utf-8') as _f:
+    _cfg = yaml.safe_load(_f)
+try:
+    _pcfg = _cfg['app']['engine']['persistence']
+    _sqlite_path = _pcfg['sqlite_path']
+except KeyError as e:
+    raise RuntimeError("Missing required config: app.engine.persistence.sqlite_path") from e
+
+DB_PATH = pathlib.Path(_sqlite_path)
+ensure_schema(DB_PATH, recreate=bool(_pcfg.get('recreate_on_boot', False)))
 
 HTTP_HOST = os.environ.get("PRS_UI_HOST", "localhost")
 HTTP_PORT = int(os.environ.get("PRS_UI_PORT", "8000"))
@@ -121,6 +137,8 @@ class Api:
 # Bootstrap: runs on a background thread after GUI loop starts
 # --------------------------------------------------------------------------------------
 def _bootstrap():
+
+    print(f"DB: {DB_PATH} (recreate_on_boot={bool(_pcfg.get('recreate_on_boot', False))})")
     global _main_win, _splash_win
     _start_backend()  # blocks until healthy or timeout
 

@@ -63,6 +63,7 @@ app:
       sqlite_path: "backend/db/laps.sqlite"
       journal_passes: true   # append raw pass events
       snapshot_on_checkered: true  # write a snapshot when race ends
+      recreate_on_boot: false
 
     # Optional scoring extensions (future-friendly; safe to ignore if unused).
     scoring:
