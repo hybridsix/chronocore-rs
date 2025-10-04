@@ -8,11 +8,11 @@
  *  - Show deterministic net-status copy and the effective engine host
  *
  * Dependencies:
- *  - base.js (window.PRS: $, $$, fetchJSON, url, setNetStatus, startWallClock, etc.)
+ *  - base.js (window.CCRS: $, $$, fetchJSON, url, setNetStatus, startWallClock, etc.)
  *  - CSS: base.css + entrants.css (+ operator.css for shared form styles)
  *
  * Notes:
- *  - All API calls are routed through PRS.url()/PRS.fetchJSON(), so host is YAML-driven.
+ *  - All API calls are routed through CCRS.url()/CCRS.fetchJSON(), so host is YAML-driven.
  *  - The capture helper tries a couple of common endpoints; if none exist, it no-ops with a
  *    friendly message so field ops aren’t blocked.
  * ==========================================================================*/
@@ -23,9 +23,9 @@
   // ---------------------------------------------------------------------------
   // Safe references + micro-helpers (don’t fight existing base.js helpers)
   // ---------------------------------------------------------------------------
-  const PRS = (window.PRS = window.PRS || {});
-  const $ = PRS.$ || ((sel, root) => (root || document).querySelector(sel));
-  const $$ = PRS.$$ || ((sel, root) => Array.from((root || document).querySelectorAll(sel)));
+  const CCRS = (window.CCRS = window.CCRS || {});
+  const $ = CCRS.$ || ((sel, root) => (root || document).querySelector(sel));
+  const $$ = CCRS.$$ || ((sel, root) => Array.from((root || document).querySelectorAll(sel)));
 
   // DOM cache (populated on DOMContentLoaded)
   let elRows, elTbody;
@@ -66,16 +66,16 @@
     elToast      = $("#toast");
 
     // Footer wall clock (base.js)
-    if (typeof PRS.startWallClock === "function") PRS.startWallClock();
+    if (typeof CCRS.startWallClock === "function") CCRS.startWallClock();
 
     // Show effective engine host
-    if (elEngineHost && typeof PRS.effectiveEngineLabel === "function") {
-      elEngineHost.textContent = PRS.effectiveEngineLabel();
+    if (elEngineHost && typeof CCRS.effectiveEngineLabel === "function") {
+      elEngineHost.textContent = CCRS.effectiveEngineLabel();
       elEngineHost.setAttribute("title", "Effective Engine Host");
     }
 
     // Initial net status
-    PRS.setNetStatus("connecting", elNetMsg, elNetDot);
+    CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
 
     // Wire controls
     bindControls();
@@ -84,8 +84,8 @@
     refreshEntrants();
 
     // Background refresh every ~10s (use makePoller if present to be polite)
-    if (typeof PRS.makePoller === "function") {
-      PRS.makePoller(refreshEntrants, 10000);
+    if (typeof CCRS.makePoller === "function") {
+      CCRS.makePoller(refreshEntrants, 10000);
     } else {
       setInterval(refreshEntrants, 10000);
     }
@@ -175,13 +175,13 @@
   // ---------------------------------------------------------------------------
   async function refreshEntrants() {
     try {
-      PRS.setNetStatus("connecting", elNetMsg, elNetDot);
-      const list = await PRS.fetchJSON("/admin/entrants");
+      CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
+      const list = await CCRS.fetchJSON("/admin/entrants");
       entrants = Array.isArray(list) ? list : [];
       renderEntrants();
-      PRS.setNetStatus("ok", elNetMsg, elNetDot);
+      CCRS.setNetStatus("ok", elNetMsg, elNetDot);
     } catch (e) {
-      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
     }
   }
 
@@ -237,8 +237,8 @@
 
   async function createEntrant(e) {
     try {
-      PRS.setNetStatus("connecting", elNetMsg, elNetDot);
-      const res = await fetch(PRS.url("/admin/entrants"), {
+      CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
+      const res = await fetch(CCRS.url("/admin/entrants"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(slimEntrant(e))
@@ -248,14 +248,14 @@
       clearForm();
       await refreshEntrants();
     } catch (err) {
-      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
     }
   }
 
   async function updateEntrant(id, e) {
     try {
-      PRS.setNetStatus("connecting", elNetMsg, elNetDot);
-      const res = await fetch(PRS.url(`/admin/entrants/${encodeURIComponent(id)}`), {
+      CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
+      const res = await fetch(CCRS.url(`/admin/entrants/${encodeURIComponent(id)}`), {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(slimEntrant(e))
@@ -265,14 +265,14 @@
       await refreshEntrants();
       selectEntrant(id);
     } catch (err) {
-      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
     }
   }
 
   async function deleteEntrant(id) {
     try {
-      PRS.setNetStatus("connecting", elNetMsg, elNetDot);
-      const res = await fetch(PRS.url(`/admin/entrants/${encodeURIComponent(id)}`), {
+      CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
+      const res = await fetch(CCRS.url(`/admin/entrants/${encodeURIComponent(id)}`), {
         method: "DELETE"
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -281,7 +281,7 @@
       selectedId = null;
       await refreshEntrants();
     } catch (err) {
-      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
     }
   }
 
@@ -326,18 +326,18 @@
         let tag = "";
         // Prefer an admin capture endpoint if present
         try {
-          const a = await PRS.fetchJSON("/admin/capture");
+          const a = await CCRS.fetchJSON("/admin/capture");
           tag = (a && a.tag) ? String(a.tag) : "";
         } catch {}
         if (!tag) {
           try {
-            const b = await PRS.fetchJSON("/engine/scan");
+            const b = await CCRS.fetchJSON("/engine/scan");
             tag = (b && b.tag) ? String(b.tag) : "";
           } catch {}
         }
         if (!tag) {
           try {
-            const c = await PRS.fetchJSON("/engine/last_pass");
+            const c = await CCRS.fetchJSON("/engine/last_pass");
             tag = (c && c.tag) ? String(c.tag) : "";
             // If the endpoint includes ts and repeats the same tag endlessly, guard:
             if (c && c.ts && String(c.tag) === lastSeen) tag = "";
@@ -355,7 +355,7 @@
           // Assign immediately to backend if such a route exists
           // (optional — if not present, operator can press "Update")
           try {
-            await fetch(PRS.url(`/engine/entrant/assign_tag`), {
+            await fetch(CCRS.url(`/engine/entrant/assign_tag`), {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ id: selectedId, tag })
@@ -363,15 +363,15 @@
           } catch {}
         }
 
-        PRS.setNetStatus("ok", elNetMsg, elNetDot);
+        CCRS.setNetStatus("ok", elNetMsg, elNetDot);
       } catch {
-        PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+        CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
       }
     };
 
     // Use base.js poller if provided (handles jitter/backoff)
-    if (typeof PRS.makePoller === "function") {
-      captureTimer = PRS.makePoller(tick, 750);
+    if (typeof CCRS.makePoller === "function") {
+      captureTimer = CCRS.makePoller(tick, 750);
     } else {
       captureTimer = setInterval(tick, 750);
     }
@@ -381,7 +381,7 @@
   function stopCapture(msg) {
     if (captureTimer) {
       if (typeof captureTimer === "number") clearInterval(captureTimer);
-      // PRS.makePoller may return undefined; in that case tick stops when page unloads
+      // CCRS.makePoller may return undefined; in that case tick stops when page unloads
       captureTimer = null;
     }
     if (btnCapture) {

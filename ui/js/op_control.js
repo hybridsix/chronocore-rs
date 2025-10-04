@@ -7,12 +7,12 @@
  *  - Show deterministic net status copy and the effective engine host
  *
  * Dependencies:
- *  - base.js (window.PRS namespace with helpers like $, $$, startWallClock,
+ *  - base.js (window.CCRS namespace with helpers like $, $$, startWallClock,
  *             setNetStatus, fmtClock, fetchJSON, and our new url() resolver)
  *  - CSS: base.css + spectator.css (flag theme classes) + operator.css
  *
  * Notes:
- *  - All network calls use PRS.url()/PRS.fetchJSON(), so host is YAML-driven.
+ *  - All network calls use CCRS.url()/CCRS.fetchJSON(), so host is YAML-driven.
  *  - We keep comments verbose for field debuggability.
  * ==========================================================================*/
 
@@ -22,9 +22,9 @@
   // ---------------------------------------------------------------------------
   // Safe references and tiny fallbacks (don’t fight existing helpers)
   // ---------------------------------------------------------------------------
-  const PRS = (window.PRS = window.PRS || {});
-  const $ = PRS.$ || ((sel, root) => (root || document).querySelector(sel));
-  const $$ = PRS.$$ || ((sel, root) => Array.from((root || document).querySelectorAll(sel)));
+  const CCRS = (window.CCRS = window.CCRS || {});
+  const $ = CCRS.$ || ((sel, root) => (root || document).querySelector(sel));
+  const $$ = CCRS.$$ || ((sel, root) => Array.from((root || document).querySelectorAll(sel)));
 
   // DOM cache — we keep these here to avoid repeated lookups inside the poller.
   let elFlagBanner, elClock, elRows, elNetMsg, elNetDot, elEngineHost;
@@ -49,11 +49,11 @@
     elEngineHost = $("#engineHost"); // Optional: place to show effective engine host
 
     // Start a visible wall clock in the footer (provided by base.js)
-    if (typeof PRS.startWallClock === "function") PRS.startWallClock();
+    if (typeof CCRS.startWallClock === "function") CCRS.startWallClock();
 
     // Show the effective engine host for operator confidence
-    if (elEngineHost && typeof PRS.effectiveEngineLabel === "function") {
-      elEngineHost.textContent = PRS.effectiveEngineLabel();
+    if (elEngineHost && typeof CCRS.effectiveEngineLabel === "function") {
+      elEngineHost.textContent = CCRS.effectiveEngineLabel();
       elEngineHost.setAttribute("title", "Effective Engine Host");
     }
 
@@ -61,7 +61,7 @@
     bindFlagButtons();
 
     // Initial status: attempting connection
-    PRS.setNetStatus("connecting", elNetMsg, elNetDot);
+    CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
 
     // Begin polling engine state
     startPolling();
@@ -88,9 +88,9 @@
   // Poll /race/state, update UI. Called on an interval.
   async function pollState() {
     try {
-      const snapshot = await PRS.fetchJSON("/race/state");
+      const snapshot = await CCRS.fetchJSON("/race/state");
       // If we got here, network is up
-      PRS.setNetStatus("ok", elNetMsg, elNetDot);
+      CCRS.setNetStatus("ok", elNetMsg, elNetDot);
 
       // 1) Flag banner
       if (snapshot && snapshot.flag) {
@@ -122,7 +122,7 @@
 
     } catch (err) {
       // Network error or non-2xx response
-      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
       // Keep UI as-is; poller will retry.
     }
   }
@@ -130,8 +130,8 @@
   // Post /engine/flag with {flag}
   async function postFlag(flag) {
     try {
-      PRS.setNetStatus("connecting", elNetMsg, elNetDot);
-      const res = await fetch(PRS.url("/engine/flag"), {
+      CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
+      const res = await fetch(CCRS.url("/engine/flag"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ flag })
@@ -139,19 +139,19 @@
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       // Fast feedback: update banner immediately (poller will confirm)
       updateFlagBanner(flag);
-      PRS.setNetStatus("ok", elNetMsg, elNetDot);
+      CCRS.setNetStatus("ok", elNetMsg, elNetDot);
     } catch (e) {
-      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
     }
   }
 
   // ---------------------------------------------------------------------------
-  // Poll loop — prefer PRS.makePoller if present; otherwise setInterval fallback
+  // Poll loop — prefer CCRS.makePoller if present; otherwise setInterval fallback
   // ---------------------------------------------------------------------------
   function startPolling() {
     // If base.js provides a makePoller with jitter/backoff, use it
-    if (typeof PRS.makePoller === "function") {
-      PRS.makePoller(pollState, 1000); // ~1s cadence; base.js may smooth this
+    if (typeof CCRS.makePoller === "function") {
+      CCRS.makePoller(pollState, 1000); // ~1s cadence; base.js may smooth this
       return;
     }
     // Simple fallback
@@ -196,10 +196,10 @@
     if (ms === lastClockMs) return;
     lastClockMs = ms;
 
-    // Prefer PRS.fmtClock which handles mm:ss.t (or mm:ss)
+    // Prefer CCRS.fmtClock which handles mm:ss.t (or mm:ss)
     let text = "";
-    if (typeof PRS.fmtClock === "function") {
-      text = PRS.fmtClock(ms);
+    if (typeof CCRS.fmtClock === "function") {
+      text = CCRS.fmtClock(ms);
     } else {
       // very simple fallback: mm:ss
       const totalSec = Math.max(0, Math.floor(ms / 1000));

@@ -1,29 +1,29 @@
 /* =========================================================================
-   PRS – Shared Frontend Helpers (production build)
-   Exposes: window.PRS = { $, $$, qs, apiUrl, fmt, startWallClock, debounce,
+   CCRS – Shared Frontend Helpers (production build)
+   Exposes: window.CCRS = { $, $$, qs, apiUrl, fmt, startWallClock, debounce,
                            throttle, onVisible, jsonFetch, NetStatus }
    -------------------------------------------------------------------------
    - Zero dependencies. No frameworks.
-   - Safe to load on any page; everything is namespaced under PRS.
+   - Safe to load on any page; everything is namespaced under CCRS.
    - No UI side effects on its own.
    ========================================================================= */
 
 (() => {
-  // Guard: keep existing PRS if reloaded (hot reload / multiple pages)
-  const PRS = (window.PRS = window.PRS || {});
+  // Guard: keep existing CCRS if reloaded (hot reload / multiple pages)
+  const CCRS = (window.CCRS = window.CCRS || {});
 
   /* ---------------------------------------------------------------------------
  * Engine host resolver + status text normalizer (YAML-driven)
  * Depends on optional bootstrap object injected by the server/launcher:
- *   window.PRS_BOOT or window.__PRS_BOOTSTRAP
+ *   window.CCRS_BOOT or window.__CCRS_BOOTSTRAP
  * Looks under:
  *   app.client.engine.*   (mode, fixed_host, prefer_same_origin, allow_client_override)
  *   app.ui.net_status_text (ok, connecting, disconnected)
  * -------------------------------------------------------------------------*/
 (function () {
-  const PRS = (window.PRS = window.PRS || {});
+  const CCRS = (window.CCRS = window.CCRS || {});
   const BOOT =
-    window.PRS_BOOT || window.BOOTSTRAP || window.__PRS_BOOTSTRAP || {};
+    window.CCRS_BOOT || window.BOOTSTRAP || window.__CCRS_BOOTSTRAP || {};
 
   // Read YAML-backed defaults if provided by bootstrap
   const appCfg = (BOOT && BOOT.app) || {};
@@ -71,9 +71,9 @@
   }
 
   const EFFECTIVE = resolveEngineHost();
-  PRS.ALLOW_OVERRIDE = ALLOW_OVERRIDE;
-  PRS.PREFER_SAME_ORIGIN = PREFER_SAME;
-  PRS.EFFECTIVE_ENGINE = EFFECTIVE;
+  CCRS.ALLOW_OVERRIDE = ALLOW_OVERRIDE;
+  CCRS.PREFER_SAME_ORIGIN = PREFER_SAME;
+  CCRS.EFFECTIVE_ENGINE = EFFECTIVE;
 
   // Build a URL for API calls. Returns relative paths when on same-origin.
   function url(path) {
@@ -84,7 +84,7 @@
       : "http://" + EFFECTIVE;
     return base.replace(/\/+$/, "") + "/" + p;
   }
-  PRS.url = PRS.url || url;
+  CCRS.url = CCRS.url || url;
 
   // Net status texts (from YAML ui.net_status_text, with sensible defaults)
   const netTexts = (yamlUI.net_status_text || {});
@@ -93,18 +93,18 @@
     connecting: netTexts.connecting || "Connecting…",
     disconnected: netTexts.disconnected || "Disconnected — retrying…",
   };
-  PRS.NET_TEXT = PRS.NET_TEXT || TEXTS;
+  CCRS.NET_TEXT = CCRS.NET_TEXT || TEXTS;
 
   // Small helper for displaying the effective host in a footer, etc.
-  PRS.effectiveEngineLabel =
-    PRS.effectiveEngineLabel ||
+  CCRS.effectiveEngineLabel =
+    CCRS.effectiveEngineLabel ||
     function () {
       return EFFECTIVE === "same-origin" ? "same-origin" : EFFECTIVE;
     };
 
   // Patch/define setNetStatus to use standardized texts and classes
-  const prevSetNetStatus = PRS.setNetStatus;
-  PRS.setNetStatus = function setNetStatus(
+  const prevSetNetStatus = CCRS.setNetStatus;
+  CCRS.setNetStatus = function setNetStatus(
     state,
     elMsg = document.getElementById("netMsg"),
     elDot = document.getElementById("netDot")
@@ -135,8 +135,8 @@
   };
 
   // Provide a safe JSON fetch wrapper if one isn't already defined
-  if (!PRS.fetchJSON) {
-    PRS.fetchJSON = async function (path, opts) {
+  if (!CCRS.fetchJSON) {
+    CCRS.fetchJSON = async function (path, opts) {
       const u = url(path);
       const r = await fetch(u, opts);
       if (!r.ok) throw new Error(`HTTP ${r.status} for ${u}`);
@@ -318,15 +318,15 @@
   /* -----------------------------------------------------------------------
      Export
      --------------------------------------------------------------------- */
-  PRS.$ = $;
-  PRS.$$ = $$;
-  PRS.qs = qs;
-  PRS.apiUrl = apiUrl;
-  PRS.fmt = fmt;
-  PRS.debounce = debounce;
-  PRS.throttle = throttle;
-  PRS.onVisible = onVisible;
-  PRS.jsonFetch = jsonFetch;
-  PRS.startWallClock = startWallClock;
-  PRS.NetStatus = NetStatus;
+  CCRS.$ = $;
+  CCRS.$$ = $$;
+  CCRS.qs = qs;
+  CCRS.apiUrl = apiUrl;
+  CCRS.fmt = fmt;
+  CCRS.debounce = debounce;
+  CCRS.throttle = throttle;
+  CCRS.onVisible = onVisible;
+  CCRS.jsonFetch = jsonFetch;
+  CCRS.startWallClock = startWallClock;
+  CCRS.NetStatus = NetStatus;
 })();

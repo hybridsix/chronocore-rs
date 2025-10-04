@@ -16,10 +16,11 @@ from backend.db_schema import ensure_schema
 # --------------------------------------------------------------------------------------
 ROOT = pathlib.Path(__file__).resolve().parents[1]   # repo root
 OP_UI_DIR   = ROOT / "ui" / "operator"
+CONFIG_DIR = ROOT / "config"
 
 
 # Forward-only configuration: require app.engine.persistence.sqlite_path
-APP_YAML = ROOT / "app.yaml"
+APP_YAML = CONFIG_DIR / "app.yaml"
 with open(APP_YAML, 'r', encoding='utf-8') as _f:
     _cfg = yaml.safe_load(_f)
 try:
@@ -31,8 +32,8 @@ except KeyError as e:
 DB_PATH = pathlib.Path(_sqlite_path)
 ensure_schema(DB_PATH, recreate=bool(_pcfg.get('recreate_on_boot', False)))
 
-HTTP_HOST = os.environ.get("PRS_UI_HOST", "localhost")
-HTTP_PORT = int(os.environ.get("PRS_UI_PORT", "8000"))
+HTTP_HOST = os.environ.get("CCRS_UI_HOST", "localhost")
+HTTP_PORT = int(os.environ.get("CCRS_UI_PORT", "8000"))
 def ui(path: str) -> str:
     # path should start with '/'; example: '/ui/operator/entrants.html'
     return f"http://{HTTP_HOST}:{HTTP_PORT}{path}"

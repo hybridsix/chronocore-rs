@@ -9,12 +9,12 @@
  *  - Trigger pre/green flags as part of preflight
  *
  * Dependencies:
- *  - base.js (window.PRS namespace with $, $$, fmtClock, fetchJSON, url(), etc.)
+ *  - base.js (window.CCRS namespace with $, $$, fmtClock, fetchJSON, url(), etc.)
  *  - js-yaml (global `jsyaml`) for client-side YAML parsing
  *  - CSS: base.css + operator.css (+ spectator.css if flag banner is shown)
  *
  * Notes:
- *  - All API calls use PRS.url()/PRS.fetchJSON() so engine host is YAML-driven.
+ *  - All API calls use CCRS.url()/CCRS.fetchJSON() so engine host is YAML-driven.
  *  - YAML static files are fetched via relative paths first; if not found, we
  *    fall back to host-resolved URLs (helps when the UI is desktop `file://`).
  *  - Comments are intentionally verbose for in-the-field troubleshooting.
@@ -26,9 +26,9 @@
   // ---------------------------------------------------------------------------
   // Safe references + micro-helpers (don’t fight existing base.js helpers)
   // ---------------------------------------------------------------------------
-  const PRS = (window.PRS = window.PRS || {});
-  const $ = PRS.$ || ((sel, root) => (root || document).querySelector(sel));
-  const $$ = PRS.$$ || ((sel, root) => Array.from((root || document).querySelectorAll(sel)));
+  const CCRS = (window.CCRS = window.CCRS || {});
+  const $ = CCRS.$ || ((sel, root) => (root || document).querySelector(sel));
+  const $$ = CCRS.$$ || ((sel, root) => Array.from((root || document).querySelectorAll(sel)));
 
   // YAML parsing guard
   const Y = (typeof window.jsyaml !== "undefined" ? window.jsyaml : null);
@@ -63,26 +63,26 @@
     elEngineHost      = $("#engineHost"); // optional: a small label in footer/header
 
     // Visible wall clock in footer (if provided by base.js)
-    if (typeof PRS.startWallClock === "function") PRS.startWallClock();
+    if (typeof CCRS.startWallClock === "function") CCRS.startWallClock();
 
     // Show effective engine host for operator confidence
-    if (elEngineHost && typeof PRS.effectiveEngineLabel === "function") {
-      elEngineHost.textContent = PRS.effectiveEngineLabel();
+    if (elEngineHost && typeof CCRS.effectiveEngineLabel === "function") {
+      elEngineHost.textContent = CCRS.effectiveEngineLabel();
       elEngineHost.setAttribute("title", "Effective Engine Host");
     }
 
     // Net status: we begin in "connecting" while we fetch YAML
-    PRS.setNetStatus("connecting", elNetMsg, elNetDot);
+    CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
 
     // Wire buttons
     bindButtons();
 
     // Kick off YAML loads (event + modes), then render selects/previews
     bootstrapFromYaml().then(() => {
-      PRS.setNetStatus("ok", elNetMsg, elNetDot);
+      CCRS.setNetStatus("ok", elNetMsg, elNetDot);
     }).catch(() => {
       // Even if YAML fails, the operator can still paste entrants manually.
-      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
     });
   });
 
@@ -127,8 +127,8 @@
   async function bootstrapFromYaml() {
     // We try relative paths first (same-origin), then fall back to host-resolved
     // URLs. This is friendlier to both the browser-served UI and desktop modes.
-    const eventPaths = ["/config/event.yaml", PRS.url("/config/event.yaml")];
-    const modePaths  = ["/config/race_modes.yaml", PRS.url("/config/race_modes.yaml")];
+    const eventPaths = ["/config/event.yaml", CCRS.url("/config/event.yaml")];
+    const modePaths  = ["/config/race_modes.yaml", CCRS.url("/config/race_modes.yaml")];
 
     EVENT = await loadYamlFirstAvailable(eventPaths).catch(() => null);
     MODES = await loadYamlFirstAvailable(modePaths).catch(() => null);
@@ -166,9 +166,9 @@
 
   async function fetchText(path) {
     // If the path already has http(s) or starts with "/", just fetch it.
-    // Otherwise, resolve via PRS.url (host-driven).
+    // Otherwise, resolve via CCRS.url (host-driven).
     const isAbs = /^https?:/i.test(path) || path.startsWith("/");
-    const u = isAbs ? path : PRS.url(path);
+    const u = isAbs ? path : CCRS.url(path);
     const r = await fetch(u, { cache: "no-cache" });
     if (!r.ok) throw new Error(`HTTP ${r.status} for ${u}`);
     return r.text();
@@ -259,9 +259,9 @@
   // ---------------------------------------------------------------------------
   async function useEnabledEntrantsFromState() {
     try {
-      PRS.setNetStatus("connecting", elNetMsg, elNetDot);
-      const snapshot = await PRS.fetchJSON("/race/state");
-      PRS.setNetStatus("ok", elNetMsg, elNetDot);
+      CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
+      const snapshot = await CCRS.fetchJSON("/race/state");
+      CCRS.setNetStatus("ok", elNetMsg, elNetDot);
 
       // Different engines expose entrants differently; we try common fields.
       const list =
@@ -282,7 +282,7 @@
       elEntrantsTextarea.focus();
       elEntrantsTextarea.setSelectionRange(0, 0);
     } catch (e) {
-      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
     }
   }
 
@@ -309,7 +309,7 @@
     }
 
     try {
-      PRS.setNetStatus("connecting", elNetMsg, elNetDot);
+      CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
 
       // Body schema:
       //   entrants: [ {number, name, tag, enabled?} ... ]
@@ -321,7 +321,7 @@
         merge: !!merge
       };
 
-      const res = await fetch(PRS.url("/engine/load"), {
+      const res = await fetch(CCRS.url("/engine/load"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(body)
@@ -344,9 +344,9 @@
       }
 
       annotateSuccess(diff);
-      PRS.setNetStatus("ok", elNetMsg, elNetDot);
+      CCRS.setNetStatus("ok", elNetMsg, elNetDot);
     } catch (e) {
-      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
     }
   }
 
@@ -394,16 +394,16 @@
   // ---------------------------------------------------------------------------
   async function postFlag(flag) {
     try {
-      PRS.setNetStatus("connecting", elNetMsg, elNetDot);
-      const res = await fetch(PRS.url("/engine/flag"), {
+      CCRS.setNetStatus("connecting", elNetMsg, elNetDot);
+      const res = await fetch(CCRS.url("/engine/flag"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ flag })
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      PRS.setNetStatus("ok", elNetMsg, elNetDot);
+      CCRS.setNetStatus("ok", elNetMsg, elNetDot);
     } catch (e) {
-      PRS.setNetStatus("disconnected", elNetMsg, elNetDot);
+      CCRS.setNetStatus("disconnected", elNetMsg, elNetDot);
     }
   }
 

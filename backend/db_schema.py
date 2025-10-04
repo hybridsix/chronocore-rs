@@ -1,6 +1,6 @@
 
 # backend/db_schema.py
-# Dedicated SQLite schema management for PRS Race Timing Software.
+# Dedicated SQLite schema management for CCRS Race Timing Software.
 #
 # Public:
 #   ensure_schema(db_path: str | Path, recreate: bool = False) -> None

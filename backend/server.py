@@ -55,7 +55,10 @@ app = FastAPI(
 
 # Forward-only config: require app.engine.persistence.sqlite_path
 ROOT = os.path.dirname(os.path.dirname(__file__))
-APP_YAML = os.path.join(ROOT, 'app.yaml')
+CONFIG_DIR = os.path.join(ROOT, 'config')
+
+
+APP_YAML = os.path.join(CONFIG_DIR, 'app.yaml')
 with open(APP_YAML, 'r', encoding='utf-8') as _f:
     _cfg = yaml.safe_load(_f)
 try:
