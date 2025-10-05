@@ -314,7 +314,13 @@ def _norm_tag(value: _Optional[str]) -> _Optional[str]:
 @app.get("/admin/entrants")
 async def admin_list_entrants():
     """
-    Return all entrants from the database. This is the source of truth for IDs/tags/enabled flags.
+    Authoritative read of entrants for Operator UI.
+
+    Output normalization rules:
+      - 'id'      : always an integer (SQLite primary key).
+      - 'number'  : always a string if present, else None.
+      - 'enabled' : always a boolean True/False, not 0/1.
+      - Other fields are passed through as stored.
     """
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
@@ -325,7 +331,28 @@ async def admin_list_entrants():
         """)
         rows = await cur.fetchall()
         await cur.close()
-        return [dict(r) for r in rows]
+
+        out = []
+        for r in rows:
+            out.append({
+                # id stays an integer exactly as stored
+                "id": int(r["id"]) if r["id"] is not None else None,
+
+                # number always stringified so UI can treat it uniformly
+                "number": (str(r["number"]) if r["number"] is not None else None),
+
+                # other fields unchanged
+                "name": r["name"],
+                "tag": r["tag"],
+
+                # ensure strict boolean for enabled
+                "enabled": bool(r["enabled"]),
+
+                "status": r["status"],
+            })
+
+        return out
+
 
 @app.post("/admin/entrants")
 async def admin_upsert_entrants(payload: Dict[str, Any]):
@@ -436,12 +463,7 @@ async def admin_upsert_entrants(payload: Dict[str, Any]):
             }
 
 
-
-
-
-            await db.commit()
-            return {"ok": True, "count": created + updated, "created": created, "updated": updated}
-
+            
         except HTTPException:
             raise  # already rolled back above
         except sqlite3.IntegrityError as ie:
