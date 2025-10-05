@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>PRS — Operator Console</title>
+  <title>CCRS — Operator Console</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- 
@@ -17,7 +17,7 @@
 
   <!-- 
     JS imports:
-    - base.js : shared helpers (makePoller, setNetStatus, startWallClock, fmtClock, etc.)
+    - base.js : shared helpers (setNetStatus, startWallClock, fmtClock, etc.)
   -->
   <script src="../js/base.js" defer></script>
 
@@ -136,10 +136,10 @@
        ─────────────────────────────────────────────────────────────── -->
   <script>
    window.addEventListener('DOMContentLoaded', () => {
-  // PRS is guaranteed to exist now because deferred scripts run before this event
+  // CCRS is guaranteed to exist now because deferred scripts run before this event
 
   // Pull only what we actually use on the Home page
-  const { setNetStatus, makePoller } = window.PRS;
+  const { setNetStatus } = window.CCRS; // using CCRS.apiUrl/jsonFetch directly from window.CCRS
 
   /**
    * startSimpleWallClock(selector)
@@ -169,21 +169,33 @@
    * to reflect whether the engine answers. This poller only updates the
    * footer status text and DOES NOT touch any other DOM.
    */
-  const poller = makePoller(
-    async () => {
-      const r = await fetch("/race/state", { headers: { Accept: "application/json" } });
-      if (!r.ok) throw new Error(`/race/state failed: ${r.status} ${r.statusText}`);
-      // If we can fetch state, mark footer OK (no extra UI here)
-      setNetStatus(true, "OK");
-    },
-    2000, // lighter cadence is fine here
-    () => {
-      setNetStatus(false, "Disconnected — retrying…");
-    }
-  );
-  poller.start();
+  // Local lightweight poller (makePoller not provided in production base.js)
+  let _reachTimer = null;
+  let _reachFailures = 0;
+  function startReachabilityPoll(ms = 2000) {
+    if (_reachTimer) clearInterval(_reachTimer);
+    _reachTimer = setInterval(async () => {
+      try {
+        const url = CCRS.apiUrl('/healthz');
+      const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
+
+        if (!r.ok) throw new Error(`/race/state failed: ${r.status} ${r.statusText}`);
+        _reachFailures = 0;
+        setNetStatus('ok');
+      } catch (err) {
+        _reachFailures++;
+        if (_reachFailures >= 2) setNetStatus('disconnected');
+        console.warn('reachability failed:', err?.message || err);
+      }
+    }, ms);
+  }
+  setNetStatus('connecting');
+  startReachabilityPoll(2000);
+
   });
 </script>
 
 </body>
 </html>
+

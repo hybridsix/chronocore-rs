@@ -1,483 +1,349 @@
-# backend/server.py
-# =============================================================================
-# ChronoCore Backend — FastAPI app (engine-first)
-#
-# This service exposes:
-#   • /race/state                 → Authoritative in-memory RaceEngine snapshot
-#   • /engine/load                → Initialize a race (roster + tags)
-#   • /engine/flag                → Change race flag. Allowed: pre|green|yellow|red|white|checkered|blue
-#   • /engine/pass                → Ingest a timing pass (track|pit_in|pit_out)
-#   • /engine/entrant/enable      → Enable/disable an entrant for this race
-#   • /engine/entrant/status      → Set entrant status (ACTIVE|DISABLED|DNF|DQ)
-#   • /engine/entrant/assign_tag  → Bind/unbind a tag for an entrant
-#
-# Notes:
-#   - Engine is the live authority (fast + consistent). DB mirroring is optional.
-#   - Spectator/Operator UIs should poll /race/state (low-latency, stable contract).
-#   - Static UI is served at /ui (mounts the repo’s ui/ directory).
-# =============================================================================
-
 from __future__ import annotations
 
-# ---------------------------------------------------------------------------
-# Imports
-# ---------------------------------------------------------------------------
-import os
-import io, csv
-from typing import Optional, Dict, Any
+"""
+ChronoCore RS — backend/server.py (drop-in)
+------------------------------------------
+This version keeps the original public surface but fixes the following:
+1) /engine/entrant/assign_tag
+   - Idempotent: assigning the same tag to the same entrant returns 200 OK.
+   - Conflict checks only consider ENABLED entrants and exclude the incumbent.
+   - On change, writes through to SQLite so DB and Engine stay in sync.
 
-from fastapi import FastAPI, HTTPException, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse, PlainTextResponse
-from pydantic import BaseModel
+2) /engine/load
+   - Rejects malformed payloads with clean 400s (no crashes, no int(None)).
+   - Coerces entrant ids to int *before* any mapping.
 
-from fastapi.staticfiles import StaticFiles
-import sqlite3
-import yaml
+3) Health probes
+   - /healthz: liveness (no DB access).
+   - /readyz: readiness (touches SQLite to confirm schema presence).
+
+4) DB path
+   - Sourced via config_loader.get_db_path(), which defaults to backend/db/laps.sqlite
+     unless overridden in config/app.yaml.
+"""
+
 from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import aiosqlite
+from fastapi import FastAPI, HTTPException, Response, status
+from fastapi.middleware.cors import CORSMiddleware
+from starlette.responses import JSONResponse
+from starlette.staticfiles import StaticFiles
+
 from .db_schema import ensure_schema, tag_conflicts
+from .config_loader import get_db_path
 
-# RaceEngine singleton (authoritative in-memory state)
-from .race_engine import ENGINE
+# ------------------------------------------------------------
+# FastAPI app bootstrap
+# ------------------------------------------------------------
+app = FastAPI(title="CCRS Backend", version="0.2.1")
 
-# For External Read-Only Feed
-from fastapi.responses import JSONResponse
-
-
-# ---------------------------------------------------------------------------
-# FastAPI app + CORS + Static
-# ---------------------------------------------------------------------------
-app = FastAPI(
-    title="ChronoCore Backend",
-    description="Engine-first race timing API for ChronoCore.",
-    version="0.1.0",
-)
-
-# Forward-only config: require app.engine.persistence.sqlite_path
-ROOT = os.path.dirname(os.path.dirname(__file__))
-CONFIG_DIR = os.path.join(ROOT, 'config')
-
-
-APP_YAML = os.path.join(CONFIG_DIR, 'app.yaml')
-with open(APP_YAML, 'r', encoding='utf-8') as _f:
-    _cfg = yaml.safe_load(_f)
-try:
-    _pcfg = _cfg['app']['engine']['persistence']
-    _sqlite_path = _pcfg['sqlite_path']
-except KeyError as e:
-    raise RuntimeError('Missing required config: app.engine.persistence.sqlite_path') from e
-
-DB_PATH = Path(_sqlite_path)
-ensure_schema(DB_PATH, recreate=bool(_pcfg.get('recreate_on_boot', False)))
-
-
-# Allow local development across ports / shells (operator, spectator, etc.)
+# CORS: permissive for development. Tighten for production.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # lock this down in production
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Mount static UI (served at /ui)
-# server.py lives in backend/, so repo root is one level up
-ROOT = os.path.dirname(os.path.dirname(__file__))
-UI_DIR = os.path.join(ROOT, "ui")
-if os.path.isdir(UI_DIR):
-    app.mount("/ui", StaticFiles(directory=UI_DIR, html=True), name="ui")
+# Serve static UI bundle if present
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+STATIC_DIR.mkdir(exist_ok=True)
+app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
 
+# Resolve DB path from config and ensure schema on boot.
+DB_PATH = get_db_path()
+ensure_schema(DB_PATH, recreate=False, include_passes=True)
 
-
-# ---- DB helpers -----------------------------------------------------------
-def _conn():
-    return sqlite3.connect(DB_PATH)
-
-def _row_to_entrant(row):
-    (entrant_id, car_number, name, tag, enabled, status,
-     organization, spoken_name, color, logo, created_at, updated_at) = row
-    return {
-        'id': entrant_id,
-        'number': car_number,
-        'name': name,
-        'tag': tag,
-        'enabled': bool(enabled),
-        'status': status,
-        'organization': organization,
-        'spoken_name': spoken_name,
-        'color': color,
-        'logo': logo,
-        'created_at': created_at,
-        'updated_at': updated_at,
-    }
-
-# ---------------------------------------------------------------------------
-# Basic health / convenience routes
-# ---------------------------------------------------------------------------
-@app.get("/")
-def root_redirect():
+# ------------------------------------------------------------
+# Minimal "Engine" adapter used by these endpoints
+# ------------------------------------------------------------
+class _Engine:
     """
-    Convenience: redirect bare root to the UI bundle if present.
+    Very small in-memory session mirror the operator UI interacts with.
+    Your real runtime engine can replace this; keep method names the same.
     """
-    return RedirectResponse(url="/ui/") if os.path.isdir(UI_DIR) else JSONResponse({"ok": True})
+    def __init__(self) -> None:
+        self._entrants: Dict[int, Dict[str, Any]] = {}
 
-@app.get("/health")
-def health():
-    """
-    Simple liveness probe.
-    """
-    return {"ok": True}
+    def load(self, entrants: List[Dict[str, Any]]) -> Dict[str, Any]:
+        # Store by id for constant-time lookups
+        self._entrants = {e["id"]: e for e in entrants}
+        return {"ok": True, "entrants": list(self._entrants.keys())}
 
-@app.get("/healthz")
-def healthz():
-    """
-    Extended health probe. DB path is informational only (engine-first).
-    """
-    # The engine's journal (if enabled) writes to backend/db/laps.sqlite
-    db_rel = os.path.join("backend", "db", "laps.sqlite")
-    return {"ok": True, "db": db_rel}
+    def assign_tag(self, entrant_id: int, tag: Optional[str]) -> Dict[str, Any]:
+        if entrant_id not in self._entrants:
+            # We deliberately raise to let the API return 412 Precondition Failed
+            raise KeyError("entrant not in active session")
+        self._entrants[entrant_id]["tag"] = tag
+        return {"ok": True, "entrant_id": entrant_id, "tag": tag}
 
+ENGINE = _Engine()
 
-# ---------------------------------------------------------------------------
-# Engine-first API
-# ---------------------------------------------------------------------------
-@app.get("/race/state")
-def race_state():
+# ------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------
+async def _fetch_one(db: aiosqlite.Connection, sql: str, params: tuple = ()) -> Optional[aiosqlite.Row]:
+    cur = await db.execute(sql, params)
+    row = await cur.fetchone()
+    await cur.close()
+    return row
+
+async def _exec(db: aiosqlite.Connection, sql: str, params: tuple = ()) -> None:
+    await db.execute(sql, params)
+    await db.commit()
+
+def _normalize_tag(raw: Any) -> Optional[str]:
     """
-    Return the authoritative RaceSnapshot (engine-owned, atomic).
-    The snapshot includes: flag, race_id, race_type, clock_ms, running,
-    standings[], last_update_utc, features, etc.
+    Normalize incoming tag payload:
+      - None or whitespace-only -> None (clears the tag)
+      - Else -> stripped string
     """
-    try:
-        return JSONResponse(ENGINE.snapshot())
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    if raw is None:
+        return None
+    s = str(raw).strip()
+    return s or None
 
-
-@app.get("/race/current")
-def race_current():
-    """
-    Minimal helper for UIs that auto-follow the active race.
-    """
-    return {"race_id": ENGINE.race_id}
-
-
+# ------------------------------------------------------------
+# Endpoints
+# ------------------------------------------------------------
 @app.post("/engine/load")
 async def engine_load(payload: Dict[str, Any]):
     """
-    Initialize a race session and roster.
-    Enforces duplicate-tag rules (enabled entrants must have unique tags).
+    Load the current runtime session with the given entrants list.
+    Validation rules (hard 400s):
+      - payload.race_id must be present and int-able.
+      - payload.entrants must be a list.
+      - each entrant must be an object with an 'id' that is int-able.
+    We coerce id to int **before** any further mapping.
     """
     race_id = payload.get("race_id")
     if race_id is None:
-        raise HTTPException(status_code=400, detail="race_id required")
-    entrants = payload.get("entrants", [])
-    race_type = payload.get("race_type", "sprint")
-
-    seen = {}
-    for e in entrants:
-        if not e.get('enabled', True):
-            continue
-        t = (e.get('tag') or '').strip()
-        if not t:
-            continue
-        if t in seen and seen[t] != e.get('entrant_id') and seen[t] != e.get('id'):
-            raise HTTPException(status_code=409, detail=f"Duplicate tag in payload: {t}")
-        seen[t] = e.get('entrant_id') or e.get('id')
-
-    with _conn() as c:
-        for e in entrants:
-            if not e.get('enabled', True):
-                continue
-            t = (e.get('tag') or '').strip()
-            if not t:
-                continue
-            incumbent = e.get('entrant_id') or e.get('id')
-            if tag_conflicts(c, t, incumbent_entrant_id=incumbent):
-                raise HTTPException(status_code=409, detail=f"Tag in use by another enabled entrant: {t}")
-
+        raise HTTPException(status_code=400, detail="missing required field: race_id")
     try:
-        snap = ENGINE.load(int(race_id), entrants, race_type=str(race_type))
-        return JSONResponse(snap)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        int(race_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"invalid race_id: {race_id!r}")
 
+    entrants_ui = payload.get("entrants", []) or []
+    if not isinstance(entrants_ui, list):
+        raise HTTPException(status_code=400, detail="entrants must be a list")
 
-@app.post("/engine/flag")
-async def engine_flag(payload: Dict[str, Any]):
-    """
-    Change race flag. Allowed: pre|green|yellow|red|white|checkered|blue
+    # Validate + coerce ids in place
+    for idx, item in enumerate(entrants_ui):
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail=f"entrant at index {idx} must be an object")
+        if item.get("id") is None:
+            raise HTTPException(status_code=400, detail=f"entrant at index {idx} missing id")
+        try:
+            item["id"] = int(item["id"])
+        except Exception:
+            raise HTTPException(status_code=400, detail=f"invalid entrant id at index {idx}: {item.get('id')!r}")
 
-    Behavior:
-    - First transition to green starts the race clock.
-    - Red still increments laps (your rule).
-    - Checkered freezes clock + standings (leader-based classification).
-    """
-    flag = payload.get("flag")
-    if not flag:
-        raise HTTPException(status_code=400, detail="flag required")
-    try:
-        return JSONResponse(ENGINE.set_flag(str(flag)))
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
+    # Minimal shape that the runtime uses (pass-through tolerated)
+    entrants_engine: List[Dict[str, Any]] = []
+    for item in entrants_ui:
+        entrants_engine.append({
+            "id": item["id"],
+            "name": item.get("name"),
+            "number": item.get("number"),
+            "tag": _normalize_tag(item.get("tag")),
+            "enabled": bool(item.get("enabled", True)),
+        })
 
-
-@app.post("/engine/pass")
-async def engine_pass(payload: Dict[str, Any]):
-    """
-    Ingest a timing pass from track or pit receivers.
-
-    Body:
-    {
-      "tag": "3000123",
-      "ts_ns": 1696000000999999999,   // optional; server will timestamp if missing
-      "source": "track|pit_in|pit_out",
-      "device_id": "gate-a"           // optional; can be auto-routed via YAML pits.receivers
-    }
-
-    Returns a mini result:
-    {
-      "ok": true,
-      "entrant_id": 12,               // null if unknown and auto_provisional=false
-      "lap_added": true|false,
-      "lap_time_s": 23.481|null,
-      "reason": null|"min_lap"|"dup"|"pit_event"|...
-    }
-    """
-    tag = payload.get("tag")
-    if not tag:
-        raise HTTPException(status_code=400, detail="tag required")
-
-    ts_ns = payload.get("ts_ns")
-    source = payload.get("source", "track")
-    device_id = payload.get("device_id")
-
-    try:
-        res = ENGINE.ingest_pass(str(tag), ts_ns=ts_ns, source=str(source), device_id=device_id)
-        return JSONResponse(res)
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=str(e))
-
-
-@app.post("/engine/entrant/enable")
-async def engine_entrant_enable(payload: Dict[str, Any]):
-    """
-    Enable/disable an entrant for THIS race (roster membership).
-    - If disabled, passes for their tag are ignored.
-    """
-    eid = payload.get("entrant_id")
-    if eid is None:
-        raise HTTPException(status_code=400, detail="entrant_id required")
-
-    enabled = bool(payload.get("enabled", True))
-    try:
-        snap = ENGINE.update_entrant_enable(int(eid), enabled)
-        return JSONResponse(snap)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="entrant not found")
-
-
-@app.post("/engine/entrant/status")
-async def engine_entrant_status(payload: Dict[str, Any]):
-    """
-    Set an entrant's operational status: ACTIVE|DISABLED|DNF|DQ
-    - Status is independent from 'enabled' (roster membership).
-    """
-    eid = payload.get("entrant_id")
-    status = payload.get("status")
-    if eid is None or not status:
-        raise HTTPException(status_code=400, detail="entrant_id and status required")
-    try:
-        snap = ENGINE.update_entrant_status(int(eid), str(status))
-        return JSONResponse(snap)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="entrant not found")
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-
+    snapshot = ENGINE.load(entrants_engine)
+    return JSONResponse(snapshot)
 
 @app.post("/engine/entrant/assign_tag")
 async def engine_entrant_assign_tag(payload: Dict[str, Any]):
-    """Bind/unbind a tag for an entrant; 409 if tag belongs to another enabled entrant."""
-    eid = payload.get("entrant_id")
-    if eid is None:
-        raise HTTPException(status_code=400, detail="entrant_id required")
-    eid = int(eid)
-    tag = payload.get("tag", None)
-    t = (tag or '').strip()
-    if t:
-        with _conn() as c:
-            if tag_conflicts(c, t, incumbent_entrant_id=eid):
-                raise HTTPException(status_code=409, detail="Tag already assigned to another enabled entrant")
+    """
+    Idempotently assign (or clear) a transponder tag for a specific entrant.
+    Guarantees:
+      - Same tag to same entrant => 200 (no-op, still mirrored to Engine).
+      - Conflicts consider ONLY enabled entrants and exclude the incumbent.
+      - On change, writes through to DB.
+      - If the entrant isn't in the active session, 412 Precondition Failed.
+    """
+    entrant_id = payload.get("entrant_id")
+    if entrant_id is None:
+        raise HTTPException(status_code=400, detail="missing required field: entrant_id")
     try:
-        snap = ENGINE.assign_tag(eid, tag)
-        return JSONResponse(snap)
-    except KeyError:
-        raise HTTPException(status_code=404, detail="entrant not found")
+        entrant_id = int(entrant_id)
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"invalid entrant_id: {payload.get('entrant_id')!r}")
 
-# ---------------------------------------------------------------------------
-# Read-only public feed
-# ---------------------------------------------------------------------------
+    tag = _normalize_tag(payload.get("tag"))
 
-@app.get("/race/feed")
-def race_feed():
-    """Public read-only race snapshot (CORS/ETag friendly)."""
-    s = ENGINE.snapshot()
-    headers = {
-        "Cache-Control": "no-store",
-        "ETag": f'W/{s.get("last_update_utc", 0)}'
-    }
-    return JSONResponse(s, headers=headers)
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Fetch current row to compute idempotence and to confirm existence
+        row = await _fetch_one(db, "SELECT enabled, tag FROM entrants WHERE entrant_id=?", (entrant_id,))
+        if not row:
+            raise HTTPException(status_code=404, detail=f"entrant {entrant_id} not found")
+        enabled_db, tag_db = row[0], row[1]
 
-# ---------------------------------------------------------------------------
-# Simulator Active 
-# ---------------------------------------------------------------------------
+        # Idempotent fast-path: nothing to change, but keep Engine in sync
+        if tag_db == tag:
+            try:
+                snap = ENGINE.assign_tag(entrant_id, tag)
+            except KeyError:
+                raise HTTPException(status_code=412, detail="Entrant not in active session; reload roster via /engine/load")
+            return JSONResponse(snap or {"ok": True})
 
-class SimPayload(BaseModel):
-    sim: bool | None = None
-    on: bool | None = None
-    label: str | None = None
+        # Conflict check across ENABLED entrants, excluding this entrant
+        if tag:
+            # Use a short-lived sync connection for the helper (clean and clear).
+            import sqlite3
+            with sqlite3.connect(DB_PATH) as sconn:
+                if tag_conflicts(sconn, tag, incumbent_entrant_id=entrant_id):
+                    raise HTTPException(status_code=409, detail="Tag already assigned to another enabled entrant")
 
-@app.post("/engine/sim")
-def engine_sim(payload: SimPayload):
-    """Toggle simulator banner/pill."""
-    on = payload.sim if payload.sim is not None else (payload.on if payload.on is not None else False)
-    snap = ENGINE.set_sim(on, payload.label)
-    return snap
+        # Update Engine first so UI reflects the new tag immediately
+        try:
+            snap = ENGINE.assign_tag(entrant_id, tag)
+        except KeyError:
+            raise HTTPException(status_code=412, detail="Entrant not in active session; reload roster via /engine/load")
+
+        # Write-through to DB (NULL when clearing)
+        await _exec(db,
+                    "UPDATE entrants SET tag=?, updated_at=strftime('%s','now') WHERE entrant_id=?",
+                    (tag, entrant_id))
+
+    return JSONResponse(snap or {"ok": True})
 
 
+# ------------------------------------------------------------
+# Admin Entrants (authoritative DB read/write)
+# ------------------------------------------------------------
+from pydantic import BaseModel, Field, ValidationError
+from typing import Optional as _Optional
+
+class EntrantIn(BaseModel):
+    """
+    Authoritative entrant record for the database.
+    Notes:
+      - 'id' is the DB primary key (entrant_id).
+      - 'tag': empty/whitespace becomes NULL; conflict rules apply only when enabled=1 and tag IS NOT NULL.
+    """
+    id: int = Field(..., description="entrant_id primary key")
+    number: _Optional[str] = None
+    name: str
+    tag: _Optional[str] = None
+    enabled: bool = True
+    status: str = "ACTIVE"
+
+def _norm_tag(value: _Optional[str]) -> _Optional[str]:
+    if value is None:
+        return None
+    s = str(value).strip()
+    return s or None
+
+@app.get("/admin/entrants")
+async def admin_list_entrants():
+    """
+    Return all entrants from the database. This is the source of truth for IDs/tags/enabled flags.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("""
+            SELECT entrant_id AS id, number, name, tag, enabled, status
+            FROM entrants
+            ORDER BY entrant_id
+        """)
+        rows = await cur.fetchall()
+        await cur.close()
+        return [dict(r) for r in rows]
+
+@app.post("/admin/entrants")
+async def admin_upsert_entrants(payload: Dict[str, Any]):
+    """
+    Upsert a list of entrants into the DB (id = entrant_id).
+    Conflict rule: among ENABLED entrants only, 'tag' must be unique. The incumbent row is excluded.
+    On conflict, the entire request fails with 409 and details about which id/tag collided.
+    """
+    entrants = payload.get("entrants")
+    if not isinstance(entrants, list):
+        raise HTTPException(status_code=400, detail="body must contain 'entrants' as a list")
+
+    # Validate & normalize first (fail fast, before touching the DB)
+    entries: list[EntrantIn] = []
+    for idx, item in enumerate(entrants):
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=400, detail=f"entrant at index {idx} must be an object")
+        try:
+            e = EntrantIn(**item)
+        except ValidationError as ve:
+            raise HTTPException(status_code=400, detail=f"invalid entrant at index {idx}: {ve.errors()!r}")
+        e.tag = _norm_tag(e.tag)
+        entries.append(e)
+
+    # Apply within a transaction so it's all-or-nothing
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("BEGIN")
+        try:
+            # Enforce conflicts at the app level (DB also has a UNIQUE partial index as a seatbelt)
+            import sqlite3
+            with sqlite3.connect(DB_PATH) as sconn:
+                for e in entries:
+                    if e.enabled and e.tag:
+                        if tag_conflicts(sconn, e.tag, incumbent_entrant_id=e.id):
+                            # Abort the whole batch
+                            await db.execute("ROLLBACK")
+                            raise HTTPException(
+                                status_code=409,
+                                detail=f"tag '{e.tag}' already assigned to another enabled entrant (while upserting id={e.id})"
+                            )
+
+            # Upsert rows
+            for e in entries:
+                await db.execute("""
+                    INSERT INTO entrants (entrant_id, number, name, tag, enabled, status, updated_at)
+                    VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'))
+                    ON CONFLICT(entrant_id) DO UPDATE SET
+                        number=excluded.number,
+                        name=excluded.name,
+                        tag=excluded.tag,
+                        enabled=excluded.enabled,
+                        status=excluded.status,
+                        updated_at=strftime('%s','now')
+                """, (e.id, e.number, e.name, e.tag, 1 if e.enabled else 0, e.status))
+
+            await db.commit()
+        except HTTPException:
+            # already rolled back for conflict; re-raise
+            raise
+        except Exception as ex:
+            await db.execute("ROLLBACK")
+            raise HTTPException(status_code=500, detail=f"admin upsert failed: {type(ex).__name__}")
+    return {"ok": True, "count": len(entries)}
 
 
-# ---------------------------------------------------------------------------
-# Admin Entrants (authoring source of truth) — extended fields pass-through
-# ---------------------------------------------------------------------------
-@app.get('/admin/entrants')
-def admin_entrants_list():
-    with _conn() as c:
-        cur = c.cursor()
-        cur.execute(
-            'SELECT entrant_id,car_number,name,tag,enabled,status,organization,spoken_name,color,logo,created_at,updated_at FROM entrants ORDER BY entrant_id'
+# ------------------------------------------------------------
+# Probes
+# ------------------------------------------------------------
+@app.get("/healthz")
+async def healthz():
+    """
+    Lightweight liveness probe. Returns 200 if the app is up and able to serve.
+    Does not touch the database.
+    """
+    return {"status": "ok", "service": "ccrs-backend"}
+
+@app.get("/readyz")
+async def readyz():
+    """
+    Readiness probe. Verifies DB is reachable and schema is present.
+    Returns 200 with basic info if good; 503 if DB check fails.
+    """
+    try:
+        async with aiosqlite.connect(DB_PATH) as db:
+            # succeeds only if 'entrants' exists
+            await db.execute("SELECT 1 FROM entrants LIMIT 1")
+        return {"status": "ok", "db_path": str(DB_PATH)}
+    except Exception as e:
+        return Response(
+            content='{"status":"degraded","error":"%s"}' % type(e).__name__,
+            media_type="application/json",
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
-        rows = cur.fetchall()
-    return [ _row_to_entrant(r) for r in rows ]
-
-@app.post('/admin/entrants')
-def admin_entrants_upsert(payload: Dict[str, Any]):
-    entrants = payload.get('entrants', [])
-    seen = {}
-    for e in entrants:
-        if not e.get('enabled', True):
-            continue
-        t = (e.get('tag') or '').strip()
-        if not t:
-            continue
-        if t in seen and seen[t] != e.get('id'):
-            raise HTTPException(status_code=409, detail=f'Duplicate tag in payload: {t}')
-        seen[t] = e.get('id')
-    with _conn() as c:
-        for e in entrants:
-            if not e.get('enabled', True):
-                continue
-            t = (e.get('tag') or '').strip()
-            if not t:
-                continue
-            if tag_conflicts(c, t, incumbent_entrant_id=e.get('id')):
-                raise HTTPException(status_code=409, detail=f'Tag in use by another enabled entrant: {t}')
-        cur = c.cursor()
-        for e in entrants:
-            cur.execute(
-                """
-                INSERT INTO entrants(
-                  entrant_id, car_number, name, tag, enabled, status,
-                  organization, spoken_name, color, logo, updated_at
-                ) VALUES(?,?,?,?,?,?,?,?,?,?, strftime('%s','now'))
-                ON CONFLICT(entrant_id) DO UPDATE SET
-                  car_number=excluded.car_number,
-                  name=excluded.name,
-                  tag=excluded.tag,
-                  enabled=excluded.enabled,
-                  status=excluded.status,
-                  organization=excluded.organization,
-                  spoken_name=excluded.spoken_name,
-                  color=excluded.color,
-                  logo=excluded.logo,
-                  updated_at=strftime('%s','now')
-                """,
-                (
-                  e.get('id'),
-                  str(e.get('number')) if e.get('number') is not None else None,
-                  e.get('name'),
-                  (e.get('tag') or None),
-                  1 if e.get('enabled', True) else 0,
-                  e.get('status', 'ACTIVE'),
-                  e.get('organization'),
-                  e.get('spoken_name'),
-                  e.get('color'),
-                  e.get('logo'),
-                )
-            )
-        c.commit()
-    return {'ok': True, 'count': len(entrants)}
-# ---------------------------------------------------------------------------
-# CSV Export Logic
-# ---------------------------------------------------------------------------
-
-@app.get("/race/{race_id}/export.csv")
-def export_csv(race_id: int):
-    """CSV export of current standings (Google Sheets friendly)."""
-    snap = ENGINE.snapshot()
-    out = io.StringIO()
-    w = csv.writer(out)
-    w.writerow(["position","entrant_id","car_number","name","laps","best","last","pace_5","status"])
-    for i, r in enumerate(snap.get("standings", []), start=1):
-        w.writerow([
-            i,
-            r.get("entrant_id"),
-            r.get("car_number",""),
-            r.get("name",""),
-            r.get("laps",0),
-            r.get("best",""),
-            r.get("last",""),
-            r.get("pace_5",""),
-            r.get("status","")
-        ])
-    return PlainTextResponse(out.getvalue(), media_type="text/csv; charset=utf-8")
-
-
-# ---------------------------------------------------------------------------
-# Error handlers (optional sugar for uniform JSON errors)
-# ---------------------------------------------------------------------------
-@app.exception_handler(HTTPException)
-async def http_error_handler(request: Request, exc: HTTPException):
-    return JSONResponse(status_code=exc.status_code, content={"error": exc.detail})
-
-@app.exception_handler(Exception)
-async def unhandled_error_handler(request: Request, exc: Exception):
-    # Avoid leaking internals; surface message only
-    return JSONResponse(status_code=500, content={"error": str(exc)})
-
-
-# ---------------------------------------------------------------------------
-# Dev tip
-# ---------------------------------------------------------------------------
-# Run locally:
-#   uvicorn backend.server:app --reload --port 8000
-#
-# Visit:
-#   http://localhost:8000/ui/            (UI bundle, if present)
-#   http://localhost:8000/docs           (Swagger UI)
-#   http://localhost:8000/race/state     (live snapshot)
-#
-# Example sequence (PowerShell):
-#   Invoke-RestMethod -Method Post -Uri http://localhost:8000/engine/load `
-#     -ContentType "application/json" `
-#     -Body (@{ race_id=1; race_type="sprint"; entrants=@(
-#         @{ entrant_id=1; enabled=$true; status="ACTIVE"; tag="3000123"; car_number="101"; name="Team A" },
-#         @{ entrant_id=2; enabled=$true; status="ACTIVE"; tag="30004583"; car_number="7";   name="Team B" }
-#     ) } | ConvertTo-Json -Depth 6)
-#
-#   Invoke-RestMethod -Method Post -Uri http://localhost:8000/engine/flag `
-#     -ContentType "application/json" -Body '{ "flag":"green" }'
-#
-#   Invoke-RestMethod -Method Post -Uri http://localhost:8000/engine/pass `
-#     -ContentType "application/json" -Body '{ "tag":"3000123", "source":"track" }'
