@@ -345,6 +345,7 @@ async def admin_upsert_entrants(payload: Dict[str, Any]):
     if not isinstance(entrants, list):
         raise HTTPException(status_code=400, detail="body must contain 'entrants' as a list")
 
+    
     # ---------------------------------------------------------------------
     # 1) Validate and normalize every entrant before touching the DB
     # ---------------------------------------------------------------------
@@ -358,6 +359,7 @@ async def admin_upsert_entrants(payload: Dict[str, Any]):
             raise HTTPException(status_code=400, detail=f"invalid entrant at index {idx}: {ve.errors()!r}")
         entries.append(e)
 
+    
     # ---------------------------------------------------------------------
     # 2) Open the DB transaction and enforce unique-tag rule
     # ---------------------------------------------------------------------
@@ -378,38 +380,64 @@ async def admin_upsert_entrants(payload: Dict[str, Any]):
 
             # -----------------------------------------------------------------
             # 3) Perform inserts or upserts depending on id semantics
+            #    - For CREATE we capture cursor.lastrowid from aiosqlite.
+            #    - We also collect (client_idx, new_id) so the UI can learn ids.
             # -----------------------------------------------------------------
             created = 0
             updated = 0
+            assigned_ids: list[dict] = []   # e.g. [{"client_idx": 0, "id": 17}]
 
-            for e in entries:
+            for i, e in enumerate(entries):
+                # If you have a tag normalizer on the model, use it; otherwise stick with e.tag
+                tag_value = e.tag
+                # tag_value = e.normalized_tag()
+
                 if e.is_create():
                     # -------- INSERT (let SQLite assign entrant_id) --------
-                    await db.execute(
+                    # EXACTLY 5 placeholders for the 5 values we pass.
+                    # updated_at is set by SQLite, not as a bound parameter.
+                    cur = await db.execute(
                         """
                         INSERT INTO entrants (number, name, tag, enabled, status, updated_at)
                         VALUES (?, ?, ?, ?, ?, strftime('%s','now'))
                         """,
-                        (e.number, e.name, e.tag, 1 if e.enabled else 0, e.status),
+                        (e.number, e.name, tag_value, 1 if e.enabled else 0, e.status),
                     )
+                    new_id = cur.lastrowid
+                    assigned_ids.append({"client_idx": i, "id": new_id})
+                    await cur.close()
                     created += 1
                 else:
-                    # -------- UPSERT by existing id --------
+                    # -------- UPSERT by existing id (PRIMARY KEY) --------
+                    # 6 placeholders for the 6 values we pass.
                     await db.execute(
                         """
                         INSERT INTO entrants (entrant_id, number, name, tag, enabled, status, updated_at)
                         VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'))
                         ON CONFLICT(entrant_id) DO UPDATE SET
-                            number   = excluded.number,
-                            name     = excluded.name,
-                            tag      = excluded.tag,
-                            enabled  = excluded.enabled,
-                            status   = excluded.status,
+                            number     = excluded.number,
+                            name       = excluded.name,
+                            tag        = excluded.tag,
+                            enabled    = excluded.enabled,
+                            status     = excluded.status,
                             updated_at = strftime('%s','now')
                         """,
-                        (e.id, e.number, e.name, e.tag, 1 if e.enabled else 0, e.status),
+                        (e.id, e.number, tag_value, 1 if e.enabled else 0, e.status),
                     )
                     updated += 1
+
+            await db.commit()
+            return {
+                "ok": True,
+                "count": created + updated,
+                "created": created,
+                "updated": updated,
+                "assigned_ids": assigned_ids,
+            }
+
+
+
+
 
             await db.commit()
             return {"ok": True, "count": created + updated, "created": created, "updated": updated}
