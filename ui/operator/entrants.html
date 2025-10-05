@@ -2,150 +2,454 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>PRS — Entrants</title>
+  <title>ChronoCore — Entrants</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Relative paths from /ui/operator/ -->
-  <link rel="stylesheet" href="../css/base.css">
-  <link rel="stylesheet" href="../css/operator.css">  
-  <link rel="stylesheet" href="../css/entrants.css">
+  <!-- Shared styles + page-specific -->
+  <link rel="stylesheet" href="/ui/css/base.css?v=2">
+  <link rel="stylesheet" href="/ui/css/operator.css?v=2">
+  <link rel="stylesheet" href="/ui/css/entrants.css?v=2">
 
-  <!-- Core helpers first, then page logic (both defer) -->
-  <script src="../js/base.js" defer></script>
-  <script src="../js/entrants.js" defer></script>
-
-  <script>
-    /* Minimal nav helpers consistent with index */
-    async function goto(screenId) {
-      if (window.pywebview?.api?.goto) {
-        try { await window.pywebview.api.goto(screenId); } catch (e) { console.error(e); }
-      } else {
-        location.href = screenId + ".html";
-      }
-    }
-    async function openSpectator() {
-      if (window.pywebview?.api?.open_spectator) {
-        try { await window.pywebview.api.open_spectator(); return; } catch(e){}
-      }
-      window.open("/ui/spectator/", "_blank");
-    }
-  </script>
+  <!-- Base helpers (fetchJSON, postJSON, $, setNetStatus, startWallClock, fmtClock, makePoller) -->
+  <script src="/ui/js/base.js?v=2"></script>
 </head>
 <body>
-  <!-- Header matches index structure (no wall clock) -->
-  <header class="app-header">
-    <div class="brand" onclick="goto('index')">
-      <div class="brand-mark"></div>
-      <div class="brand-text">
-        <div class="brand-line1">ChronoCore</div>
-        <div class="brand-line2">Race Software</div>
-      </div>
-    </div>
-    <div class="header-right">
-      <nav class="header-nav">
-        <button class="btn btn-ghost" onclick="goto('index')">Home</button>
-        <button class="btn btn-ghost active">Entrants</button>
-        <button class="btn btn-ghost" onclick="goto('race_control')">Race Control</button>
-        <button class="btn btn-ghost" onclick="openSpectator()">Spectator</button>
-      </nav>
-    </div>
+
+  <!-- Header -->
+  <header>
+    <div class="logo"><img src="/ui/img/PRS_Logo.svg" alt="ChronoCore Logo"></div>
+    <div class="title">Operator — Entrants</div>
+    <div class="pill" id="readyPill" aria-live="polite">DB: checking…</div>
   </header>
 
-  <main class="app-main entrants-main">
-    <h1 class="page-title">Entrants</h1>
+  <main>
+    <h1 class="page-title" style="display:none;">Entrants</h1>
 
-    <div class="ent-grid">
-      <!-- Left: form -->
-      <section class="ent-form card">
-        <h2 class="card-title">Add / Edit Entrant</h2>
+    <!-- Global friendly warning if DB not ready -->
+    <div id="readyWarn" class="flag hidden" role="status" aria-live="polite">
+      <div class="flag__icon" aria-hidden="true"></div>
+      <div class="flag__label">Database isn’t ready yet. You can browse, but saving is disabled.</div>
+    </div>
 
-        <div class="field">
-          <label class="label" for="uid">UID (I-Lap Tag)</label>
-          <div class="row2">
-            <input id="uid" class="input" inputmode="numeric" autocomplete="off" placeholder="e.g., 3000123">
-            <button id="scanBtn" class="btn btn-primary btn-sm">Scan</button>
-          </div>
-          <div id="scanWrap" class="scanbar" hidden><div class="scanbar-fill"></div></div>
-          <div class="muted small">Scanner listens up to 10s or until the first new tag appears.</div>
-        </div>
+    <section class="ent-grid card">
+      <!-- Left: Create/Edit drawer -->
+      <div class="drawer">
+        <h2>Entrant</h2>
+        <form id="entForm" novalidate>
+          <input type="hidden" id="entId" />
 
-        <div class="field">
-          <label class="label" for="team">Team Name</label>
-          <input id="team" class="input" autocomplete="off" placeholder="Team name">
-        </div>
-
-        <div class="field">
-          <label class="label" for="org">Org Name</label>
-          <input id="org" class="input" autocomplete="off" placeholder="Organization / Club">
-        </div>
-
-        <div class="row2">
           <div class="field">
-            <label class="label" for="car">Car #</label>
-            <input id="car" class="input" inputmode="numeric" autocomplete="off" placeholder="e.g., 101">
+            <label class="label" for="entNumber">Number</label>
+            <input id="entNumber" name="number" class="input" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g., 42" required>
+            <div class="hint small">Positive integer.</div>
           </div>
+
           <div class="field">
-            <label class="label" for="color">Color</label>
-            <div class="color-wrap">
-              <input id="color" type="color" class="color-input" value="#22a6f2">
-              <input id="colorText" class="input" placeholder="#22A6F2" value="#22A6F2">
+            <label class="label" for="entName">Team</label>
+            <input id="entName" name="name" class="input" type="text" autocomplete="off" placeholder="Team name" required>
+            <div class="hint small">2–40 characters.</div>
+          </div>
+
+          <div class="field">
+            <label class="label" for="entTag">Tag (optional)</label>
+            <input id="entTag" name="tag" class="input" type="text" inputmode="numeric" autocomplete="off" placeholder="7 digits (I-Lap)">
+            <div class="hint small">Digits only, trimmed. Leave blank for no tag.</div>
+          </div>
+
+          <div class="field inline">
+            <input id="entEnabled" class="checkbox" type="checkbox" checked>
+            <label for="entEnabled">Enabled</label>
+          </div>
+
+          <div class="buttons">
+            <button type="button" id="saveBtn" class="btn btn-primary">Save Entrant</button>
+            <button type="button" id="resetBtn" class="btn">Reset</button>
+            <button type="button" id="newBtn" class="btn btn-ghost">New</button>
+          </div>
+
+          <div id="formMsg" class="form-msg" aria-live="polite"></div>
+        </form>
+
+        <hr class="section-sep" style="margin:14px 0 8px;">
+        <div class="bulk">
+          <button type="button" id="importBtn" class="btn btn-chip" title="Phase 2 (stub)">Bulk Import (CSV/XLSX)</button>
+          <div id="importNote" class="small muted">Import modal stub only (no backend needed yet).</div>
+        </div>
+      </div>
+
+      <!-- Right: Table -->
+      <div class="ent-table-card">
+        <div class="table-header">
+          <div class="filters">
+            <input id="q" class="input input-sm" type="search" placeholder="Filter number / team / tag">
+            <div class="chip-group" role="group" aria-label="Enabled filter">
+              <button class="btn-ghost btn-chip active" data-filter="all">All</button>
+              <button class="btn-ghost btn-chip" data-filter="enabled">Enabled</button>
+              <button class="btn-ghost btn-chip" data-filter="disabled">Disabled</button>
             </div>
           </div>
-        </div>
-
-        <div class="field inline">
-          <input id="enabled" type="checkbox" class="checkbox" checked>
-          <label for="enabled">Enabled</label>
-        </div>
-
-        <div class="buttons">
-          <button id="saveBtn" class="btn btn-primary">Save / Update</button>
-          <button id="deleteBtn" class="btn btn-danger">Delete</button>
-          <button id="clearBtn" class="btn">Clear</button>
-        </div>
-        <div class="muted" id="formMsg" aria-live="polite"></div>
-      </section>
-
-      <!-- Right: table -->
-      <section class="card ent-table-card">
-        <div class="table-header">
-          <h2 class="card-title">Current Entries</h2>
-          <div class="sort-controls">
-            <span class="muted small">Sort:</span>
-            <button class="btn btn-chip" data-sort="team">Team</button>
-            <button class="btn btn-chip" data-sort="org">Org</button>
-            <button class="btn btn-chip" data-sort="car">Car #</button>
-            <button class="btn btn-chip" data-sort="uid">UID</button>
-            <button class="btn btn-chip" data-sort="enabled">Enabled</button>
+          <div class="tools">
+            <button id="refreshBtn" class="btn btn-sm">Refresh</button>
           </div>
         </div>
 
         <div class="table">
-          <div class="thead ent-thead">
-            <div class="th clickable" data-sort="uid">UID</div>
-            <div class="th clickable" data-sort="org">Org</div>
-            <div class="th clickable" data-sort="team">Team</div>
-            <div class="th clickable" data-sort="car">Car #</div>
-            <div class="th">Color</div>
-            <div class="th clickable" data-sort="enabled">Enabled</div>
-            <div class="th right">Actions</div>
+          <div class="ent-thead">
+            <div class="th clickable" data-sort="number">Number</div>
+            <div class="th clickable" data-sort="name">Team</div>
+            <div class="th clickable" data-sort="tag">Tag</div>
+            <div class="th">Enabled</div>
+            <div class="th right">ID</div>
+            <div class="th">Actions</div>
+            <div class="th right">Status</div>
           </div>
-          <div class="rows scroll" id="rows"></div>
+          <div id="rows" class="rows scroll" role="table" aria-label="Entrants table"></div>
         </div>
-      </section>
-    </div>
+      </div>
+    </section>
   </main>
 
-  <footer class="app-footer">
+  <!-- Footer with wall clock and net status -->
+  <footer>
     <div class="footer-left">
-      <div class="status-dot" id="netDot" aria-hidden="true"></div>
+      <div class="status-dot" id="netDot"></div>
       <div id="netMsg">Connecting…</div>
     </div>
+    <div id="wallClock" class="pill">--:--:--</div>
     <div class="footer-right">
-      API: <a class="link" target="_blank" href="/teams">/teams</a>
-      &nbsp;·&nbsp;
-      <a class="link" target="_blank" href="/laps?limit=10">/laps</a>
+      <a class="link" href="/admin/entrants" target="_blank" rel="noopener">GET /admin/entrants</a>
     </div>
   </footer>
+
+  <!-- Modal stub for Bulk Import -->
+  <dialog id="importModal">
+    <form method="dialog" class="modal">
+      <h3>Bulk Import — Coming Soon</h3>
+      <p class="small">CSV/XLSX mapping (Number, Team, Tag, Enabled) with preview and conflict hints will live here in Phase 2.</p>
+      <div style="display:flex; gap:10px; justify-content:flex-end; margin-top:10px;">
+        <button value="cancel" class="btn">Close</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script>
+  document.addEventListener('DOMContentLoaded', () => {
+    // Guard until base.js is present
+    const waitForBase = () => new Promise(res => {
+      const check = () => window.PRS ? res() : setTimeout(check, 20);
+      check();
+    });
+
+    waitForBase().then(() => {
+      const { $, fetchJSON, postJSON, makePoller, setNetStatus, startWallClock } = window.PRS;
+
+      /* ===== Footer wall clock ===== */
+      const stopClock = startWallClock('#wallClock');
+
+      /* ===== Page State ===== */
+      let ALL = [];            // full list from server
+      let filterMode = 'all';  // all | enabled | disabled
+      let sortKey = 'number';  // number | name | tag
+      let sortDir = 1;         // 1 asc, -1 desc
+      let dbReady = false;
+
+      const els = {
+        readyPill:   $('#readyPill'),
+        readyWarn:   $('#readyWarn'),
+        rows:        $('#rows'),
+        q:           $('#q'),
+        chips:       document.querySelectorAll('.btn-chip[data-filter]'),
+        saveBtn:     $('#saveBtn'),
+        resetBtn:    $('#resetBtn'),
+        newBtn:      $('#newBtn'),
+        importBtn:   $('#importBtn'),
+        importModal: $('#importModal'),
+        formMsg:     $('#formMsg'),
+        entId:       $('#entId'),
+        entNumber:   $('#entNumber'),
+        entName:     $('#entName'),
+        entTag:      $('#entTag'),
+        entEnabled:  $('#entEnabled'),
+        refreshBtn:  $('#refreshBtn'),
+      };
+
+      /* ===== Helpers ===== */
+      const digitsOnly = s => s.replace(/\D+/g, '');
+      const clampTxt = (s, min, max) => (s ?? '').trim().slice(0, max);
+      const validTeam = s => s.length >= 2 && s.length <= 40;
+      const validNum  = s => /^\d+$/.test(s) && Number(s) > 0;
+      const validTag  = s => s === '' || /^\d+$/.test(s);
+
+      function formToPayload() {
+        // Trim & coerce per rules
+        const id = els.entId.value ? Number(els.entId.value) : null;
+        const numberStr = els.entNumber.value.trim();
+        const name = clampTxt(els.entName.value, 2, 40);
+        const tagRaw = els.entTag.value.trim();
+        const tag = tagRaw === '' ? null : digitsOnly(tagRaw);
+        const enabled = !!els.entEnabled.checked;
+
+        return { id, number: Number(numberStr), name, tag, enabled };
+      }
+
+      function validateForm(showMsgs = true) {
+        const num = els.entNumber.value.trim();
+        const name = els.entName.value.trim();
+        const tag = els.entTag.value.trim();
+
+        let msg = '';
+        if (!validNum(num)) msg = 'Number must be a positive integer.';
+        else if (!validTeam(name)) msg = 'Team must be 2–40 characters.';
+        else if (!validTag(tag)) msg = 'Tag must be digits only (or blank).';
+
+        if (showMsgs) setFormMsg(msg, msg ? 'error' : 'ok');
+        return !msg;
+      }
+
+      function setFormMsg(text, kind) {
+        els.formMsg.textContent = text || '';
+        els.formMsg.className = 'form-msg ' + (kind || '');
+      }
+
+      function clearForm() {
+        els.entId.value = '';
+        els.entNumber.value = '';
+        els.entName.value = '';
+        els.entTag.value = '';
+        els.entEnabled.checked = true;
+        setFormMsg('', '');
+      }
+
+      function fillForm(row) {
+        els.entId.value = row.id ?? '';
+        els.entNumber.value = row.number ?? '';
+        els.entName.value = row.name ?? '';
+        els.entTag.value = row.tag ?? '';
+        els.entEnabled.checked = !!row.enabled;
+        setFormMsg('', '');
+      }
+
+      function setSaveEnabled(on) {
+        els.saveBtn.disabled = !on || !dbReady;
+      }
+
+      function setReadyUI(ready) {
+        dbReady = !!ready;
+        els.readyPill.textContent = ready ? 'DB: ready' : 'DB: not ready';
+        els.readyPill.style.background = ready ? 'rgba(34,197,94,.16)' : 'rgba(239,68,68,.16)';
+        els.readyWarn.classList.toggle('hidden', !!ready);
+        setSaveEnabled(true);
+      }
+
+      /* ===== Networking ===== */
+      async function checkReady() {
+        try {
+          // Per your contract: GET /readyz ; keep /healthz as a future-friendly probe if you want both.
+          const r = await fetch('/readyz', { cache: 'no-store' });
+          setReadyUI(r.ok);
+          setNetStatus(true, r.ok ? 'Ready' : 'Not ready');
+        } catch {
+          setReadyUI(false);
+          setNetStatus(false, 'Offline');
+        }
+      }
+
+      async function loadEntrants() {
+        try {
+          const data = await fetchJSON('/admin/entrants');
+          if (!Array.isArray(data)) throw new Error('Bad payload');
+          ALL = data;
+          render();
+          setNetStatus(true, `OK — ${ALL.length} entrants`);
+        } catch (e) {
+          console.error(e);
+          setNetStatus(false, 'Failed to load entrants');
+        }
+      }
+
+      async function saveEntrant(one) {
+        // payload shape: { entrants: [ {...} ] }
+        const payload = { entrants: [one] };
+        try {
+          const res = await postJSON('/admin/entrants', payload);
+          // FastAPI/your backend returns 200 for create/update/no-op; 409 on unique-tag clash; 400 on malformed.
+          if (res && (res.status === 200 || res.ok)) {
+            setFormMsg('Entrant saved.', 'ok');
+            await loadEntrants();
+            // keep selection if same id
+            return true;
+          }
+          // Handle explicit fetch Response case
+          if (res && res.status === 409) {
+            setFormMsg('That tag is already assigned to another enabled entrant.', 'error');
+            return false;
+          }
+          if (res && res.status === 400) {
+            const txt = await res.text().catch(()=> '');
+            setFormMsg((txt || 'Malformed payload (400).').slice(0, 240), 'error');
+            return false;
+          }
+          // Fallback
+          setFormMsg('Unexpected response; check logs.', 'error');
+          return false;
+        } catch (err) {
+          console.error(err);
+          setFormMsg('Network error while saving.', 'error');
+          return false;
+        }
+      }
+
+      /* ===== Rendering ===== */
+      function filteredSortedRows() {
+        const q = (els.q.value || '').trim().toLowerCase();
+        const filt = (row) => {
+          if (filterMode === 'enabled' && !row.enabled) return false;
+          if (filterMode === 'disabled' && row.enabled) return false;
+          if (!q) return true;
+          const hay = [
+            String(row.number ?? ''),
+            String(row.name ?? ''),
+            String(row.tag ?? ''),
+          ].join(' ').toLowerCase();
+          return hay.includes(q);
+        };
+
+        const cmp = (a, b, key) => {
+          const av = (a[key] ?? '').toString();
+          const bv = (b[key] ?? '').toString();
+          if (key === 'number' || key === 'id') return (Number(av) - Number(bv)) * sortDir;
+          return av.localeCompare(bv) * sortDir;
+        };
+
+        const rows = ALL.filter(filt).sort((a,b)=>cmp(a,b,sortKey));
+        return rows;
+      }
+
+      function render() {
+        const rows = filteredSortedRows();
+        els.rows.innerHTML = '';
+
+        for (const row of rows) {
+          const el = document.createElement('div');
+          el.className = 'ent-row' + (row.enabled ? '' : ' disabled');
+
+          const id = row.id ?? '';
+          const num = row.number ?? '';
+          const name = row.name ?? '';
+          const tag = row.tag ?? '';
+          const en  = !!row.enabled;
+
+          el.innerHTML = `
+            <div>${num}</div>
+            <div class="name">${name}</div>
+            <div class="tag-cell">
+              <span class="mono">${tag || '—'}</span>
+            </div>
+            <div>${en ? 'Yes' : 'No'}</div>
+            <div class="right mono">${id}</div>
+            <div class="actions">
+              <button class="btn btn-sm btn-chip" data-act="edit" title="Edit full">Edit</button>
+              <button class="btn btn-sm btn-chip" data-act="tag" title="Assign tag">Set Tag</button>
+            </div>
+            <div class="right small muted">${row._status || ''}</div>
+          `;
+
+          // Wire actions
+          el.querySelector('[data-act="edit"]').addEventListener('click', () => fillForm(row));
+          el.querySelector('[data-act="tag"]').addEventListener('click', async () => {
+            // Inline Tag Assign (digits only; blank clears)
+            const current = String(row.tag ?? '');
+            const val = prompt(`Set tag for “${name}” (digits only; leave blank to clear):`, current);
+            if (val === null) return; // cancelled
+
+            const clean = val.trim();
+            if (clean !== '' && !/^\d+$/.test(clean)) {
+              setNetStatus(false, 'Tag must be digits only.');
+              return;
+            }
+            // POST with same semantics
+            const body = {
+              id: row.id,
+              number: row.number,
+              name: row.name,
+              tag: clean === '' ? null : clean,
+              enabled: row.enabled
+            };
+            // optimistic UI flash
+            el.classList.add('captured');
+            const ok = await saveEntrant(body);
+            if (!ok) el.classList.remove('captured');
+          });
+
+          // Click anywhere else loads form
+          el.addEventListener('dblclick', (ev) => {
+            if (ev.target.closest('.actions')) return;
+            fillForm(row);
+          });
+
+          els.rows.appendChild(el);
+        }
+      }
+
+      /* ===== Events ===== */
+      els.q.addEventListener('input', () => render());
+      els.chips.forEach(btn => {
+        btn.addEventListener('click', () => {
+          els.chips.forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          filterMode = btn.dataset.filter;
+          render();
+        });
+      });
+
+      document.querySelectorAll('.ent-thead .clickable').forEach(th => {
+        th.addEventListener('click', () => {
+          const key = th.dataset.sort;
+          if (sortKey === key) sortDir *= -1;
+          else { sortKey = key; sortDir = 1; }
+          render();
+        });
+      });
+
+      els.resetBtn.addEventListener('click', () => clearForm());
+      els.newBtn.addEventListener('click', () => clearForm());
+
+      els.saveBtn.addEventListener('click', async () => {
+        if (!validateForm(true)) return;
+        if (!dbReady) { setFormMsg('DB is not ready; please wait.', 'error'); return; }
+        const one = formToPayload();
+        const ok = await saveEntrant(one);
+        if (ok) clearForm();
+      });
+
+      els.importBtn.addEventListener('click', () => {
+        els.importModal.showModal();
+      });
+
+      els.refreshBtn.addEventListener('click', () => loadEntrants());
+
+      // Client-side input guards
+      els.entNumber.addEventListener('input', () => {
+        els.entNumber.value = els.entNumber.value.replace(/[^\d]/g, '');
+        setSaveEnabled(true);
+      });
+      els.entTag.addEventListener('input', () => {
+        // allow user to type, then sanitize on save; still nudge here
+        if (!/^\d*$/.test(els.entTag.value)) {
+          els.entTag.value = els.entTag.value.replace(/[^\d]/g, '');
+        }
+        setSaveEnabled(true);
+      });
+      els.entName.addEventListener('input', () => setSaveEnabled(true));
+
+      // Poll health/readiness
+      const readyPoll = makePoller(checkReady, 2500, () => setReadyUI(false));
+      readyPoll.start();
+
+      // Initial load after DOM ready + helpers loaded
+      loadEntrants();
+    });
+  });
+  </script>
 </body>
 </html>

@@ -37,7 +37,7 @@ app:
   # ---------------------------------------------------------------------------
   client:
     engine:
-      mode: fixed            # one of: auto | localhost | fixed
+      mode: localhost            # one of: auto | localhost | fixed
       fixed_host: "127.0.0.1:8000"  # required when mode: fixed (or auto fallback)
       prefer_same_origin: false   # pages served by engine use same-origin
       allow_client_override: true  # allow Settings UI to save per-device override
@@ -63,7 +63,7 @@ app:
       sqlite_path: "backend/db/laps.sqlite"
       journal_passes: true   # append raw pass events
       snapshot_on_checkered: true  # write a snapshot when race ends
-      recreate_on_boot: true
+      recreate_on_boot: false #clears the DB on restart of app. Don't forget to change back. 
       batch_ms: 200
       batch_max: 50
       fsync: true

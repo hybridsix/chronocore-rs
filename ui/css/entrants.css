@@ -1,69 +1,97 @@
-/* Entrants page — sits on top of base.css / operator.css */
+/* Entrants page — built atop base.css & operator.css */
 
-.page-title{ margin: 8px 0 12px 0; }
+.page-title { margin: 8px 0 12px 0; }
 
-/* Grid layout */
+/* Two-column layout: left drawer (fixed), right table (fluid) */
 .ent-grid{
   display: grid;
   grid-template-columns: 400px 1fr;
   gap: 18px;
   max-width: 1280px;
-  margin: 0 auto;
+  margin: 18px auto;
 }
 
-/* Form */
+/* Drawer */
+.drawer { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.drawer h2 { margin: 0 0 8px 0; }
+
 .field{ margin: 10px 0; }
 .label{
   display:block; font-size:12px; letter-spacing:.12em;
   text-transform:uppercase; color:#8fb6c9; margin-bottom:6px;
 }
-.row2{ display:grid; grid-template-columns: 1fr 140px; gap:10px; }
+.input{
+  width: 100%; padding: 10px 12px; border-radius: 10px;
+  border: 1px solid #173243; background: #0e151b; color: var(--text);
+  font-size: 16px;
+}
+.input-sm{ padding: 8px 10px; font-size: 14px; max-width: 360px; }
 .field.inline{ display:flex; align-items:center; gap:10px; }
 .checkbox{ width:18px; height:18px; }
-
-.color-wrap{ display:grid; grid-template-columns: 48px 1fr; gap:10px; align-items:center; }
-.color-input{ width:48px; height:40px; border:none; padding:0; background:transparent; }
 .small{ font-size: 12px; }
+.muted{ color: var(--muted); opacity: .85; }
+.mono { font-family: var(--mono); }
 
-/* Buttons — align with index design language via base tokens */
-.btn{ padding:8px 12px; border-radius:10px; border:1px solid var(--btn-border,#173243); background:#0e151b; color:var(--text); }
-.btn-sm{ padding:6px 10px; }
+/* Buttons */
+.btn{ padding:8px 12px; border-radius:10px; border:1px solid #173243; background:#0e151b; color:var(--text); cursor:pointer; }
+.btn-sm{ padding:6px 10px; font-size: 13px; }
 .btn-ghost{ background:transparent; border-color:transparent; }
 .btn-ghost.active{ background:#0e151b; border-color: #173243; }
 .btn-primary{ background: linear-gradient(180deg, #0b3042, #0a2230); border-color:#173243; }
 .btn-danger{ background: linear-gradient(180deg, #441818, #2a1111); border-color:#4a1e1e; }
 .btn-chip{ padding:4px 8px; font-size:12px; border-radius:999px; background:#0f141a; border:1px solid #13202a; }
+
+/* Drawer footer */
 .buttons{ display:flex; gap:10px; margin-top:12px; }
 
-/* Table */
-.ent-table-card{ display:flex; flex-direction:column; }
-.table-header{ display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:8px; }
+/* Form message */
+.form-msg{ margin-top:8px; min-height: 1.2em; }
+.form-msg.ok{ color: var(--ok); }
+.form-msg.error{ color: var(--error); }
+
+/* Filters + table */
+.table-header{
+  display:flex; align-items:center; justify-content:space-between; gap:12px; margin: 12px 12px 8px;
+}
+.filters{ display:flex; align-items:center; gap:10px; }
+.chip-group{ display:flex; gap:8px; }
+
 .table{ width:100%; }
 .ent-thead, .ent-row{
   display:grid;
-  grid-template-columns: 160px 1fr 1fr 120px 80px 100px 120px;
+  grid-template-columns: 140px 1fr 1fr 120px 90px 160px 120px;
   align-items:center;
 }
 .ent-thead{
   height: 44px; padding: 0 12px; color: #bfefff; font-weight: 700;
   border-bottom: 1px solid #0b2230;
 }
-.th.clickable{ cursor:pointer; }
+.th.clickable{ cursor:pointer; user-select:none; }
 .rows.scroll{
-  max-height: 520px; overflow: auto;
+  max-height: 560px; overflow: auto;
   border:1px solid #0f141a; border-top:none; border-radius:0 0 10px 10px;
+  margin: 0 12px 12px;
 }
 .rows .ent-row{
   height: 42px; padding: 0 12px; border-bottom: 1px solid #0f141a;
 }
 .rows .ent-row:nth-child(odd){ background:#141a20; }
 .rows .ent-row:nth-child(even){ background:#0f151b; }
-.rows .ent-row.disabled{ opacity:.55; font-style: italic; }
+.rows .ent-row.disabled{ opacity:.58; font-style: italic; }
 .ent-row .right{ text-align:right; font-family: var(--mono); }
-.ent-row .link{ cursor:pointer; }
+.ent-row .actions{ display:flex; gap:8px; }
 
-/* UID capture blip */
+/* Ready warning flag uses base flag scaffold/colors */
+.flag.hidden { display: none; }
+
+/* UID capture blip on inline tag save */
 .captured{
   box-shadow: 0 0 0 2px rgba(33,199,123,.9), 0 0 18px rgba(33,199,123,.6);
   transition: box-shadow .35s ease-out;
+}
+
+/* Responsive: on narrower screens stack columns */
+@media (max-width: 1100px){
+  .ent-grid{ grid-template-columns: 1fr; }
+  .rows.scroll{ max-height: none; }
 }
