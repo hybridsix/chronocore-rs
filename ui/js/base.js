@@ -1,332 +1,111 @@
-/* =========================================================================
-   CCRS – Shared Frontend Helpers (production build)
-   Exposes: window.CCRS = { $, $$, qs, apiUrl, fmt, startWallClock, debounce,
-                           throttle, onVisible, jsonFetch, NetStatus }
-   -------------------------------------------------------------------------
-   - Zero dependencies. No frameworks.
-   - Safe to load on any page; everything is namespaced under CCRS.
-   - No UI side effects on its own.
-   ========================================================================= */
+/* ==========================================================================
+   ChronoCore / CCRS base helpers
+   - Classic <script> (non-module) file that exposes helpers via window.CCRS.
+   - NO legacy PRS alias; only window.CCRS is exported.
+   - Keep this file tiny, dependency-free, and battle-tested.
+   --------------------------------------------------------------------------
+   Provided helpers:
+     - $                → tiny selector
+     - fetchJSON        → GET/POST/etc. returning parsed JSON (throws on !ok)
+     - postJSON         → POST convenience with JSON body (returns Response)
+     - makePoller       → simple polling utility with start/stop
+     - setNetStatus     → updates #netDot/#netMsg if present
+   Notes:
+     - All functions are safe to use on pages that may or may not render the
+       status elements. Missing elements are handled gracefully.
+     - If you later add more helpers (fmt, debounce, etc.), export them here.
+   ========================================================================== */
+(function (w, d) {
+  'use strict';
 
-(() => {
-  // Guard: keep existing CCRS if reloaded (hot reload / multiple pages)
-  const CCRS = (window.CCRS = window.CCRS || {});
-
-  /* ---------------------------------------------------------------------------
- * Engine host resolver + status text normalizer (YAML-driven)
- * Depends on optional bootstrap object injected by the server/launcher:
- *   window.CCRS_BOOT or window.__CCRS_BOOTSTRAP
- * Looks under:
- *   app.client.engine.*   (mode, fixed_host, prefer_same_origin, allow_client_override)
- *   app.ui.net_status_text (ok, connecting, disconnected)
- * -------------------------------------------------------------------------*/
-(function () {
-  const CCRS = (window.CCRS = window.CCRS || {});
-  const BOOT =
-    window.CCRS_BOOT || window.BOOTSTRAP || window.__CCRS_BOOTSTRAP || {};
-
-  // Read YAML-backed defaults if provided by bootstrap
-  const appCfg = (BOOT && BOOT.app) || {};
-  const yamlClient = ((appCfg.client || {}).engine || {});
-  const yamlUI = (appCfg.ui || {});
-
-  // Client policy (with safe defaults)
-  const MODE = (yamlClient.mode || "auto").toLowerCase(); // auto | localhost | fixed
-  const FIXED = (yamlClient.fixed_host || "").trim();
-  const PREFER_SAME = yamlClient.prefer_same_origin !== false; // default true
-  const ALLOW_OVERRIDE = !!yamlClient.allow_client_override;
-
-  function sameOriginAllowed() {
-    // Only meaningful when pages are served via http(s) (not file://)
-    return /^https?:/i.test(location.protocol) && PREFER_SAME;
+  /* ------------------------------
+   * 1) Tiny query selector helper
+   * ------------------------------ */
+  function $(selector, root) {
+    // Default to document if no explicit root is passed
+    return (root || d).querySelector(selector);
   }
 
-  function getDeviceOverride() {
-    if (!ALLOW_OVERRIDE) return "";
-    try {
-      return (localStorage.getItem("cc.engine_host") || "").trim();
-    } catch {
-      return "";
+  /* -------------------------------------------
+   * 2) Robust JSON fetch with clear error text
+   * ------------------------------------------- */
+  async function fetchJSON(url, options = {}) {
+    // NOTE: callers must handle exceptions (try/catch); we throw on !ok.
+    const res = await fetch(url, options);
+    if (!res.ok) {
+      // Try to give the operator/devs actionable diagnostics
+      let detail = '';
+      try { detail = await res.text(); } catch (_) { /* ignore */ }
+      const msg = `HTTP ${res.status} ${res.statusText} — ${url}${detail ? ` — ${detail.slice(0, 240)}` : ''}`;
+      const err = new Error(msg);
+      err.response = res; // hand back Response for callers that need status
+      throw err;
     }
+    // Some endpoints might return empty; content-type gate avoids JSON parse errors
+    const ct = res.headers.get('content-type') || '';
+    return ct.includes('application/json') ? res.json() : null;
   }
 
-  function resolveFromPolicy() {
-    const LOCALHOST = "127.0.0.1:8000";
-    if (MODE === "fixed" && FIXED) return FIXED;
-    if (MODE === "localhost") return LOCALHOST;
-    // MODE === auto
-    if (sameOriginAllowed()) return "same-origin";
-    if (FIXED) return FIXED;
-    return LOCALHOST;
-  }
-
-  function resolveEngineHost() {
-    // 1) Prefer same-origin if allowed and applicable
-    if (sameOriginAllowed()) return "same-origin";
-    // 2) Device override (if allowed)
-    const override = getDeviceOverride();
-    if (override) return override;
-    // 3) YAML policy fallback
-    return resolveFromPolicy();
-  }
-
-  const EFFECTIVE = resolveEngineHost();
-  CCRS.ALLOW_OVERRIDE = ALLOW_OVERRIDE;
-  CCRS.PREFER_SAME_ORIGIN = PREFER_SAME;
-  CCRS.EFFECTIVE_ENGINE = EFFECTIVE;
-
-  // Build a URL for API calls. Returns relative paths when on same-origin.
-  function url(path) {
-    const p = String(path || "/").replace(/^\/+/, "");
-    if (EFFECTIVE === "same-origin") return "/" + p;
-    const base = EFFECTIVE.match(/^https?:\/\//i)
-      ? EFFECTIVE
-      : "http://" + EFFECTIVE;
-    return base.replace(/\/+$/, "") + "/" + p;
-  }
-  CCRS.url = CCRS.url || url;
-
-  // Net status texts (from YAML ui.net_status_text, with sensible defaults)
-  const netTexts = (yamlUI.net_status_text || {});
-  const TEXTS = {
-    ok: netTexts.ok || "OK",
-    connecting: netTexts.connecting || "Connecting…",
-    disconnected: netTexts.disconnected || "Disconnected — retrying…",
-  };
-  CCRS.NET_TEXT = CCRS.NET_TEXT || TEXTS;
-
-  // Small helper for displaying the effective host in a footer, etc.
-  CCRS.effectiveEngineLabel =
-    CCRS.effectiveEngineLabel ||
-    function () {
-      return EFFECTIVE === "same-origin" ? "same-origin" : EFFECTIVE;
-    };
-
-  // Patch/define setNetStatus to use standardized texts and classes
-  const prevSetNetStatus = CCRS.setNetStatus;
-  CCRS.setNetStatus = function setNetStatus(
-    state,
-    elMsg = document.getElementById("netMsg"),
-    elDot = document.getElementById("netDot")
-  ) {
-    const s = String(state || "").toLowerCase();
-    const text =
-      s === "ok"
-        ? TEXTS.ok
-        : s === "connecting"
-        ? TEXTS.connecting
-        : TEXTS.disconnected;
-
-    if (elMsg) elMsg.textContent = text;
-
-    if (elDot) {
-      elDot.classList.remove("ok", "connecting", "disconnected");
-      elDot.classList.add(s === "ok" ? "ok" : s === "connecting" ? "connecting" : "disconnected");
-      elDot.setAttribute("aria-label", text);
-      elDot.title = text;
-    }
-
-    // Allow any prior behavior to run (non-breaking)
-    if (typeof prevSetNetStatus === "function") {
-      try {
-        prevSetNetStatus(state, elMsg, elDot);
-      } catch {}
-    }
-  };
-
-  // Provide a safe JSON fetch wrapper if one isn't already defined
-  if (!CCRS.fetchJSON) {
-    CCRS.fetchJSON = async function (path, opts) {
-      const u = url(path);
-      const r = await fetch(u, opts);
-      if (!r.ok) throw new Error(`HTTP ${r.status} for ${u}`);
-      return r.json();
-    };
-  }
-})();
-
-  /* -----------------------------------------------------------------------
-     DOM helpers
-     --------------------------------------------------------------------- */
-  const $  = (sel, root = document) => root.querySelector(sel);
-  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-
-  // Read a querystring value with a fallback
-  function qs(name, fallback = null) {
-    const v = new URLSearchParams(location.search).get(name);
-    return v === null ? fallback : v;
-  }
-
-  /* -----------------------------------------------------------------------
-     API URL helper
-     - Builds a path with query params and an optional race_id
-     --------------------------------------------------------------------- */
-  function apiUrl(path, params = {}, raceId = null) {
-    const url = new URL(path, location.origin);
-    Object.entries(params || {}).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
+  /* -------------------------------------------
+   * 3) JSON POST convenience (returns Response)
+   * ------------------------------------------- */
+  function postJSON(url, body) {
+    return fetch(url, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(body ?? {}),
     });
-    if (raceId != null && !url.searchParams.has("race_id")) {
-      url.searchParams.set("race_id", String(raceId));
-    }
-    return url.pathname + (url.search ? url.search : "");
   }
 
-  /* -----------------------------------------------------------------------
-     Formatters
-     --------------------------------------------------------------------- */
-  const fmt = {
-    // Race clock mm:ss from milliseconds
-    raceClock(ms) {
-      if (ms == null || isNaN(ms)) return "--:--";
-      const total = Math.max(0, Math.floor(ms / 1000));
-      const mm = Math.floor(total / 60);
-      const ss = String(total % 60).padStart(2, "0");
-      return `${mm}:${ss}`;
-    },
-    // Lap seconds to 0.000 (or em dash if nullish)
-    lapSeconds(sec) {
-      return sec == null || isNaN(sec) ? "—" : Number(sec).toFixed(3);
-    },
-    // Generic ms to hh:mm:ss
-    ms(ms) {
-      if (ms == null || isNaN(ms)) return "--:--:--";
-      const t = Math.max(0, Math.floor(ms / 1000));
-      const hh = String(Math.floor(t / 3600)).padStart(2, "0");
-      const mm = String(Math.floor((t % 3600) / 60)).padStart(2, "0");
-      const ss = String(t % 60).padStart(2, "0");
-      return `${hh}:${mm}:${ss}`;
-    },
-  };
+  /* ----------------------------------------------------
+   * 4) makePoller(fn, intervalMs, onFail?) → {start,stop}
+   * ----------------------------------------------------
+   * - Calls async fn() repeatedly with a delay between calls.
+   * - If fn throws, onFail(err) runs (if provided) and polling continues.
+   * - .start() is idempotent; .stop() cancels the next scheduled tick.
+   */
+  function makePoller(fn, intervalMs = 2000, onFail) {
+    let running = false;
+    let timer = null;
 
-  /* -----------------------------------------------------------------------
-     Time utilities
-     --------------------------------------------------------------------- */
-  function debounce(fn, wait = 200) {
-    let t = null;
-    return function debounced(...args) {
-      clearTimeout(t);
-      t = setTimeout(() => fn.apply(this, args), wait);
-    };
-  }
-
-  function throttle(fn, wait = 200) {
-    let last = 0, timer = null, trailingArgs = null, ctx = null;
-    return function throttled(...args) {
-      const now = Date.now();
-      ctx = this;
-      if (now - last >= wait) {
-        last = now;
-        fn.apply(ctx, args);
-      } else {
-        trailingArgs = args;
-        clearTimeout(timer);
-        timer = setTimeout(() => {
-          last = Date.now();
-          fn.apply(ctx, trailingArgs);
-          trailingArgs = null;
-        }, wait - (now - last));
-      }
-    };
-  }
-
-  // Run a callback only when the page is visible (after it becomes visible)
-  function onVisible(cb) {
-    if (document.visibilityState === "visible") { cb(); return; }
-    const handler = () => {
-      if (document.visibilityState === "visible") {
-        document.removeEventListener("visibilitychange", handler);
-        cb();
-      }
-    };
-    document.addEventListener("visibilitychange", handler);
-  }
-
-  /* -----------------------------------------------------------------------
-     JSON fetch with sane defaults and small retry
-     - cache: "no-store" to avoid stale timing data
-     - retries network errors (not 4xx/5xx) a couple times with backoff
-     --------------------------------------------------------------------- */
-  async function jsonFetch(path, { method = "GET", body, headers, retries = 2 } = {}) {
-    const opts = {
-      method,
-      cache: "no-store",
-      headers: { "Content-Type": "application/json", ...(headers || {}) },
-    };
-    if (body !== undefined) opts.body = typeof body === "string" ? body : JSON.stringify(body);
-
-    let attempt = 0, lastErr;
-    while (attempt <= retries) {
+    async function tick() {
       try {
-        const res = await fetch(path, opts);
-        // treat non-OK as errors but don't retry (server responded)
-        if (!res.ok) {
-          const text = await res.text().catch(() => "");
-          const err = new Error(`HTTP ${res.status} on ${path}: ${text.slice(0, 200)}`);
-          err.status = res.status;
-          throw err;
-        }
-        return await res.json();
-      } catch (e) {
-        lastErr = e;
-        // Only retry on network-ish errors (when status is undefined)
-        if (e && typeof e.status === "number") break;
-        if (attempt++ >= retries) break;
-        await new Promise(r => setTimeout(r, 250 * attempt)); // backoff
+        await fn();
+      } catch (err) {
+        if (onFail) onFail(err);
+      } finally {
+        if (running) timer = setTimeout(tick, intervalMs);
       }
     }
-    throw lastErr || new Error("Request failed");
-  }
 
-  /* -----------------------------------------------------------------------
-     Wall clock (local time) – used in footer on spectator.html
-     --------------------------------------------------------------------- */
-  function startWallClock(selector) {
-    const el = $(selector);
-    if (!el) return;
-    const tick = () => {
-      const d = new Date();
-      const hh = String(d.getHours()).padStart(2, "0");
-      const mm = String(d.getMinutes()).padStart(2, "0");
-      const ss = String(d.getSeconds()).padStart(2, "0");
-      el.textContent = `${hh}:${mm}:${ss}`;
+    return {
+      start() {
+        if (!running) { running = true; tick(); }
+      },
+      stop() {
+        running = false;
+        if (timer) clearTimeout(timer);
+        timer = null;
+      }
     };
-    tick();
-    return setInterval(tick, 1000);
   }
 
-  /* -----------------------------------------------------------------------
-     NetStatus widget
-     - tiny helper to wire a status dot + message
-     - call .ok("msg") or .err("msg")
-     --------------------------------------------------------------------- */
-  class NetStatus {
-    constructor({ dotSel = "#netDot", msgSel = "#netMsg" } = {}) {
-      this.dot = $(dotSel);
-      this.msg = $(msgSel);
-    }
-    ok(message = "OK") {
-      if (this.dot) this.dot.style.background = "var(--ok)";
-      if (this.msg) this.msg.textContent = message;
-    }
-    err(message = "Disconnected — retrying…") {
-      if (this.dot) this.dot.style.background = "var(--error)";
-      if (this.msg) this.msg.textContent = message;
-    }
+  /* ------------------------------------------------
+   * 5) setNetStatus(ok:boolean, msg:string|undefined)
+   * ------------------------------------------------
+   * - Optional UI sugar: if #netDot/#netMsg exist, update them.
+   * - Does nothing if elements are absent.
+   */
+  function setNetStatus(ok, msg) {
+    const dot = $('#netDot');
+    const text = $('#netMsg');
+    if (dot) dot.classList.toggle('bad', !ok);
+    if (text) text.textContent = msg || (ok ? 'OK' : 'Offline');
   }
 
-  /* -----------------------------------------------------------------------
-     Export
-     --------------------------------------------------------------------- */
-  CCRS.$ = $;
-  CCRS.$$ = $$;
-  CCRS.qs = qs;
-  CCRS.apiUrl = apiUrl;
-  CCRS.fmt = fmt;
-  CCRS.debounce = debounce;
-  CCRS.throttle = throttle;
-  CCRS.onVisible = onVisible;
-  CCRS.jsonFetch = jsonFetch;
-  CCRS.startWallClock = startWallClock;
-  CCRS.NetStatus = NetStatus;
-})();
+  // -------------------------------
+  // 6) Export the public API (CCRS)
+  // -------------------------------
+  w.CCRS = { $, fetchJSON, postJSON, makePoller, setNetStatus };
+
+})(window, document);

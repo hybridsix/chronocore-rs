@@ -5,6 +5,8 @@ from pathlib import Path
 from datetime import datetime, timezone
 import serial
 
+#from server import publish_tag
+
 INIT_7DIGIT = bytes([1, 37, 13, 10])  # chr(001), '%', CR, LF
 
 DB_PATH = Path(__file__).resolve().parent.parent / "laps.sqlite"
@@ -114,3 +116,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+    #publish_tag(tag)

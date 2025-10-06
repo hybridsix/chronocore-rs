@@ -25,16 +25,22 @@ This version keeps the original public surface but fixes the following:
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 import aiosqlite
-from fastapi import FastAPI, HTTPException, Response, status
+from fastapi import FastAPI, HTTPException, Response, status, Request
+from fastapi.responses import StreamingResponse, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+
 from starlette.responses import JSONResponse
 from starlette.staticfiles import StaticFiles
 from fastapi.staticfiles import StaticFiles
+
 import logging
 
 from pydantic import BaseModel, Field, ValidationError, field_validator
 from typing import Optional as _Optional
 
+import asyncio
+import json
+import time
 
 from .db_schema import ensure_schema, tag_conflicts
 from .config_loader import get_db_path
@@ -45,6 +51,29 @@ log = logging.getLogger("uvicorn.error")
 # FastAPI app bootstrap
 # ------------------------------------------------------------
 app = FastAPI(title="CCRS Backend", version="0.2.1")
+
+# ------------------------------------------------------------
+# Simple scan bus state
+# ------------------------------------------------------------
+last_tag: dict[str, object] = {"tag": None, "seen_at": None}
+_listeners: list[asyncio.Queue[str]] = []   # SSE subscribers
+
+def publish_tag(tag: str) -> float:
+    """Push a tag into the bus and wake SSE listeners. Returns seen_at timestamp."""
+    ts = time.time()
+    last_tag["tag"] = str(tag)
+    last_tag["seen_at"] = ts
+    # Wake any waiting SSE clients
+    for q in list(_listeners):
+        try:
+            q.put_nowait(str(tag))
+        except Exception:
+            pass
+    return ts
+
+
+
+
 
 # CORS: permissive for development. Tighten for production.
 app.add_middleware(
@@ -58,11 +87,14 @@ app.add_middleware(
 # Try <repo>/ui first; fall back to <repo>/backend/static
 PROJECT_ROOT = Path(__file__).resolve().parents[1]  # <repo> when server.py is in backend/
 UI_DIR = PROJECT_ROOT / "ui"
-STATIC_DIR = UI_DIR if UI_DIR.exists() else Path(__file__).resolve().parent / "static"
+#STATIC_DIR = UI_DIR if UI_DIR.exists() else Path(__file__).resolve().parent / "static"
+#app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
+STATIC_DIR = Path(__file__).resolve().parent.parent / "ui"   # => project_root/ui
+app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
 
 log.info("Serving UI from: %s", STATIC_DIR)  # sanity print at startup
 
-app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
+
 
 # Resolve DB path from config and ensure schema on boot.
 DB_PATH = get_db_path()
@@ -473,6 +505,59 @@ async def admin_upsert_entrants(payload: Dict[str, Any]):
         except Exception as ex:
             await db.execute("ROLLBACK")
             raise HTTPException(status_code=500, detail=f"admin upsert failed: {type(ex).__name__}: {ex}")
+
+# ------------------------------------------------------------
+# Polling endpoint (UI fallback)
+# ------------------------------------------------------------
+
+@app.get("/ilap/peek")
+async def ilap_peek():
+    """Return the last observed tag. UI de-duplicates via seen_at."""
+    return JSONResponse(last_tag)
+
+
+# ------------------------------------------------------------
+# SSE endpoint (preferred by UI)
+# ------------------------------------------------------------
+
+@app.get("/ilap/stream")
+async def ilap_stream(request: Request):
+    """Send exactly one tag event and then end (UI opens per-scan)."""
+    q: asyncio.Queue[str] = asyncio.Queue()
+    _listeners.append(q)
+
+    async def gen():
+        try:
+            # If client disconnects or cancels scan, this raises
+            tag = await asyncio.wait_for(q.get(), timeout=10.0)
+            payload = json.dumps({"tag": str(tag)})
+            yield f"event: tag\ndata: {payload}\n\n"
+        except asyncio.TimeoutError:
+            # No tag within window → end quietly (UI shows timeout)
+            return
+        finally:
+            if q in _listeners:
+                _listeners.remove(q)
+
+    # Note: the UI preflights this; returning stream only if used
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+# External publishers via CURL
+@app.post("/ilap/inject")
+async def ilap_inject(tag: str):
+    """Convenience endpoint so external processes can push tags."""
+    ts = publish_tag(tag)
+    return {"ok": True, "seen_at": ts}
+#
+#@app.on_event("startup")
+#async def start_scanner_tasks():
+#    async def ilap_reader_task():
+#        # TODO hook your existing I-Lap code here and yield `tag` strings
+#        while True:
+#            tag = await read_from_ilap_somehow()  # your driver
+#            publish_tag(tag)
+#    asyncio.create_task(ilap_reader_task())
+
 
 
 

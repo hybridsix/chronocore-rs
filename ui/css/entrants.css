@@ -1,97 +1,481 @@
-/* Entrants page — built atop base.css & operator.css */
+/* Entrants page — extends base.css + operator.css
+   ------------------------------------------------ */
 
-.page-title { margin: 8px 0 12px 0; }
+/* Use the screen real estate (magenta) */
+main.wrap {
+  padding: 12px;           /* tighter than default */
+  max-width: none;         /* remove centered max-width clamps */
+}
 
-/* Two-column layout: left drawer (fixed), right table (fluid) */
-.ent-grid{
+/* Smaller header footprint + page label in header (red) */
+body.entrants {
+  --headerH: 72px;
+  --headerPadY: 8px;
+}
+
+/* Brand scaled down ~25% and label sits beside it */
+.app-header .brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  transform: scale(0.75);
+  transform-origin: left center;
+}
+
+.app-header .brand .page-label {
+  font-weight: 700;
+  letter-spacing: .02em;
+  opacity: .9;
+}
+
+/* DB pill on the far right (already set, left here for clarity) */
+.app-header__tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+.app-header__tools .pill {
+  margin-left: 12px;
+}
+
+/* True two-column split (yellow/green) */
+.ent-grid {
   display: grid;
-  grid-template-columns: 400px 1fr;
-  gap: 18px;
-  max-width: 1280px;
-  margin: 18px auto;
+  grid-template-columns: 460px 1fr; /* left drawer fixed, right table flexes */
+  gap: 14px;
+  margin: 12px 0;         /* remove big side gutters */
 }
 
-/* Drawer */
-.drawer { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
-.drawer h2 { margin: 0 0 8px 0; }
-
-.field{ margin: 10px 0; }
-.label{
-  display:block; font-size:12px; letter-spacing:.12em;
-  text-transform:uppercase; color:#8fb6c9; margin-bottom:6px;
+/* Drawer spacing */
+.drawer {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.input{
-  width: 100%; padding: 10px 12px; border-radius: 10px;
-  border: 1px solid #173243; background: #0e151b; color: var(--text);
-  font-size: 16px;
+
+.drawer h2 {
+  margin: 0 0 8px 0;
 }
-.input-sm{ padding: 8px 10px; font-size: 14px; max-width: 360px; }
-.field.inline{ display:flex; align-items:center; gap:10px; }
-.checkbox{ width:18px; height:18px; }
-.small{ font-size: 12px; }
-.muted{ color: var(--muted); opacity: .85; }
-.mono { font-family: var(--mono); }
 
-/* Buttons */
-.btn{ padding:8px 12px; border-radius:10px; border:1px solid #173243; background:#0e151b; color:var(--text); cursor:pointer; }
-.btn-sm{ padding:6px 10px; font-size: 13px; }
-.btn-ghost{ background:transparent; border-color:transparent; }
-.btn-ghost.active{ background:#0e151b; border-color: #173243; }
-.btn-primary{ background: linear-gradient(180deg, #0b3042, #0a2230); border-color:#173243; }
-.btn-danger{ background: linear-gradient(180deg, #441818, #2a1111); border-color:#4a1e1e; }
-.btn-chip{ padding:4px 8px; font-size:12px; border-radius:999px; background:#0f141a; border:1px solid #13202a; }
-
-/* Drawer footer */
-.buttons{ display:flex; gap:10px; margin-top:12px; }
-
-/* Form message */
-.form-msg{ margin-top:8px; min-height: 1.2em; }
-.form-msg.ok{ color: var(--ok); }
-.form-msg.error{ color: var(--error); }
-
-/* Filters + table */
-.table-header{
-  display:flex; align-items:center; justify-content:space-between; gap:12px; margin: 12px 12px 8px;
+.field {
+  margin: 10px 0;
 }
-.filters{ display:flex; align-items:center; gap:10px; }
-.chip-group{ display:flex; gap:8px; }
 
-.table{ width:100%; }
-.ent-thead, .ent-row{
-  display:grid;
-  grid-template-columns: 140px 1fr 1fr 120px 90px 160px 120px;
-  align-items:center;
+.label {
+  display: block;
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #8fb6c9;
+  margin-bottom: 6px;
 }
-.ent-thead{
-  height: 44px; padding: 0 12px; color: #bfefff; font-weight: 700;
+
+.input {
+  width: 100%;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid #173243;
+  background: #0e151b;
+  color: var(--text);
+  font-size: 15px;
+}
+
+.input-sm {
+  padding: 6px 8px;
+  font-size: 14px;
+  max-width: 360px;
+}
+
+.scan-lane {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scan-lane--drawer .input-sm {
+  max-width: none; /* take the drawer width */
+}
+
+.field.inline {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.checkbox {
+  width: 18px;
+  height: 18px;
+}
+
+.small {
+  font-size: 12px;
+}
+
+.muted {
+  color: var(--muted);
+  opacity: .85;
+}
+
+.mono {
+  font-family: var(--mono);
+}
+
+.btn {
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid #173243;
+  background: #0e151b;
+  color: var(--text);
+  cursor: pointer;
+  font-size: 14px;
+}
+
+.btn-sm {
+  padding: 5px 8px;
+  font-size: 13px;
+}
+
+.btn-ghost {
+  background: transparent;
+  border-color: transparent;
+}
+
+.btn-ghost.active {
+  background: #0e151b;
+  border-color: #173243;
+}
+
+.btn-primary {
+  background: linear-gradient(180deg, #0b3042, #0a2230);
+  border-color: #173243;
+}
+
+.btn-danger {
+  background: linear-gradient(180deg, #441818, #2a1111);
+  border-color: #4a1e1e;
+}
+
+.btn-chip {
+  padding: 4px 8px;
+  font-size: 12px;
+  border-radius: 999px;
+  background: #0f141a;
+  border: 1px solid #13202a;
+}
+
+.buttons {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.form-msg {
+  margin-top: 8px;
+  min-height: 1.2em;
+}
+
+.form-msg.ok {
+  color: var(--ok);
+}
+
+.form-msg.error {
+  color: var(--error);
+}
+
+/* Table header/tooling */
+.table-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 8px 12px 6px;
+}
+
+.filters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.chip-group {
+  display: flex;
+  gap: 8px;
+}
+
+/* Dense table (smaller font, more rows per screen) */
+.ent-table-card {
+  font-size: 14px;
+}
+
+/* === Column order: Enabled | Tag | Number | Team | Actions | Status === */
+.ent-table-card .ent-thead,
+.ent-table-card .rows .ent-row {
+  display: grid;
+  grid-template-columns:
+    110px   /* Enabled */
+    160px   /* Tag     */
+    120px   /* Number  */
+    1fr     /* Team    */
+    160px   /* Actions */
+    110px;  /* Status  */
+  align-items: center;
+  column-gap: 8px;
+}
+
+.ent-table-card .ent-thead {
+  min-height: 40px;
+  padding: 0 12px;
+  color: #bfefff;
+  font-weight: 700;
   border-bottom: 1px solid #0b2230;
 }
-.th.clickable{ cursor:pointer; user-select:none; }
-.rows.scroll{
-  max-height: 560px; overflow: auto;
-  border:1px solid #0f141a; border-top:none; border-radius:0 0 10px 10px;
+
+/* Uses more vertical space to reach the footer (placeholder rows will fill) */
+.ent-table-card .rows.scroll {
+  max-height: none;            /* let JS compute padding rows to viewport */
+  overflow: auto;
+  border: 1px solid #0f141a;
+  border-top: none;
+  border-radius: 0 0 10px 10px;
   margin: 0 12px 12px;
 }
-.rows .ent-row{
-  height: 42px; padding: 0 12px; border-bottom: 1px solid #0f141a;
+
+.ent-table-card .rows .ent-row {
+  min-height: 36px;
+  padding: 0 12px;
+  border-bottom: 1px solid #0f141a;
 }
-.rows .ent-row:nth-child(odd){ background:#141a20; }
-.rows .ent-row:nth-child(even){ background:#0f151b; }
-.rows .ent-row.disabled{ opacity:.58; font-style: italic; }
-.ent-row .right{ text-align:right; font-family: var(--mono); }
-.ent-row .actions{ display:flex; gap:8px; }
 
-/* Ready warning flag uses base flag scaffold/colors */
-.flag.hidden { display: none; }
+.ent-table-card .rows .ent-row:nth-child(odd) {
+  background: #141a20;
+}
 
-/* UID capture blip on inline tag save */
-.captured{
-  box-shadow: 0 0 0 2px rgba(33,199,123,.9), 0 0 18px rgba(33,199,123,.6);
+.ent-table-card .rows .ent-row:nth-child(even) {
+  background: #0f151b;
+}
+
+.ent-table-card .rows .ent-row.disabled {
+  opacity: .58;
+  font-style: italic;
+}
+
+.ent-table-card .rows .ent-row > div,
+.ent-table-card .ent-thead > div {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ent-table-card .rows .ent-row .right,
+.ent-table-card .ent-thead .right {
+  text-align: right;
+  font-family: var(--mono);
+}
+
+.ent-table-card .rows .ent-row .tag-cell .mono {
+  font-family: var(--mono);
+}
+
+.ent-table-card .rows .ent-row .actions {
+  display: flex;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+/* Placeholder rows (auto-padding to the footer) */
+.ent-row.placeholder {
+  opacity: .35;
+  font-style: italic;
+}
+
+/*.ent-row.placeholder > div {
+  /* empty but preserves the grid height 
+}
+*/
+/* Hidden flag helper */
+.flag.hidden {
+  display: none;
+}
+
+/* Selection/flash */
+.ent-row.selected {
+  outline: 2px solid rgba(0, 180, 255, .35);
+  outline-offset: -2px;
+}
+
+.captured {
+  box-shadow:
+    0 0 0 2px rgba(33, 199, 123, .9),
+    0 0 18px rgba(33, 199, 123, .6);
   transition: box-shadow .35s ease-out;
 }
 
-/* Responsive: on narrower screens stack columns */
-@media (max-width: 1100px){
-  .ent-grid{ grid-template-columns: 1fr; }
-  .rows.scroll{ max-height: none; }
+/* Responsive fallback */
+@media (max-width: 1100px) {
+  .ent-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ent-table-card .ent-thead,
+  .ent-table-card .rows .ent-row {
+    grid-template-columns:
+      90px 120px 90px 1fr 140px 90px;
+  }
+}
+
+
+/* === Two-pane split (1/3 : 2/3) with independent scrolling === */
+
+:root {
+  /* Fallback footer height if not defined elsewhere */
+  --footerH: 56px;
+}
+
+/* Use the full screen; minimal outer padding */
+main.wrap {
+  padding: 8px 12px;
+  max-width: none;
+}
+
+/* Grid defines the true boundary between left and right (yellow line) */
+.ent-grid {
+  display: grid;
+  grid-template-columns: 1fr 2fr;       /* ~33% : ~67% */
+  gap: 12px;
+
+  /* Viewport-height panel with room for header/footer */
+  height: calc(100vh - var(--headerH) - var(--footerH) - 16px);
+  overflow: hidden;                     /* panes handle their own scroll */
+  margin: 8px 0;                        /* kill wide side gutters */
+}
+
+/* Panes are self-contained areas */
+.pane {
+  display: flex;
+  min-width: 0;                         /* allow right pane to shrink gracefully */
+}
+
+/* Each pane scrolls independently inside */
+.pane__scroll {
+  flex: 1 1 auto;
+  height: 100%;
+  overflow: auto;
+}
+
+/* Keep the right table stretched vertically */
+.ent-table-card {
+  display: flex;
+  flex-direction: column;
+  min-height: 100%;
+}
+
+.ent-table-card .rows.scroll {
+  flex: 1 1 auto;                       /* fill to footer */
+  max-height: none;                     /* allow the flex to govern height */
+  margin: 0 12px 12px;                  /* small inner gutter only */
+}
+
+/* Slightly widen Tag & Team now that the right pane is wider */
+.ent-table-card .ent-thead,
+.ent-table-card .rows .ent-row {
+  grid-template-columns:
+    110px   /* Enabled */
+    200px   /* Tag     (wider) */
+    120px   /* Number  */
+    1fr     /* Team    */
+    160px   /* Actions */
+    110px;  /* Status  */
+}
+
+/* Optional: tighten card inner padding so it feels more “app-like” */
+.drawer.card,
+.ent-table-card.card {
+  padding-top: 10px;
+  padding-bottom: 10px;
+}
+
+/* === Tag row with Scan/Stop/Assign === */
+.tag-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  align-items: center;
+}
+
+.tag-actions {
+  display: inline-flex;
+  gap: 6px;
+}
+
+/* Progress bar under the row (hidden unless scanning) */
+.scan-progress {
+  position: relative;
+  height: 6px;
+  border-radius: 999px;
+  background: #0e1a22;
+  margin-top: 6px;
+  overflow: hidden;
+  /* always visible now */
+  display: block;
+  opacity: 1;
+}
+
+.scan-progress.active { display: block; }
+
+#scanBar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  width: 0%;
+  background: var(--ok);           /* green while scanning */
+  transition: width 0.1s linear, background-color 0.2s ease;
+}
+
+/* On capture we briefly add .ok; on timeout .error */
+.scan-progress.ok    #scanBar { background: var(--ok); }
+.scan-progress.error #scanBar { background: var(--error); }
+
+/* Subtle highlight on required fields when tag is unknown */
+.label.attn {
+  color: #ffd66e;
+  text-shadow: 0 0 8px rgba(255, 214, 110, 0.2);
+}
+
+/* While scanning, lock input appearance a bit */
+/* Stronger input highlights */
+.input.scanning {
+  box-shadow: 0 0 0 2px rgba(0, 220, 120, 0.45), 0 0 14px rgba(0, 220, 120, 0.25);
+}
+
+/* Brief success flash when a tag is captured */
+.input.flash-ok {
+  box-shadow: 0 0 0 3px rgba(33, 199, 123, 0.95), 0 0 18px rgba(33, 199, 123, 0.65);
+}
+
+.input.flash-timeout {
+  box-shadow: 0 0 0 3px rgba(220, 70, 70, 0.95), 0 0 18px rgba(220, 70, 70, 0.55);
+}
+
+/* Required-field nudge when tag unknown */
+.label.attn {
+  color: #ffd66e;
+  text-shadow: 0 0 12px rgba(255, 214, 110, 0.35);
+}
+
+/* disable buttons when needed */
+.btn[disabled] {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.3);
+}
+
+/* Reserve space for scan status so layout doesn't jump */
+#scanMsg {
+  min-height: 1.2em;     /* ~one line of text */
+  line-height: 1.2em;
 }
