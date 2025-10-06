@@ -330,15 +330,6 @@ LIMIT 1;
 
 ---
 
----
-
-# Integrated Update (2025‑10‑06): Lap Scanner Publisher Integration
-
-# Technical Reference — Lap Scanner Publisher Integration (v2025-10-06)
-...
-
----
-
 ## 8. Frontend Clients
 Spectator and operator UIs, polling strategy, flag banner logic, and leaderboard updates.  
 **TBD**

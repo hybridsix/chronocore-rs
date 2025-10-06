@@ -552,7 +552,7 @@ async def ilap_inject(tag: str):
 
 app.on_event("startup")
 async def start_scanner():
-    from ilap_logger import ScannerService, load_config
+    from backend.lap_logger import ScannerService, load_config
     cfg = load_config("./config/ccrs.yaml")
     cfg.publisher.mode = "inprocess"
     app.state.stop_evt = asyncio.Event()

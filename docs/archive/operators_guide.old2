@@ -225,15 +225,6 @@ app:
 
 ---
 
-
-
----
-
-# Operator’s Guide — Tag Scanning & Entrants Integration (v2025-10-06)
-...
-
----
-
 ## 11. Engine Host Setup (2025 Update)
 
 The Operator UI needs to know which **engine host** to talk to. This can be:

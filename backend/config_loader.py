@@ -1,67 +1,155 @@
 from __future__ import annotations
 """
-backend/config_loader.py (drop-in)
-----------------------------------
-Loads configuration and exposes get_db_path().
+backend/config_loader.py
+========================
 
-Resolution order for DB path:
-  1) app.engine.persistence.db_path (absolute or relative to repo root unless app.paths.root_base is set)
-  2) legacy default: <repo_root>/backend/db/laps.sqlite
+Unified configuration loader for ChronoCore (CCRS).
+
+Project rule: **Forward-only.** The single source of truth is:
+    config/config.yaml
+
+This module loads that file, validates a few basics, and provides convenient
+accessors so the rest of the backend doesn’t need to know about YAML details.
+
+Design notes
+------------
+- No legacy fallbacks, no multi-file merging. If the file is missing or broken,
+  we raise a friendly RuntimeError that prints absolute paths for quick fixes.
+- Unknown keys in YAML are fine; we pass the whole dict through untouched.
+- Helpers return {} or sensible defaults if a section/key is absent.
+- Paths returned are absolute (resolved against repo root) unless the YAML
+  already provided an absolute path.
+
+Public API
+----------
+- CONFIG: dict              # eager-loaded result of load_config()
+- load_config(path=None)    # (re)load config/config.yaml or a specified path
+- get_event() → dict
+- get_db_path() → pathlib.Path
+- get_scanner_cfg() → dict
+- get_publisher_cfg() → dict
+- get_log_level(default="INFO") → str
+- get_server_bind() → (host:str, port:int)
 """
 
 from pathlib import Path
-import os, yaml
+from typing import Any, Dict, Tuple
+import os
+import yaml
 
-ROOT = Path(__file__).resolve().parents[1]
-CONFIG_DIR = Path(os.getenv("CC_CONFIG_DIR", ROOT / "config"))
 
-APP_YAML    = CONFIG_DIR / "app.yaml"
-MODES_YAML  = CONFIG_DIR / "race_modes.yaml"
-EVENT_YAML  = CONFIG_DIR / "event.yaml"
+# ------------------------------------------------------------
+# Locations
+# ------------------------------------------------------------
+ROOT = Path(__file__).resolve().parents[1]          # repo root
+DEFAULT_CONFIG = ROOT / "config" / "config.yaml"    # single authoritative file
 
-def _load_yaml(p: Path) -> dict:
+
+# ------------------------------------------------------------
+# Loader
+# ------------------------------------------------------------
+def _read_yaml(path: Path) -> Dict[str, Any]:
     try:
-        return yaml.safe_load(p.read_text(encoding="utf-8")) or {}
-    except FileNotFoundError:
-        return {}
-    except Exception:
-        # Keep callers resilient if a bad YAML sneaks in.
-        return {}
+        txt = path.read_text(encoding="utf-8")
+    except FileNotFoundError as e:
+        raise RuntimeError(
+            f"Config not found: {path}\n"
+            f"Current working directory: {Path.cwd()}\n"
+            f"Expected unified config at: {DEFAULT_CONFIG}"
+        ) from e
+    try:
+        data = yaml.safe_load(txt) or {}
+        if not isinstance(data, dict):
+            raise TypeError("Top-level YAML is not a mapping/dict.")
+        return data
+    except Exception as e:
+        raise RuntimeError(
+            f"Failed to parse YAML: {path}\n"
+            f"Error: {e}"
+        ) from e
 
-def load_config() -> dict:
-    doc = _load_yaml(APP_YAML)
-    app_cfg = doc.get("app", doc)  # allow flat legacy format too
 
-    # For very old configs, synthesize the persistence block so get_db_path() can fall back.
-    app_cfg.setdefault("engine", {}).setdefault("persistence", {})
+def load_config(path: str | os.PathLike[str] | None = None) -> Dict[str, Any]:
+    """
+    Load the unified config file. If `path` is None, use DEFAULT_CONFIG.
+    Returns a dict (do not mutate in-place; copy if you need to modify).
+    """
+    p = Path(path).expanduser().resolve() if path else DEFAULT_CONFIG
+    cfg = _read_yaml(p)
 
-    modes = (_load_yaml(MODES_YAML) or {}).get("modes", {})
-    event = (_load_yaml(EVENT_YAML) or {}).get("event", {})
-    return {"app": app_cfg, "modes": modes, "event": event}
+    # Minimal structural validation (forward-only; no legacy support)
+    # We keep this gentle: warn by raising with actionable messages if obviously wrong.
+    # Required top-level sections for a normal install (soft requirement):
+    #   - app, client, engine  (scanner/publisher/log are used by the scanner process)
+    missing_core = [k for k in ("app", "client", "engine") if k not in cfg]
+    if missing_core:
+        # Not fatal for every tool (e.g., ilap_logger may only need scanner/publisher),
+        # but it's usually a sign of a misconfigured file. Raise with details.
+        raise RuntimeError(
+            "Unified config is missing core sections: "
+            + ", ".join(missing_core)
+            + f"\nFile: {p}\nCWD: {Path.cwd()}"
+        )
 
-CONFIG = load_config()
+    return cfg
 
-def get_mode_cfg(name: str) -> dict:
-    return CONFIG["modes"].get(name, {})
+
+# Eagerly load once for convenience. Importers can use CONFIG directly.
+CONFIG: Dict[str, Any] = load_config()
+
+
+# ------------------------------------------------------------
+# Accessors (lightweight, forward-only)
+# ------------------------------------------------------------
+def get_event() -> Dict[str, Any]:
+    """
+    Return the event block (engine.event). Empty dict if absent.
+    """
+    return (CONFIG.get("engine") or {}).get("event", {}) or {}
+
 
 def get_db_path() -> Path:
     """
-    Returns the SQLite file path.
-    Accepts absolute or relative 'db_path' values. Relative paths resolve against repo root
-    unless 'app.paths.root_base' is specified.
+    Return absolute path to the SQLite DB from engine.persistence.db_path.
+    If relative in YAML, resolve against repo root.
     """
-    app_cfg = CONFIG.get("app", {})
-    db_path = (
-        app_cfg.get("engine", {})
-               .get("persistence", {})
-               .get("db_path")
-    )
-    if db_path:
-        p = Path(db_path)
-        if not p.is_absolute():
-            root_base = (app_cfg.get("paths", {}) or {}).get("root_base")
-            p = (Path(root_base) / p) if root_base else (ROOT / p)
-        return p
+    engine = CONFIG.get("engine") or {}
+    persistence = engine.get("persistence") or {}
+    db_path = persistence.get("db_path")
+    if not db_path:
+        # Keep the historically-common default path (forward-only projects also used this)
+        return (ROOT / "backend" / "db" / "laps.sqlite").resolve()
+    p = Path(db_path)
+    return p if p.is_absolute() else (ROOT / p).resolve()
 
-    # Legacy default used in earlier repos
-    return ROOT / "backend" / "db" / "laps.sqlite"
+
+def get_scanner_cfg() -> Dict[str, Any]:
+    """
+    Return the scanner section (used by backend.ilap_logger). {} if absent.
+    """
+    return CONFIG.get("scanner") or {}
+
+
+def get_publisher_cfg() -> Dict[str, Any]:
+    """
+    Return the publisher section (used by backend.ilap_logger). {} if absent.
+    """
+    return CONFIG.get("publisher") or {}
+
+
+def get_log_level(default: str = "INFO") -> str:
+    """
+    Return scanner log level (log.level), upper-cased, defaulting to INFO.
+    """
+    lvl = ((CONFIG.get("log") or {}).get("level") or default)
+    return str(lvl).upper()
+
+
+def get_server_bind() -> Tuple[str, int]:
+    """
+    Return (host, port) from engine.server. Defaults (127.0.0.1, 8000).
+    """
+    srv = ((CONFIG.get("engine") or {}).get("server") or {})
+    host = str(srv.get("host", "127.0.0.1"))
+    port = int(srv.get("port", 8000))
+    return host, port

@@ -9,6 +9,16 @@ normalize and de-duplicate them, then publish into the Operator UI's scan bus
 *either* via direct in-process call to `publish_tag(tag)` *or* via HTTP
 POST to `/ilap/inject?tag=...` on the CCRS server.
 
+Supports:
+  • I-Lap serial readers
+  • UDP broadcast readers
+  • Mock tag generators (for testing)
+  • Future pluggable reader classes
+
+Publishing modes:
+  • In-process (direct call to server.publish_tag)
+  • HTTP POST /ilap/inject (external process or node)
+
 Key behaviors
 -------------
 - Input sources (select one at runtime via YAML/CLI):
@@ -40,7 +50,7 @@ Key behaviors
 
 CLI
 ---
-    python -m ilap_logger --config /path/to/ccrs.yaml
+    python -m lap_logger --config /path/to/ccrs.yaml
     # Optional runtime overrides:
     --source ilap.serial|ilap.udp|mock
     --mode inprocess|http
@@ -56,7 +66,7 @@ CLI
 """
 
 from __future__ import annotations
-
+from pathlib import Path
 import argparse
 import asyncio
 import logging
@@ -241,7 +251,7 @@ class InProcessPublisher(Publisher):
             raise RuntimeError(
                 "publisher.mode='inprocess' but server.publish_tag() is not available.\n"
                 "If running as a separate process, set publisher.mode='http'.\n"
-                "If embedding in FastAPI, ensure ilap_logger imports AFTER server defines publish_tag."
+                "If embedding in FastAPI, ensure lap_logger imports AFTER server defines publish_tag."
             )
 
     async def publish(self, tag: str):
@@ -735,7 +745,8 @@ def _apply_overrides(cfg: RootCfg, args: argparse.Namespace) -> RootCfg:
 
 def _make_argparser() -> argparse.ArgumentParser:
     ap = argparse.ArgumentParser(description="CCRS Scanner Publisher (I-Lap → publish_tag or HTTP)")
-    ap.add_argument("--config", required=True, help="Path to CCRS YAML")
+    ap.add_argument("--config", default=str(Path(__file__).resolve().parents[1] / "config" / "config.yaml"),
+                    help="Path to unified CCRS YAML (default: config/config.yaml)")
 
     # Scanner overrides
     ap.add_argument("--source", choices=["ilap.serial", "ilap.udp", "mock"])
@@ -803,5 +814,5 @@ def main():
 
 
 if __name__ == "__main__":
-    # Enable `python -m ilap_logger --config ...`
+    # Enable `python -m lap_logger --config ...`
     main()

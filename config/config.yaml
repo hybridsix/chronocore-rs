@@ -104,13 +104,13 @@ scanner:
   #   "mock"        → emits fake tags periodically (perfect for UI testing)
   #   "ilap.serial" → reads from an I-Lap base via USB/serial (text protocol)
   #   "ilap.udp"    → listens for UDP datagrams in the same text format
-  source: "mock"   # TODO: flip to "ilap.serial" when you’re ready
+  source: "ilap.serial"   # TODO: flip to "ilap.serial" when you’re ready
 
   # Serial settings (used only when source == "ilap.serial")
   serial:
     # Windows: "COM3", "COM7" ... (check Device Manager)
     # Linux: "/dev/ttyUSB0" or "/dev/ttyACM0"
-    port: "COM7"           # TODO: set to your actual COM port
+    port: "COM3"           # TODO: set to your actual COM port
     baud: 9600
 
   # UDP listener (used only when source == "ilap.udp")
