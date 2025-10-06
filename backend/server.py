@@ -549,16 +549,14 @@ async def ilap_inject(tag: str):
     ts = publish_tag(tag)
     return {"ok": True, "seen_at": ts}
 #
-#@app.on_event("startup")
-#async def start_scanner_tasks():
-#    async def ilap_reader_task():
-#        # TODO hook your existing I-Lap code here and yield `tag` strings
-#        while True:
-#            tag = await read_from_ilap_somehow()  # your driver
-#            publish_tag(tag)
-#    asyncio.create_task(ilap_reader_task())
 
-
+app.on_event("startup")
+async def start_scanner():
+    from ilap_logger import ScannerService, load_config
+    cfg = load_config("./config/ccrs.yaml")
+    cfg.publisher.mode = "inprocess"
+    app.state.stop_evt = asyncio.Event()
+    app.state.task = asyncio.create_task(ScannerService(cfg).run(app.state.stop_evt))
 
 
 # ------------------------------------------------------------

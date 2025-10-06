@@ -1,26 +1,153 @@
 # =============================================================================
-# config.yaml — Deprecated compatibility wrapper
+# ChronoCore Race Software (CCRS)
+# -----------------------------------------------------------------------------
+# CONFIGURATION FILE  –  config/config.yaml
 # =============================================================================
-# Historical note:
-#   Older builds loaded a single config.yaml. The platform now separates
-#   concerns into:
-#     - app.yaml        : platform/runtime defaults & host policy
-#     - race_modes.yaml : mode definitions
-#     - event.yaml      : event identity & branding
 #
-# Guidance:
-#   Keep this file in the repo for clarity, but do NOT add live settings here.
-#   If you must keep parity for legacy tools, mirror ONLY the app.client.engine
-#   block below and add a big banner like this one.
+# This file defines the *runtime configuration* for the ChronoCore backend and
+# attached subsystems. It consolidates user-editable settings that control how
+# the system runs on a given install.
+#
+# Safe to edit: comments and unknown keys are ignored by the app.
+# YAML is indentation-sensitive; use two spaces per level.
+#
+# Key sections:
+#   app:        General app identity.
+#   client:     Local Operator display / UX preferences.
+#   engine:     RaceEngine & persistence behavior (database, batching).
+#   scanner:    How tags are read from I-Lap (serial/UDP) or mock.
+#   publisher:  How parsed tags are delivered to the CCRS server.
+#   log:        Logging level for the scanner process.
+#
+# Quick start (mock source → HTTP inject):
+#   python -m backend.ilap_logger --config .\config\config.yaml --log-level INFO
+#
+# Switch to serial once hardware is plugged in:
+#   scanner.source: "ilap.serial"
+#   scanner.serial.port: "COM7"   # set to your actual COM port
+#
+# Restart services after edits.
 # =============================================================================
 
-app:
-  client:
-    engine:
-      mode: localhost
-      fixed_host: "10.77.0.10:8000"
-      prefer_same_origin: true
-      allow_client_override: true
 
-# Everything else lives in app.yaml / race_modes.yaml / event.yaml
-# End of config.yaml
+# -----------------------------------------------------------------------------
+# App identity and high-level flags used by the backend at startup.
+# -----------------------------------------------------------------------------
+app:
+  # Human-friendly name shown in logs and UI headers.
+  name: "ChronoCore Race Software"
+
+  # Optional semver string for diagnostics; not enforced anywhere.
+  version: "0.9.0-dev"
+
+  # Environment hint for toggling dev conveniences (autoreload, extra logging).
+  # Accepted: development | staging | production (freeform, not enforced).
+  environment: "development"
+
+
+# -----------------------------------------------------------------------------
+# Client/UI preferences for the local Operator station.
+# These are *preferences*, not hard rules; safe to leave as defaults.
+# -----------------------------------------------------------------------------
+client:
+  # Which Operator page to open by default (must exist in your UI routes).
+  default_page: "entrants"
+
+  # Theme preferences read by your UI (if you wire them through).
+  theme:
+    mode: "dark"                 # dark | light
+    accent: "#00b4ff"            # ChronoCore blue
+    secondary: "#22c55e"         # PRS green
+
+  # Optional: where the Operator UI expects the backend to live.
+  # Helpful for multi-node setups; the UI can read this to build API URLs.
+  backend_base_url: "http://127.0.0.1:8000"
+
+
+# -----------------------------------------------------------------------------
+# RaceEngine & persistence.
+# If you previously stored these elsewhere, copy those values here.
+# -----------------------------------------------------------------------------
+engine:
+  # Event descriptor (used in /race/state and UI headers).
+  event:
+    name: "Maker Faire Orlando"        # TODO: set your event name
+    date: "2025-11-08"                 # YYYY-MM-DD
+    location: "Orlando, FL"
+
+  # SQLite journal (laps, entrants, etc.). The engine will create the DB dir.
+  persistence:
+    db_path: "./backend/db/laps.sqlite"  # default path used by prior code
+    enabled: true                        # turn journal on/off
+    batch_ms: 200                        # flush interval in milliseconds
+    batch_max: 50                        # max records per flush batch
+    fsync: true                          # True = safer; False = faster
+
+  # Server binding (used when you launch server.py yourself; uvicorn flags win)
+  server:
+    host: "127.0.0.1"
+    port: 8000
+
+  branding:
+    # Optional pointers used by UIs (relative URLs served by /ui or absolute)
+    logo_svg: "/ui/assets/CCRS_Logo.svg"
+    primary_color: "#00D3FF"
+    accent_color: "#FFEF00"
+
+
+# -----------------------------------------------------------------------------
+# Scanner: pluggable tag readers (mock / I-Lap serial / I-Lap UDP).
+# This is read by backend.ilap_logger.
+# -----------------------------------------------------------------------------
+scanner:
+  # Select exactly one:
+  #   "mock"        → emits fake tags periodically (perfect for UI testing)
+  #   "ilap.serial" → reads from an I-Lap base via USB/serial (text protocol)
+  #   "ilap.udp"    → listens for UDP datagrams in the same text format
+  source: "mock"   # TODO: flip to "ilap.serial" when you’re ready
+
+  # Serial settings (used only when source == "ilap.serial")
+  serial:
+    # Windows: "COM3", "COM7" ... (check Device Manager)
+    # Linux: "/dev/ttyUSB0" or "/dev/ttyACM0"
+    port: "COM7"           # TODO: set to your actual COM port
+    baud: 9600
+
+  # UDP listener (used only when source == "ilap.udp")
+  udp:
+    host: "0.0.0.0"        # bind on all interfaces
+    port: 5000             # match your I-Lap base’s UDP target port
+
+  # After parsing, only digits are kept. Enforce minimum tag length here.
+  min_tag_len: 7           # I-Lap default is 7 digits
+
+  # Duplicate suppression window (seconds). Same tag within this window is dropped.
+  duplicate_window_sec: 3
+
+  # Optional rate cap in tags/second. 0 = unlimited.
+  # Helps protect UI/back end during bursts or noisy hardware.
+  rate_limit_per_sec: 20
+
+
+# -----------------------------------------------------------------------------
+# Publisher: where the scanner sends validated tags.
+# "http" is typical when scanner runs as a separate process or on a node.
+# "inprocess" is for when the scanner is embedded inside server.py.
+# -----------------------------------------------------------------------------
+publisher:
+  mode: "http"         # "http" | "inprocess"
+
+  http:
+    # Base URL of the CCRS backend exposing /ilap/inject.
+    base_url: "http://127.0.0.1:8000"
+    # Per-request timeout in milliseconds (retry/backoff happens on failure).
+    timeout_ms: 500
+
+
+# -----------------------------------------------------------------------------
+# Logging for the scanner process (does not change server logging).
+# -----------------------------------------------------------------------------
+log:
+  # info → calm operational logs
+  # debug → raw lines + detailed events/latencies
+  level: info
