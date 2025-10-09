@@ -151,3 +151,91 @@ log:
   # info → calm operational logs
   # debug → raw lines + detailed events/latencies
   level: info
+
+
+# =============================================================================
+# ENGINE RUNTIME — SITE OVERRIDES
+# =============================================================================
+engine:
+  diagnostics:
+    enabled: true
+    buffer_size: 500
+    stream:
+      transport: "sse"
+    beep:
+      # This is a *cap*. Actual beep cadence also respects ingest.debounce_ms.
+      max_per_sec: 5
+
+  ingest:
+    # GLOBAL, AUTHORITATIVE debounce window (ms). One knob for entire system.
+    debounce_ms: 250
+
+    # Optional per-location tweaks if a loop is especially noisy.
+    # Only use when you have a genuine reason; otherwise keep it empty.
+    per_location_debounce_ms:
+      # SF: 300
+      # PIT_IN: 200
+      # PIT_OUT: 200
+
+# =============================================================================
+# TRACK TOPOLOGY — LABELS & PHYSICAL BINDINGS
+# =============================================================================
+track:
+  # Human labels for logical points. Change labels freely; IDs stay stable.
+  locations:
+    SF:       "Start/Finish"
+    PIT_IN:   "Pit In"
+    PIT_OUT:  "Pit Out"
+    X1:       "Crossing X"
+
+  # Bind concrete physical inputs to logical locations.
+  # Each item is a *source* (computer + decoder + port) → location_id.
+  # These seed the 'sources' table at boot (idempotent upserts).
+  bindings:
+    - computer_id: "t640-gate-a"
+      decoder_id:  "ilap-210"
+      port:        "COM7"
+      location_id: "SF"
+
+    - computer_id: "t640-pit-a"
+      decoder_id:  "ilap-311"
+      port:        "udp://0.0.0.0:5002"
+      location_id: "PIT_IN"
+
+    - computer_id: "t640-pit-b"
+      decoder_id:  "ilap-311"
+      port:        "udp://0.0.0.0:5003"
+      location_id: "PIT_OUT"
+
+    - computer_id: "t640-x"
+      decoder_id:  "ilap-099"
+      port:        "/dev/ttyUSB0"
+      location_id: "X1"
+
+# =============================================================================
+# RACE CONTROL & INFERENCE — OPS-FACING KNOBS
+# =============================================================================
+race:
+  flags:
+    # During these flags we *pause* missed-lap inference altogether.
+    inference_blocklist: ["YELLOW", "RED", "SC"]
+    # After returning to GREEN, wait this long before resuming inference.
+    post_green_grace_ms: 3000
+
+  missed_lap:
+    enabled: false
+    apply_mode: "propose"      # safer by default; operator accepts/rejects
+    window_laps: 5
+    sigma_k: 2.0
+    min_gap_ms: 8000
+    max_consecutive_inferred: 1
+    mark_inferred: true
+
+# =============================================================================
+# UI / OPERATOR — SMALL QUALITY OF LIFE
+# =============================================================================
+ui:
+  operator:
+    sound_default_enabled: false      # must be toggled on the page once
+    show_location_filters: true       # drop-down filters on diagnostics
+    time_display: "local"             # "local" | "utc"

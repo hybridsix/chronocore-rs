@@ -115,5 +115,88 @@ app:
       connecting: "Connecting…"
       disconnected: "Disconnected — retrying…"
 
+# =============================================================================
+# DIAGNOSTICS & LIVE STREAM DEFAULTS
+# (Place near other app/engine defaults.)
+# =============================================================================
+app:
+  engine:
+    diagnostics:
+      # Master switch for the diagnostics endpoints (stream + snapshot + meta).
+      enabled: true
+
+      # In-memory rolling buffer for late-join UI snapshots.
+      buffer_size: 500   # rows, per-process; small and cheap
+
+      # Transport for the live feed. SSE is perfect; WS later if you want bi-dir.
+      stream:
+        transport: "sse"   # "sse" | "ws"
+
+      # UI beep behavior defaults (browser still requires a user gesture to unmute).
+      beep:
+        # Beep rate is globally throttled by 'ingest.debounce_ms' (from config.yaml).
+        # This local cap prevents a 'microwave choir' during chatter bursts.
+        max_per_sec: 5
+
+# =============================================================================
+# GLOBAL INGEST DEFAULTS
+# =============================================================================
+app:
+  engine:
+    ingest:
+      # Single source of truth for detection de-bounce across the whole system.
+      # The diagnostics page will *read* this to throttle its beep, and the
+      # RaceEngine uses it to de-dupe noisy loop hits.
+      debounce_ms: 250
+
+      # Future-proof: per-location overrides (rare; only if a loop is chattier).
+      # Keys are stable 'location_id's (see locations below). Omit for globals.
+      per_location_debounce_ms: { }
+
+# =============================================================================
+# TRACK TOPOLOGY DEFAULTS (labels only; site binds in config.yaml)
+# =============================================================================
+app:
+  track:
+    locations:
+      # Stable keys for logic (left) → human labels (right).
+      SF:       "Start/Finish"
+      PIT_IN:   "Pit In"
+      PIT_OUT:  "Pit Out"
+      X1:       "Crossing X"    # spare slot to rename on site
+
+# =============================================================================
+# FLAGS & MISSED-LAP DEFAULTS
+# =============================================================================
+app:
+  race:
+    flags:
+      # Which flag states disable auto inference / predictive helpers.
+      inference_blocklist: ["YELLOW", "RED", "SC"]
+      post_green_grace_ms: 3000
+
+    missed_lap:
+      enabled: false          # start conservative; ops can enable on Setup
+      apply_mode: "propose"   # "propose" | "auto"
+      window_laps: 5          # rolling window for avg/stddev
+      sigma_k: 2.0            # threshold strictness (higher = fewer fills)
+      min_gap_ms: 8000        # absolute hard floor between any two laps
+      max_consecutive_inferred: 1
+      mark_inferred: true     # tag inferred laps in exports/results
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 # End of app.yaml
 

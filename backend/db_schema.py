@@ -1,59 +1,207 @@
 from __future__ import annotations
 
 """
-backend/db_schema.py (drop-in)
-------------------------------
-Centralized SQLite schema management for CCRS.
+backend/db_schema.py (ultimate)
+-------------------------------
+Centralized, idempotent SQLite schema management for CCRS.
 
-Key changes in this revision:
-- Enforce "unique tag among ENABLED entrants" **at the database level** via a UNIQUE partial index:
-    CREATE UNIQUE INDEX idx_entrants_tag_enabled_unique ON entrants(tag)
-    WHERE enabled=1 AND tag IS NOT NULL;
-- ensure_schema() is idempotent and *repairs* older DBs that might have had a non-unique index.
-- tag_conflicts() checks only enabled entrants and excludes the incumbent id when provided.
+Design goals
+- Preserve existing behavior:
+  * Entrants table shape (including TEXT car number).
+  * "Unique tag among ENABLED entrants" guaranteed at the DB level via a partial UNIQUE index.
+- Add timing-ready primitives:
+  * locations: logical timing points (e.g., 'SF', 'PIT_IN') with human labels.
+  * sources: concrete bindings (computer_id, decoder_id, port) -> location_id.
+  * passes: durable raw detections (when persistence is ON) referencing sources.
+  * events/heats/lap_events/flags: compact race model with room to grow.
+- Provide helper views joining labels so UIs can query without manual JOINs.
+- Keep schema creation safe to call at every boot (idempotent).
+- Allow destructive rebuilds (recreate=True) when starting fresh.
+
+IMPORTANT:
+SQLite only enforces FOREIGN KEY constraints when 'PRAGMA foreign_keys=ON' is set
+on the connection performing writes. Ensure your runtime DB connections do that.
 """
 
 from pathlib import Path
 import sqlite3
 from typing import Optional
 
-LOCKED_USER_VERSION = 2  # bump if table columns change
+# Bump when DDL changes in a way worth tracking (for future migrations).
+LOCKED_USER_VERSION = 5
 
 # ------------------------
-# DDL
+# DDL: Core roster
 # ------------------------
 ENTRANTS_DDL = """
 CREATE TABLE IF NOT EXISTS entrants (
     entrant_id   INTEGER PRIMARY KEY,
-    number       TEXT,              -- race number (string allows '004', 'A12')
+    number       TEXT,                      -- car number as TEXT ('004', 'A12', etc.)
     name         TEXT NOT NULL,
-    tag          TEXT,              -- transponder ID, nullable when unassigned
-    enabled      INTEGER NOT NULL DEFAULT 1,   -- 1 = active in roster, 0 = disabled
+    tag          TEXT,                      -- transponder ID, nullable when unassigned
+    enabled      INTEGER NOT NULL DEFAULT 1, -- 1 = active in roster, 0 = disabled
     status       TEXT NOT NULL DEFAULT 'ACTIVE',
     organization TEXT,
     spoken_name  TEXT,
     color        TEXT,
     logo         TEXT,
-    updated_at   INTEGER            -- epoch seconds
+    updated_at   INTEGER                    -- epoch seconds (updated by app)
 );
-"""
-
-PASSES_DDL = """
-CREATE TABLE IF NOT EXISTS passes (
-    pass_id     INTEGER PRIMARY KEY,
-    ts_ms       INTEGER NOT NULL,
-    tag         TEXT NOT NULL,
-    device_id   TEXT,
-    source      TEXT DEFAULT 'track',
-    raw         TEXT
-);
-CREATE INDEX IF NOT EXISTS idx_passes_ts ON passes(ts_ms);
-"""
-
-PARTIAL_UNIQUE_INDEX = """
+-- Partial UNIQUE: tag must be unique among *enabled* entrants, tags may repeat across disabled rows or be NULL.
 CREATE UNIQUE INDEX IF NOT EXISTS idx_entrants_tag_enabled_unique
 ON entrants(tag)
 WHERE enabled = 1 AND tag IS NOT NULL;
+"""
+
+# ------------------------
+# DDL: Track topology & bindings
+# ------------------------
+LOCATIONS_DDL = """
+-- Logical timing points on the course. Stable IDs are short, human-labels can change freely.
+CREATE TABLE IF NOT EXISTS locations (
+    location_id TEXT PRIMARY KEY,           -- e.g., 'SF', 'PIT_IN', 'PIT_OUT', 'X1'
+    label       TEXT NOT NULL               -- e.g., 'Start/Finish', 'Pit In'
+);
+"""
+
+SOURCES_DDL = """
+-- Physical input bindings that produce detections; multiple sources may map to the same location.
+CREATE TABLE IF NOT EXISTS sources (
+    source_id   INTEGER PRIMARY KEY,
+    computer_id TEXT NOT NULL,              -- host alias, e.g., 't640-gate-a'
+    decoder_id  TEXT NOT NULL,              -- reader identity, e.g., 'ilap-210'
+    port        TEXT NOT NULL,              -- 'COM7', '/dev/ttyUSB0', 'udp://0.0.0.0:5001'
+    location_id TEXT NOT NULL,              -- FK to locations(location_id)
+    FOREIGN KEY (location_id) REFERENCES locations(location_id) ON UPDATE CASCADE ON DELETE RESTRICT,
+    UNIQUE(computer_id, decoder_id, port)   -- exact physical tuple is unique
+);
+CREATE INDEX IF NOT EXISTS idx_sources_location ON sources(location_id);
+"""
+
+# ------------------------
+# DDL: Raw detections (journaling)
+# ------------------------
+PASSES_DDL = """
+-- Durable detection log; only populated when persistence/journaling is enabled during events.
+CREATE TABLE IF NOT EXISTS passes (
+    pass_id     INTEGER PRIMARY KEY,
+    ts_ms       INTEGER NOT NULL,           -- host epoch ms when received
+    tag         TEXT NOT NULL,              -- 7-digit (ILap) etc.
+    t_secs      REAL,                       -- optional device seconds if provided by decoder
+    source_id   INTEGER,                    -- FK to sources(source_id); may be NULL if unknown
+    raw         TEXT,                       -- raw packet/line for forensics
+    meta_json   TEXT,                       -- optional JSON: channel/antenna/direction/etc.
+    FOREIGN KEY (source_id) REFERENCES sources(source_id) ON UPDATE CASCADE ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_passes_ts ON passes(ts_ms);
+CREATE INDEX IF NOT EXISTS idx_passes_tag ON passes(tag);
+CREATE INDEX IF NOT EXISTS idx_passes_source_ts ON passes(source_id, ts_ms);
+"""
+
+# ------------------------
+# DDL: Race model (events, heats, laps, flags)
+# ------------------------
+EVENTS_DDL = """
+CREATE TABLE IF NOT EXISTS events (
+    event_id    INTEGER PRIMARY KEY,
+    name        TEXT NOT NULL,
+    date_utc    TEXT,                       -- ISO8601 (YYYY-MM-DD or full timestamp)
+    config_json TEXT                        -- optional per-event rules/settings
+);
+"""
+
+HEATS_DDL = """
+CREATE TABLE IF NOT EXISTS heats (
+    heat_id     INTEGER PRIMARY KEY,
+    event_id    INTEGER NOT NULL,
+    name        TEXT NOT NULL,
+    order_index INTEGER,                    -- optional display ordering
+    config_json TEXT,                       -- per-heat rules (duration, min_lap_ms, etc.)
+    FOREIGN KEY (event_id) REFERENCES events(event_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_heats_event ON heats(event_id);
+"""
+
+LAP_EVENTS_DDL = """
+-- Authoritative laps attributed by the RaceEngine.
+CREATE TABLE IF NOT EXISTS lap_events (
+    lap_id      INTEGER PRIMARY KEY,
+    heat_id     INTEGER NOT NULL,
+    entrant_id  INTEGER NOT NULL,
+    lap_num     INTEGER NOT NULL,           -- 1-based within the heat
+    ts_ms       INTEGER NOT NULL,           -- host epoch ms when lap was credited
+    source_id   INTEGER,                    -- where this lap was triggered (usually SF)
+    inferred    INTEGER NOT NULL DEFAULT 0, -- 0 = real detection, 1 = inferred/predicted
+    meta_json   TEXT,                       -- any extras (why inferred, sigma_k, etc.)
+    FOREIGN KEY (heat_id)    REFERENCES heats(heat_id)       ON DELETE CASCADE,
+    FOREIGN KEY (entrant_id) REFERENCES entrants(entrant_id) ON DELETE CASCADE,
+    FOREIGN KEY (source_id)  REFERENCES sources(source_id)   ON DELETE SET NULL
+);
+CREATE INDEX IF NOT EXISTS idx_laps_heat_entrant_time ON lap_events(heat_id, entrant_id, ts_ms);
+CREATE INDEX IF NOT EXISTS idx_laps_heat_lapnum ON lap_events(heat_id, lap_num);
+"""
+
+FLAGS_DDL = """
+-- Race control state changes (GREEN/YELLOW/RED/CHECKERED, etc.)
+CREATE TABLE IF NOT EXISTS flags (
+    flag_id     INTEGER PRIMARY KEY,
+    heat_id     INTEGER NOT NULL,
+    state       TEXT NOT NULL,              -- 'GREEN' | 'YELLOW' | 'RED' | 'CHECKERED' | ...
+    ts_ms       INTEGER NOT NULL,
+    actor       TEXT,                       -- who/what set the flag (operator, API, etc.)
+    note        TEXT,
+    FOREIGN KEY (heat_id) REFERENCES heats(heat_id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_flags_heat_time ON flags(heat_id, ts_ms);
+"""
+
+# ------------------------
+# DDL: Convenience views (for UI-friendly reads)
+# ------------------------
+VIEWS_DDL = """
+-- Passes joined to human-friendly labels.
+CREATE VIEW IF NOT EXISTS v_passes_enriched AS
+SELECT
+  p.pass_id,
+  p.ts_ms,
+  p.tag,
+  p.t_secs,
+  p.raw,
+  p.meta_json,
+  s.source_id,
+  s.computer_id,
+  s.decoder_id,
+  s.port,
+  s.location_id,
+  l.label AS location_label
+FROM passes p
+LEFT JOIN sources s ON s.source_id = p.source_id
+LEFT JOIN locations l ON l.location_id = s.location_id;
+
+-- Lap events joined to labels and roster.
+CREATE VIEW IF NOT EXISTS v_lap_events_enriched AS
+SELECT
+  le.lap_id,
+  le.heat_id,
+  h.name      AS heat_name,
+  le.entrant_id,
+  e.number    AS car_number,
+  e.name      AS team_name,
+  le.lap_num,
+  le.ts_ms,
+  le.inferred,
+  le.meta_json,
+  le.source_id,
+  s.computer_id,
+  s.decoder_id,
+  s.port,
+  s.location_id,
+  l.label     AS location_label
+FROM lap_events le
+JOIN heats     h ON h.heat_id = le.heat_id
+JOIN entrants  e ON e.entrant_id = le.entrant_id
+LEFT JOIN sources   s ON s.source_id = le.source_id
+LEFT JOIN locations l ON l.location_id = s.location_id;
 """
 
 # ------------------------
@@ -66,37 +214,76 @@ def _exec_script(conn: sqlite3.Connection, script: str) -> None:
 
 def _drop_everything(conn: sqlite3.Connection) -> None:
     cur = conn.cursor()
+    # Drop views first (they depend on tables)
+    cur.execute("DROP VIEW IF EXISTS v_lap_events_enriched")
+    cur.execute("DROP VIEW IF EXISTS v_passes_enriched")
+    # Then tables (children before parents)
+    cur.execute("DROP TABLE IF EXISTS flags")
+    cur.execute("DROP TABLE IF EXISTS lap_events")
+    cur.execute("DROP TABLE IF EXISTS heats")
+    cur.execute("DROP TABLE IF EXISTS events")
     cur.execute("DROP TABLE IF EXISTS passes")
+    cur.execute("DROP TABLE IF EXISTS sources")
+    cur.execute("DROP TABLE IF EXISTS locations")
     cur.execute("DROP TABLE IF EXISTS entrants")
+    # Drop indexes explicitly if desired (mostly harmless if left; SQLite ignores on table drop)
+    cur.execute("DROP INDEX IF EXISTS idx_laps_heat_entrant_time")
+    cur.execute("DROP INDEX IF EXISTS idx_laps_heat_lapnum")
+    cur.execute("DROP INDEX IF EXISTS idx_flags_heat_time")
     cur.execute("DROP INDEX IF EXISTS idx_passes_ts")
+    cur.execute("DROP INDEX IF EXISTS idx_passes_tag")
+    cur.execute("DROP INDEX IF EXISTS idx_passes_source_ts")
+    cur.execute("DROP INDEX IF EXISTS idx_sources_location")
     cur.execute("DROP INDEX IF EXISTS idx_entrants_tag_enabled_unique")
     conn.commit()
 
-def ensure_schema(db_path: str | Path, recreate: bool = False, include_passes: bool = True) -> None:
+def ensure_schema(
+    db_path: str | Path,
+    recreate: bool = False,
+    include_passes: bool = True,
+    include_race: bool = True,
+) -> None:
     """
     Create the database (and parent folder) if needed, and enforce our schema.
-    This function is idempotent and safe to call at every boot.
-    - If 'recreate' is True, this will drop and rebuild the schema (destructive).
-    - Always (re)creates the UNIQUE partial index for enabled tag uniqueness.
+    Safe to call at every boot.
+      - recreate=True   : destructive drop & rebuild (fresh start).
+      - include_passes  : create the 'passes' table & indexes (journaling).
+      - include_race    : create events/heats/lap_events/flags (race timing model).
+
+    NOTE: If your runtime uses FOREIGN KEYS, remember to set PRAGMA foreign_keys=ON
+    on *those* connections. This function only defines FKs in DDL.
     """
     p = Path(db_path)
     p.parent.mkdir(parents=True, exist_ok=True)
+
     conn = sqlite3.connect(p)
     try:
         if recreate:
             _drop_everything(conn)
 
+        # Core roster and uniqueness rule.
         _exec_script(conn, ENTRANTS_DDL)
+
+        # Track topology & physical bindings.
+        _exec_script(conn, LOCATIONS_DDL)
+        _exec_script(conn, SOURCES_DDL)
+
+        # Journaling of raw detections (when enabled).
         if include_passes:
             _exec_script(conn, PASSES_DDL)
 
-        # Backfill/repair the partial UNIQUE index (older builds might have had a non-unique).
-        cur = conn.cursor()
-        cur.execute("DROP INDEX IF EXISTS idx_entrants_tag_enabled_unique")
-        conn.commit()
-        _exec_script(conn, PARTIAL_UNIQUE_INDEX)
+        # Race model.
+        if include_race:
+            _exec_script(conn, EVENTS_DDL)
+            _exec_script(conn, HEATS_DDL)
+            _exec_script(conn, LAP_EVENTS_DDL)
+            _exec_script(conn, FLAGS_DDL)
 
-        # Optional: record user_version for future lightweight migrations.
+        # Convenience views for UI.
+        _exec_script(conn, VIEWS_DDL)
+
+        # Record user_version for lightweight migrations.
+        cur = conn.cursor()
         cur.execute(f"PRAGMA user_version = {LOCKED_USER_VERSION}")
         conn.commit()
     finally:
