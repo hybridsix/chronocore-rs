@@ -12,6 +12,12 @@
 
   <!-- JS: helpers first, then page logic; both deferred -->
   <script src="../js/base.js" defer></script>
+
+  <!--
+    NOTE: entrants.js now auto-injects ⓘ tooltip buttons next to labels
+    by scanning for .hint.small inside each .field block.
+    The hint nodes remain in the DOM (a11y) but are visually hidden via CSS.
+  -->
   <script src="../js/entrants.js" defer></script>
 </head>
 
@@ -28,7 +34,6 @@
         </div>
         <div class="wordmark__bottom">RACE SOFTWARE</div>
       </div>
-      <!-- NEW: page label beside brand (red squiggle) -->
       <div class="page-label">Entrants &amp; Tags</div>
     </div>
 
@@ -38,131 +43,243 @@
   </header>
 
   <main class="wrap">
-    <!-- Removed the old <h1 class="page-title"> ... (title now in header) -->
-
     <!-- DB not ready warning -->
     <div id="readyWarn" class="flag hidden" role="status" aria-live="polite">
       <div class="flag__label">Database isn’t ready yet. You can browse, but saving is disabled.</div>
     </div>
 
     <section class="ent-grid">
-    <!-- LEFT PANE (drawer + scanner) -->
-    <div class="pane pane--left">
-      <div class="pane__scroll">
-        <div class="drawer card">
-          <h2>Entrant</h2>
+      <!-- LEFT PANE (drawer + scanner) -->
+      <div class="pane pane--left">
+        <div class="pane__scroll">
+          <div class="drawer card">
+             <!-- removed <h2>Entrant</h2> -->
 
-          <!-- Tag + Scan/Stop/Assign in one row -->
-          <div class="field">
-            <label class="label" for="entTag">Tag</label>
+            <!-- Tag + Scan/Stop/Assign in one row -->
+            <div class="field">
+              <label class="label" for="entTag">Tag</label>
 
-            <div class="tag-row">
-              <input
-                id="entTag"
-                name="tag"
-                class="input input-sm"
-                type="text"
-                inputmode="numeric"
-                autocomplete="off"
-                placeholder="7+ digits (I-Lap)"
-              />
+              <div class="tag-row">
+                <input
+                  id="entTag"
+                  name="tag"
+                  class="input input-sm"
+                  type="text"
+                  inputmode="numeric"
+                  autocomplete="off"
+                  placeholder="7+ digits (I-Lap)"
+                />
 
-              <div class="tag-actions">
-                <button type="button" id="scanBtn"   class="btn btn-sm">Scan</button>
-                <button type="button" id="stopBtn"   class="btn btn-sm" disabled>Stop</button>
-                <button type="button" id="assignBtn" class="btn btn-sm" disabled>Assign</button>
+                <div class="tag-actions">
+                  <button type="button" id="scanBtn"   class="btn btn-sm">Scan</button>
+                  <button type="button" id="stopBtn"   class="btn btn-sm" disabled>Stop</button>
+                  <button type="button" id="assignBtn" class="btn btn-sm" disabled>Assign</button>
+                </div>
+              </div>
+
+              <!-- Slim progress bar appears only while scanning -->
+              <div class="scan-progress" aria-hidden="true">
+                <div id="scanBar"></div>
+              </div>
+
+              <!-- Small status line for scan feedback -->
+              <div id="scanMsg" class="small muted" aria-live="polite"></div>
+
+              <!-- HINT: converted to tooltip by JS/CSS -->
+              <div class="hint small">Digits only. Scanning fills this field.</div>
+            </div>
+
+            <!-- Entrant form -->
+            <form id="entForm" novalidate>
+              <input type="hidden" id="entId" />
+
+              <!-- Combined Number + Team row -->
+              <div class="field-row">
+                <div class="field short">
+                  <label class="label" for="entNumber">Number</label>
+                  <input
+                    id="entNumber"
+                    name="number"
+                    class="input"
+                    type="text"
+                    inputmode="numeric"
+                    autocomplete="off"
+                    placeholder="e.g., 42"
+                    required
+                  >
+                  <div class="hint small">Positive integer.</div>
+                </div>
+
+                <div class="field grow">
+                  <label class="label" for="entName">Team</label>
+                  <input
+                    id="entName"
+                    name="name"
+                    class="input"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="Team name"
+                    required
+                  >
+                  <div class="hint small">2–40 characters recommended.</div>
+                </div>
+              </div>
+
+
+              <!-- Organization -->
+              <div class="field">
+                <label class="label" for="entOrg">Organization (optional)</label>
+                <input id="entOrg" name="organization" class="input" type="text" autocomplete="off" placeholder="e.g., FamiLAB or Sponsor Inc.">
+                <!-- HINT: converted to tooltip by JS/CSS -->
+                <div class="hint small">Shown under team name in some views.</div>
+              </div>
+
+              <!-- Spoken name -->
+              <div class="field">
+                <label class="label" for="entSpoken">Spoken Name (optional)</label>
+                <input id="entSpoken" name="spoken_name" class="input" type="text" autocomplete="off" placeholder='e.g., "Thunder Lizards" or phonetic form'>
+                <!-- HINT: converted to tooltip by JS/CSS -->
+                <div class="hint small">For announcers/TTS (keeps the correct pronunciation).</div>
+              </div>
+
+              <!-- Color (hex + native color picker) -->
+              <div class="field">
+                <label class="label" for="entColor">Color (optional)</label>
+
+                <div class="color-field">
+                  <!-- Hex text -->
+                  <input
+                    id="entColor"
+                    name="color"
+                    class="input"
+                    type="text"
+                    autocomplete="off"
+                    placeholder="#22c55e"
+                    aria-describedby="entColorHint"
+                  />
+                  <!-- Native color picker (note: popup theming is OS-controlled) -->
+                  <input
+                    id="entColorPicker"
+                    class="color-picker"
+                    type="color"
+                    value="#22c55e"
+                    aria-label="Pick team color" />
+                </div>
+
+                <!-- HINT: converted to tooltip by JS/CSS -->
+                <div id="entColorHint" class="hint small">
+                  Enter <code>#RRGGBB</code> or use the picker. We’ll normalize to a standard hex.
+                </div>
+              </div>
+
+              <!-- Team Logo (compact, field-style) -->
+              <div class="field logo-field">
+                <label class="label">Team Logo</label>
+                <div class="logo-row">
+                  <div class="logo-preview" aria-label="Team logo preview">
+                    <div class="logo-placeholder" title="Placeholder — PRS/ChronoCore mark"></div>
+                  </div>
+                  <!-- RIGHT COLUMN: buttons + (hidden) hint -->
+                  <div class="logo-right">
+                    <div class="logo-buttons">
+                      <button type="button" class="btn btn-sm" disabled title="Upload PNG (inactive)">Browse PNG…</button>
+                      <button type="button" class="btn btn-sm" disabled title="Remove logo (inactive)">Remove</button>
+                    </div>
+                    <!-- HINT: converted to tooltip by JS/CSS -->
+                    <div class="hint small">PNG only • auto-resized to square</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Status -->
+              <div class="field">
+                <label class="label" for="entStatus">Status</label>
+                <select id="entStatus" name="status" class="input">
+                  <option value="ACTIVE" selected>ACTIVE</option>
+                  <option value="DNS">DNS (Did Not Start)</option>
+                  <option value="DNF">DNF (Did Not Finish)</option>
+                  <option value="RET">RET (Retired)</option>
+                  <option value="Other">Other…</option>
+                </select>
+                <!-- HINT: converted to tooltip by JS/CSS -->
+                <div class="hint small">Used for roster/broadcast cues; can be expanded later.</div>
+              </div>
+
+              <!-- Status (Other) shown when dropdown=Other -->
+              <div class="field" id="entStatusOtherRow" hidden>
+                <label class="label" for="entStatusOther">Status (Other)</label>
+                <input id="entStatusOther" name="status_other" class="input" type="text" autocomplete="off" placeholder="Custom status">
+              </div>
+
+              <div class="field inline">
+                <input id="entEnabled" class="checkbox" type="checkbox" checked>
+                <label for="entEnabled">Enabled</label>
+              </div>
+
+              <!-- Updated-at readout (read-only, not posted) -->
+              <div class="field">
+                <label class="label">Last Updated</label>
+                <div class="small muted" id="entUpdatedAt" aria-live="polite">—</div>
+              </div>
+
+              <div class="buttons">
+                <button type="button" id="saveBtn" class="btn btn-primary">Save (Enter)</button>
+                <button type="button" id="resetBtn" class="btn">Reset (Esc)</button>
+                <button type="button" id="newBtn" class="btn btn-ghost">New</button>
+              </div>
+
+              <div id="formMsg" class="form-msg" aria-live="polite"></div>
+            </form>
+
+            <hr class="section-sep" aria-hidden="true">
+            <!-- Bulk actions (UI only, both stubs for now) -->
+            <div class="bulk">
+              <div class="bulk-buttons">
+                <button type="button" id="importBtn" class="btn btn-chip" title="Phase 2 (stub)" disabled>Bulk Import (CSV/XLSX)</button>
+                <button type="button" id="exportBtn" class="btn btn-chip" title="Phase 2 (stub)" disabled>Bulk Export (CSV/XLSX)</button>
+              </div>
+              <div id="importNote" class="small muted">
+                Import / Export are placeholders for Phase 2 — UI only.
               </div>
             </div>
 
-            <!-- Slim progress bar appears only while scanning -->
-            <div class="scan-progress" aria-hidden="true">
-              <div id="scanBar"></div>
-            </div>
-
-            <!-- Small status line for scan feedback -->
-            <div id="scanMsg" class="small muted" aria-live="polite"></div>
-
-            <div class="hint small">Digits only. Scanning fills this field.</div>
-          </div>
-
-
-          <form id="entForm" novalidate>
-            <input type="hidden" id="entId" />
-
-            <div class="field">
-              <label class="label" for="entNumber">Number</label>
-              <input id="entNumber" name="number" class="input" type="text" inputmode="numeric" autocomplete="off" placeholder="e.g., 42" required>
-              <div class="hint small">Positive integer.</div>
-            </div>
-
-            <div class="field">
-              <label class="label" for="entName">Team</label>
-              <input id="entName" name="name" class="input" type="text" autocomplete="off" placeholder="Team name" required>
-              <div class="hint small">2–40 characters recommended.</div>
-            </div>
-
-            <div class="field">
-              <label class="label" for="entTag">Tag (optional)</label>
-              <input id="entTag" name="tag" class="input" type="text" inputmode="numeric" autocomplete="off" placeholder="7+ digits (I-Lap)">
-              <div class="hint small">Digits only, or leave blank to clear.</div>
-            </div>
-
-            <div class="field inline">
-              <input id="entEnabled" class="checkbox" type="checkbox" checked>
-              <label for="entEnabled">Enabled</label>
-            </div>
-
-            <div class="buttons">
-              <button type="button" id="saveBtn" class="btn btn-primary">Save (Enter)</button>
-              <button type="button" id="resetBtn" class="btn">Reset (Esc)</button>
-              <button type="button" id="newBtn" class="btn btn-ghost">New</button>
-            </div>
-
-            <div id="formMsg" class="form-msg" aria-live="polite"></div>
-          </form>
-
-          <hr class="section-sep" aria-hidden="true">
-          <div class="bulk">
-            <button type="button" id="importBtn" class="btn btn-chip" title="Phase 2 (stub)">Bulk Import (CSV/XLSX)</button>
-            <div id="importNote" class="small muted">Import modal is a stub for now — UI only.</div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- RIGHT PANE (table) -->
-    <div class="pane pane--right">
-      <div class="pane__scroll">
-        <div class="ent-table-card card">
-          <div class="table-header">
-            <div class="filters">
-              <input id="q" class="input input-sm" type="search" placeholder="Filter tag / number / team">
-              <div class="chip-group" role="group" aria-label="Enabled filter">
-                <button class="btn-ghost btn-chip active" data-filter="all">All</button>
-                <button class="btn-ghost btn-chip" data-filter="enabled">Enabled</button>
-                <button class="btn-ghost btn-chip" data-filter="disabled">Disabled</button>
+      <!-- RIGHT PANE (table) -->
+      <div class="pane pane--right">
+        <div class="pane__scroll">
+          <div class="ent-table-card card">
+            <div class="table-header">
+              <div class="filters">
+                <input id="q" class="input input-sm" type="search" placeholder="Filter tag / number / team">
+                <div class="chip-group" role="group" aria-label="Enabled filter">
+                  <button class="btn-ghost btn-chip active" data-filter="all">All</button>
+                  <button class="btn-ghost btn-chip" data-filter="enabled">Enabled</button>
+                  <button class="btn-ghost btn-chip" data-filter="disabled">Disabled</button>
+                </div>
+              </div>
+              <div class="tools">
+                <button id="refreshBtn" class="btn btn-sm">Refresh</button>
               </div>
             </div>
-            <div class="tools">
-              <button id="refreshBtn" class="btn btn-sm">Refresh</button>
-            </div>
-          </div>
 
-          <div class="table">
-            <div class="ent-thead">
-              <div class="th clickable" data-sort="enabled">Enabled</div>
-              <div class="th clickable" data-sort="tag">Tag</div>
-              <div class="th clickable right" data-sort="number">Number</div>
-              <div class="th clickable" data-sort="name">Team</div>
-              <div class="th">Actions</div>
-              <div class="th right">Status</div>
+            <div class="table">
+              <div class="ent-thead">
+                <div class="th clickable" data-sort="enabled">Enabled</div>
+                <div class="th clickable" data-sort="tag">Tag</div>
+                <div class="th clickable right" data-sort="number">Number</div>
+                <div class="th clickable" data-sort="name">Team</div>
+                <div class="th">Actions</div>
+                <div class="th right">Status</div>
+              </div>
+              <div id="rows" class="rows scroll" role="table" aria-label="Entrants table"></div>
             </div>
-            <div id="rows" class="rows scroll" role="table" aria-label="Entrants table"></div>
           </div>
         </div>
       </div>
-    </div>
-  </section>
+    </section>
 
   </main>
 

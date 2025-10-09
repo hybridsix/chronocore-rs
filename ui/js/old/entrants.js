@@ -675,38 +675,10 @@
     });
 
     // Drawer keyboard: Enter = save; Esc = reset
-    // Keyboard shortcuts (scoped to the form)
-    // - Ignore keystrokes while the user is typing in an editable control.
-    // - Use Alt+T to start Scan so plain 't' in names never fires.
-    // - Keep Esc to stop an active scan (safe and expected).
     els.entForm.addEventListener('keydown', (ev) => {
-      const el = ev.target;
-      const tag = (el && el.tagName) ? el.tagName.toUpperCase() : '';
-      const typing = (
-        tag === 'INPUT' ||
-        tag === 'TEXTAREA' ||
-        tag === 'SELECT' ||
-        (el && el.isContentEditable)
-      );
-      if (typing) return; // do not trigger shortcuts while typing in a field
-
-      const k = (ev.key || '').toLowerCase();
-
-      // Stop scan: Escape (no modifier)
-      if (k === 'escape' && scanCancel) {
-        ev.preventDefault();
-        onScanStop();
-        return;
-      }
-
-      // Start scan: Alt+T (prevents collisions with 't' in names)
-      if (k === 't' && ev.altKey && !scanCancel) {
-        ev.preventDefault();
-        onScanStart();
-        return;
-      }
+      if (ev.key === 'Enter') { ev.preventDefault(); if (validateForm(true)) saveEntrant(formToPayload()).then(({ok}) => { if (ok) clearForm(); }); }
+      if (ev.key === 'Escape') { ev.preventDefault(); clearForm(); }
     });
-
 
     // Input guards
     els.entNumber.addEventListener('input', () => {
@@ -761,6 +733,12 @@
     els.scanBtn.addEventListener('click', onScanStart);
     els.stopBtn.addEventListener('click', onScanStop);
     els.assignBtn.addEventListener('click', onAssign);
+
+    // Keyboard shortcuts (optional but handy)
+    els.entForm.addEventListener('keydown', (ev) => {
+      if (ev.key === 't' && !scanCancel) { ev.preventDefault(); onScanStart(); }
+      if (ev.key === 'Escape' && scanCancel) { ev.preventDefault(); onScanStop(); }
+    });
 
     // --- Scan control fns inside wireEvents (scoped) ---
     async function onScanStart() {
@@ -879,192 +857,3 @@
   })();
 
 })();
-
-/* =======================================================================
-   HINTS → ⓘ TOOLTIP SYSTEM
-   - Converts every .hint.small inside .pane--left .field into an on-demand
-     tooltip: a small ⓘ button next to the label and a positioned popover.
-   - Accessibility: the original hint node remains in DOM (visually hidden
-     via CSS) so screen readers can continue to announce it.
-   - Close behavior: click outside or press Escape.
-   ======================================================================= */
-
-/* ===== Helper: simple unique id for tooltip elements ==================== */
-let __tipSeq = 0;
-function __nextTipId() {
-  __tipSeq += 1;
-  return `tip_${Date.now().toString(36)}_${__tipSeq}`;
-}
-
-/* ===== Close all open popovers within a scope (left pane) =============== */
-function __closeAllTooltips(scope, returnFocus = false) {
-  const openBtns = scope.querySelectorAll('.info-tip-btn[aria-expanded="true"]');
-  const pops     = scope.querySelectorAll('.info-tip-popover:not([hidden])');
-  pops.forEach((p) => p.setAttribute('hidden', ''));
-  openBtns.forEach((b) => {
-    b.setAttribute('aria-expanded', 'false');
-    if (returnFocus) b.focus();
-  });
-}
-
-/* ===== Initialize tooltips: scan fields, inject button + popover =========
-   NOTE: This function is idempotent — it won't duplicate buttons if called
-         more than once (e.g., after partial rerenders).
-========================================================================= */
-// === Auto-hide timing ======================================================
-const TIP_AUTO_HIDE_MS = 1500; // 1.5s; bump to 2000 if you want a bit longer
-
-// Arm a new auto-hide timer for this tooltip; cancel any existing one first.
-function __armAutoHide(btn, pop) {
-  __clearAutoHide(btn, pop);
-  const tid = window.setTimeout(() => {
-    // Only close if still open
-    if (btn.getAttribute('aria-expanded') === 'true' && !pop.hasAttribute('hidden')) {
-      btn.setAttribute('aria-expanded', 'false');
-      pop.setAttribute('hidden', '');
-    }
-  }, TIP_AUTO_HIDE_MS);
-  // Store timer id on both elements so we can cancel from either
-  btn.dataset.tipTid = String(tid);
-  pop.dataset.tipTid = String(tid);
-}
-
-// Cancel any pending auto-hide timer for this tooltip pair
-function __clearAutoHide(btn, pop) {
-  const ids = [btn?.dataset?.tipTid, pop?.dataset?.tipTid];
-  ids.forEach(id => {
-    if (id) {
-      window.clearTimeout(Number(id));
-    }
-  });
-  delete btn.dataset.tipTid;
-  delete pop.dataset.tipTid;
-}
-
-function initFieldHintsAsTooltips() {
-  const leftPane = document.querySelector('.pane--left');
-  if (!leftPane) return;
-
-  const fields = leftPane.querySelectorAll('.field');
-  fields.forEach((field) => {
-    const label = field.querySelector('.label');
-    const hint  = field.querySelector('.hint.small');
-    if (!label || !hint) return;
-
-    const hintText = hint.textContent.trim();
-    if (!hintText) return;
-
-    // Avoid duplicates if re-initialized
-    if (label.querySelector('.info-tip-btn')) return;
-
-    // Create the ⓘ button (keyboard focusable)
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'info-tip-btn';
-    btn.setAttribute('aria-label', 'Show help');
-    btn.setAttribute('aria-expanded', 'false');
-    btn.textContent = 'i'; // simple glyph; easy to read outdoors
-
-    // Create the popover; positioned relative to the field wrapper
-    const pop = document.createElement('div');
-    pop.className = 'info-tip-popover';
-    pop.setAttribute('role', 'tooltip');
-    pop.setAttribute('hidden', '');
-    pop.textContent = hintText;
-
-    // Link button ↔ popover for a11y
-    const tipId = __nextTipId();
-    pop.id = tipId;
-    btn.setAttribute('aria-controls', tipId);
-
-    // Ensure the field is a positioning context for the popover
-    if (getComputedStyle(field).position === 'static') {
-      field.style.position = 'relative'; // safe on wrapper elements
-    }
-
-    // Insert the button at end of label and the popover inside the field
-    label.appendChild(btn);
-    field.appendChild(pop);
-
-      // Toggle behavior (with auto-hide)
-      // - Opens the popover and arms a 1.5s auto-hide timer.
-      // - Clicking again closes immediately.
-      // - Hovering the ⓘ or the popover pauses the timer; leaving re-arms it.
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const isOpen = btn.getAttribute('aria-expanded') === 'true';
-
-        // Close any other open tooltips first (also clears their timers)
-        __closeAllTooltips(leftPane);
-
-        if (!isOpen) {
-          // Open this one
-          btn.setAttribute('aria-expanded', 'true');
-          pop.removeAttribute('hidden');
-
-          // Start auto-hide countdown
-          __armAutoHide(btn, pop);
-        } else {
-          // Manual close
-          __clearAutoHide(btn, pop);
-          btn.setAttribute('aria-expanded', 'false');
-          pop.setAttribute('hidden', '');
-        }
-      });
-
-    // Pause auto-hide while pointer or keyboard focus is on the ⓘ button
-    btn.addEventListener('mouseenter', () => __clearAutoHide(btn, pop));
-    btn.addEventListener('focus',      () => __clearAutoHide(btn, pop));
-
-    // Pause auto-hide while pointer or keyboard focus is on the tooltip bubble
-    pop.addEventListener('mouseenter', () => __clearAutoHide(btn, pop));
-    pop.addEventListener('focus',      () => __clearAutoHide(btn, pop));
-
-    // Re-arm auto-hide when leaving the ⓘ button (pointer or focus)
-    btn.addEventListener('mouseleave', () => {
-      if (btn.getAttribute('aria-expanded') === 'true' && !pop.hasAttribute('hidden')) {
-        __armAutoHide(btn, pop);
-      }
-    });
-    btn.addEventListener('blur', () => {
-      if (btn.getAttribute('aria-expanded') === 'true' && !pop.hasAttribute('hidden')) {
-        __armAutoHide(btn, pop);
-      }
-    });
-
-    // Re-arm auto-hide when leaving the tooltip bubble (pointer or focus)
-    pop.addEventListener('mouseleave', () => {
-      if (btn.getAttribute('aria-expanded') === 'true' && !pop.hasAttribute('hidden')) {
-        __armAutoHide(btn, pop);
-      }
-    });
-    pop.addEventListener('blur', () => {
-      if (btn.getAttribute('aria-expanded') === 'true' && !pop.hasAttribute('hidden')) {
-        __armAutoHide(btn, pop);
-      }
-    });
-
-  }); 
-
-  // Global listeners: click outside + Escape closes any open popovers
-  document.addEventListener('click', (ev) => {
-    if (!leftPane.contains(ev.target)) __closeAllTooltips(leftPane);
-  });
-  document.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Escape') __closeAllTooltips(leftPane, /*returnFocus*/true);
-  });
-}
-
-/* ===== Auto-init on DOM ready (non-invasive) =============================
-   We call this in addition to any existing boot logic you already have.
-   If your code already has a DOMContentLoaded handler, this simply adds
-   one more callback and won't interfere with your sequence.
-========================================================================= */
-document.addEventListener('DOMContentLoaded', () => {
-  try {
-    initFieldHintsAsTooltips();
-  } catch (e) {
-    // Fail-safe: tooltip issues should never block the app
-    console.warn('Tooltip init failed:', e);
-  }
-});
