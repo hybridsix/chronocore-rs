@@ -25,7 +25,7 @@
   <!-- Page-specific stylesheet for Settings -->
   <link rel="stylesheet" href="../css/settings.css" />
 
-  <!-- Base helper script for global functions (PRS namespace) -->
+  <!-- Base helper script for global functions (CCRS namespace) -->
   <script src="../js/base.js" defer></script>
 </head>
 <body class="page settings">
@@ -69,17 +69,24 @@
       <a href="#flags" class="navLink">Flags</a>
       <a href="#missed" class="navLink">Missed-Lap Detection</a>
       <a href="#ui" class="navLink">UI & Audio</a>
+
+      <div class="navSep" role="separator" aria-hidden="true"></div>
+
+
       <a href="#apply" class="navLink navLink--primary">Apply / Save</a>
     </nav>
 
     <div class="pane pane--right">
       <div class="pane__scroll">
-        <!--
-          The full body of cards is identical to the previous version,
-          intentionally omitted here for brevity. It remains unchanged,
-          with added commentary above each section describing its purpose
-          (Client Role, Engine Host, etc.).
-        -->
+        <section id="client" class="card"><h2>Client Role</h2></section>
+        <section id="engine" class="card"><h2>Engine Host</h2></section>
+        <section id="ingest" class="card"><h2>Ingest & Debounce</h2></section>
+        <section id="diagnostics" class="card"><h2>Diagnostics</h2></section>
+        <section id="track" class="card"><h2>Track Locations & Bindings</h2></section>
+        <section id="flags" class="card"><h2>Flags</h2></section>
+        <section id="missed" class="card"><h2>Missed-Lap Detection</h2></section>
+        <section id="ui" class="card"><h2>UI & Audio</h2></section>
+        <section id="apply" class="card"><h2>Apply / Save</h2></section>
       </div>
     </div>
   </main>
@@ -110,33 +117,97 @@
   <script>
     (function () {
       'use strict';
-      const PRS = window.PRS || {};
+
+      // CCRS namespace + tiny qs helper (keep these)
+      const CCRS = window.CCRS || {};
       const $ = (sel, root) => (root || document).querySelector(sel);
 
+      // Collect important elements (your existing, robust version)
       const ids = [
         'role','saveRole','policySummary','effectiveHost','engineOverride','overrideHelp',
-        'testEngine','saveEngine','clearEngine','engineMsg','engineLabel',/*wallClock removed*/,
-        'debounce','debounceOverrides','minLapMs','diagEnabled','diagBuffer','diagTransport','beepMax','testBeep',
-        'locList','bindList','flagBlock','flagGrace','missedMode','missedWindow','missedK','missedMinGap','missedMaxSeq','missedMark',
+        'testEngine','saveEngine','clearEngine','engineMsg','engineLabel',
+        'debounce','debounceOverrides','minLapMs',
+        'diagEnabled','diagBuffer','diagTransport','beepMax','testBeep',
+        'locList','bindList','flagBlock','flagGrace',
+        'missedMode','missedWindow','missedK','missedMinGap','missedMaxSeq','missedMark',
         'soundDefault','timeDisplay','configDiff','applyHot','applyRestart','revert','applyMsg'
       ];
-      const el = Object.fromEntries(ids.map(id => [id, document.getElementById(id)]));
+      const el = ids.reduce((acc, id) => {
+        if (typeof id !== 'string' || !id.trim()) return acc;   // skip holes/comments
+        acc[id] = document.getElementById(id) || null;
+        return acc;
+      }, {});
 
       document.addEventListener('DOMContentLoaded', init);
-      init();
 
       function init() {
-        // Start the wall clock if available        // Wall clock removed per request
-        // Display effective engine label if provided
-        if (typeof PRS.effectiveEngineLabel === 'function') {
-          el.engineLabel.textContent = 'Engine: ' + PRS.effectiveEngineLabel();
+        // Optional engine label
+        if (typeof CCRS.effectiveEngineLabel === 'function' && el.engineLabel) {
+          el.engineLabel.textContent = 'Engine: ' + CCRS.effectiveEngineLabel();
         }
-        // Future functionality placeholders
-        // - Fetch runtime snapshot → hydrate fields
-        // - Compute diff → render to #configDiff
-        // - Apply (Hot) and Save & Restart handlers
+        // Wire left nav (anchors → internal scroller + highlight)
+        enableLeftNav();
+      }
+
+      function enableLeftNav() {
+        const scroller = document.querySelector('.pane__scroll');
+        if (!scroller) return;
+
+        const links = Array.from(document.querySelectorAll('.sideNav .navLink[href^="#"]'));
+        const sections = links
+          .map(a => document.querySelector(a.getAttribute('href')))
+          .filter(Boolean);
+
+        // Immediate visual feedback on click + smooth scroll inside the pane
+        links.forEach(a => {
+          a.addEventListener('click', (e) => {
+            e.preventDefault();
+            const sel = a.getAttribute('href');
+            const target = document.querySelector(sel);
+            if (!target) return;
+
+            // Make clicked link active right away
+            links.forEach(l => l.classList.remove('active'));
+            a.classList.add('active');
+
+            // Compute target offset relative to the internal scroller
+            const top = target.getBoundingClientRect().top
+                      - scroller.getBoundingClientRect().top
+                      + scroller.scrollTop
+                      - 8; // tiny breathing room below the sticky h2
+            scroller.scrollTo({ top, behavior: 'smooth' });
+          });
+        });
+
+        // Scrollspy: keep active link in sync as you scroll the pane
+        if (sections.length) {
+          const linkById = Object.fromEntries(
+            links.map(l => [l.getAttribute('href'), l])
+          );
+
+          const io = new IntersectionObserver((entries) => {
+            // choose the most-visible section
+            let best = null, max = 0;
+            for (const e of entries) {
+              if (e.intersectionRatio >= max) {
+                max = e.intersectionRatio;
+                best = e.target;
+              }
+            }
+            if (!best) return;
+            links.forEach(l => l.classList.remove('active'));
+            const hit = linkById['#' + best.id];
+            if (hit) hit.classList.add('active');
+          }, {
+            root: scroller,
+            threshold: [0.35, 0.55, 0.75]
+          });
+
+          sections.forEach(sec => io.observe(sec));
+        }
       }
     })();
-  </script>
+    </script>
+
 </body>
 </html>

@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CCRS — Settings · Diagnostics</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../css/base.css" />
+  <link rel="stylesheet" href="../css/operator.css" />
+  <link rel="stylesheet" href="../css/settings.css" />
+  <script src="../js/base.js" defer></script>
+  <script src="../js/settings-nav.js" defer></script>
+</head>
+<body class="page settings">
+  <header class="app-header">
+    <div class="brand">
+      <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo">
+      <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+        <div class="wordmark__top">
+          <span class="wordmark__big">CHRONO</span>
+          <span class="wordmark__big">CORE</span>
+        </div>
+        <div class="wordmark__bottom">RACE SOFTWARE</div>
+      </div>
+      <div class="page-label">Settings · Diagnostics</div>
+    </div>
+    <div class="app-header__tools">
+      <div class="pill" id="engineLabel">Engine: —</div>
+    </div>
+  </header>
+
+  <main class="settingsWrap">
+    <nav class="sideNav" aria-label="Settings sections">
+      <a href="settings-client.html"       class="navLink">Client Role</a>
+      <a href="settings-engine.html"       class="navLink">Engine Host</a>
+      <a href="settings-ingest.html"       class="navLink">Ingest & Debounce</a>
+      <a href="settings-diagnostics.html"  class="navLink" data-active>Diagnostics</a>
+      <a href="settings-track.html"        class="navLink">Track Locations & Bindings</a>
+      <a href="settings-flags.html"        class="navLink">Flags</a>
+      <a href="settings-missed.html"       class="navLink">Missed-Lap Detection</a>
+      <a href="settings-ui.html"           class="navLink">UI & Audio</a>
+      <a href="settings-apply.html"        class="navLink navLink--primary">Apply / Save</a>
+    </nav>
+
+    <div class="pane pane--right">
+      <div class="pane__scroll">
+        <section class="card">
+          <h2>Diagnostics</h2>
+          <div class="grid grid-3">
+            <label class="stack">
+              <span class="label">Enabled</span>
+              <select id="diagEnabled" class="input">
+                <option value="true">On</option>
+                <option value="false">Off</option>
+              </select>
+              <span class="help small muted">Expose /diagnostics endpoints.</span>
+            </label>
+            <label class="stack">
+              <span class="label">Buffer Size (rows)</span>
+              <input id="diagBuffer" type="number" min="50" step="50" class="input" placeholder="500" />
+              <span class="help small muted">In-memory ring for snapshot.</span>
+            </label>
+            <label class="stack">
+              <span class="label">Stream Transport</span>
+              <select id="diagTransport" class="input">
+                <option value="sse" selected>SSE</option>
+                <option value="ws">WebSocket</option>
+              </select>
+              <span class="help small muted">SSE now; WS later if needed.</span>
+            </label>
+          </div>
+          <div class="grid grid-3">
+            <label class="stack">
+              <span class="label">Beep Cap (per sec)</span>
+              <input id="beepMax" type="number" min="1" max="20" step="1" class="input" placeholder="5" />
+              <span class="help small muted">Also throttled by global debounce.</span>
+            </label>
+            <div class="stack">
+              <span class="label">Preview</span>
+              <button id="testBeep" class="btn">Test Beep</button>
+              <span class="help small muted">Honors current limits; requires a click to unlock audio.</span>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-left">
+      <div class="status-dot" id="netDot"></div>
+      <div id="netMsg">Ready</div>
+    </div>
+    <div class="footer-right"></div>
+  </footer>
+</body>
+</html>
+```
+
+---
+
+# /ui/operator/settings-track.html
+
+```html
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CCRS — Settings · Track</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../css/base.css" />
+  <link rel="stylesheet" href="../css/operator.css" />
+  <link rel="stylesheet" href="../css/settings.css" />
+  <script src="../js/base.js" defer></script>
+  <script src="../js/settings-nav.js" defer></script>
+</head>
+<body class="page settings">
+  <header class="app-header">
+    <div class="brand">
+      <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo">
+      <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+        <div class="wordmark__top">
+          <span class="wordmark__big">CHRONO</span>
+          <span class="wordmark__big">CORE</span>
+        </div>
+        <div class="wordmark__bottom">RACE SOFTWARE</div>
+      </div>
+      <div class="page-label">Settings · Track</div>
+    </div>
+    <div class="app-header__tools">
+      <div class="pill" id="engineLabel">Engine: —</div>
+    </div>
+  </header>
+
+  <main class="settingsWrap">
+    <nav class="sideNav" aria-label="Settings sections">
+      <a href="settings-client.html"       class="navLink">Client Role</a>
+      <a href="settings-engine.html"       class="navLink">Engine Host</a>
+      <a href="settings-ingest.html"       class="navLink">Ingest & Debounce</a>
+      <a href="settings-diagnostics.html"  class="navLink">Diagnostics</a>
+      <a href="settings-track.html"        class="navLink" data-active>Track Locations & Bindings</a>
+      <a href="settings-flags.html"        class="navLink">Flags</a>
+      <a href="settings-missed.html"       class="navLink">Missed-Lap Detection</a>
+      <a href="settings-ui.html"           class="navLink">UI & Audio</a>
+      <a href="settings-apply.html"        class="navLink navLink--primary">Apply / Save</a>
+    </nav>
+
+    <div class="pane pane--right">
+      <div class="pane__scroll">
+        <section class="card">
+          <h2>Track Locations</h2>
+          <div id="locList" class="list">
+            <!-- Populated from YAML/runtime: SF, PIT_IN, PIT_OUT, X1... -->
+          </div>
+          <div class="help small muted">Stable IDs with human labels.</div>
+        </section>
+
+        <section class="card">
+          <h2>Bindings</h2>
+          <div id="bindList" class="list">
+            <!-- computer_id · decoder_id · port → location_id -->
+          </div>
+          <div class="help small muted">Physical inputs mapped to logical locations.</div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-left">
+      <div class="status-dot" id="netDot"></div>
+      <div id="netMsg">Ready</div>
+    </div>
+    <div class="footer-right"></div>
+  </footer>
+</body>
+</html>

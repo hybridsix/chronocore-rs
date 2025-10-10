@@ -312,3 +312,35 @@ body.settings {
 .app-header__tools .pill {
   margin-left: 12px;
 }
+
+/* ---------------------------------------------------------------------
+   LEFT NAV ACTIVE STATE (cross-page)
+   --------------------------------------------------------------------- */
+.navLink.active {
+  background: rgba(0, 180, 255, 0.18);
+  border-color: #0b2230;
+  color: #e7f8ff;
+}
+
+/* Active link must visually override the 'primary' CTA style */
+.sideNav .navLink.active {
+  background: rgba(0, 180, 255, 0.18);
+  border-color: #0b2230;
+  color: #e7f8ff;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .35);
+}
+
+/* Primary CTA (Apply/Save) should *not* look selected by default */
+.sideNav .navLink.navLink--primary {
+  background: rgba(0, 180, 255, 0.08);
+  border-color: #0a1e2b;
+  color: var(--text);
+}
+
+/* If the primary link is also the active section, the active style wins */
+.sideNav .navLink.navLink--primary.active {
+  background: rgba(0, 180, 255, 0.22);
+  border-color: #0b2230;
+  color: #e7f8ff;
+}
+
