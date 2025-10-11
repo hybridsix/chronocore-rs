@@ -532,3 +532,5 @@ body.home       { --headerH: var(--headerH-hero); }
 
 body:not(.home) .brand-link { transform: scale(0.75); }  /* compact everywhere */
 body.home .brand-link       { transform: scale(1); }     /* big on Home */
+
+

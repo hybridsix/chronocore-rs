@@ -233,18 +233,29 @@
                 </div>
               </div>
 
-              <!-- Status -->
-              <div class="field">
-                <label class="label" for="entStatus">Status</label>
-                <select id="entStatus" name="status" class="input">
-                  <option value="ACTIVE" selected>ACTIVE</option>
-                  <option value="DNS">DNS (Did Not Start)</option>
-                  <option value="DNF">DNF (Did Not Finish)</option>
-                  <option value="RET">RET (Retired)</option>
-                  <option value="Other">Other…</option>
-                </select>
-                <!-- HINT: converted to tooltip by JS/CSS -->
-                <div class="hint small">Used for roster/broadcast cues; can be expanded later.</div>
+              <!-- STATUS + ENTRANT ENABLED (stacked label) -->
+              <div class="field status-enabled-row">
+                <!-- Status -->
+                <div class="field">
+                  <label class="label" for="entStatus">Status</label>
+                  <select id="entStatus" name="status" class="input">
+                    <option value="ACTIVE" selected>ACTIVE</option>
+                    <option value="DNS">DNS (Did Not Start)</option>
+                    <option value="DNF">DNF (Did Not Finish)</option>
+                    <option value="RET">RET (Retired)</option>
+                    <option value="Other">Other…</option>
+                  </select>
+                  <div class="hint small">Used for roster/broadcast cues; can be expanded later.</div>
+                </div>
+
+                <!-- Divider -->
+                <div class="field divider">|</div>
+
+                <!-- Entrant Enabled -->
+                <div class="field inline enabled-control">
+                  <label for="entEnabled" class="enabled-label">Entrant<br>Enabled</label>
+                  <input id="entEnabled" class="checkbox" type="checkbox" checked>
+                </div>
               </div>
 
               <!-- Status (Other) shown when dropdown=Other -->
@@ -253,10 +264,25 @@
                 <input id="entStatusOther" name="status_other" class="input" type="text" autocomplete="off" placeholder="Custom status">
               </div>
 
-              <div class="field inline">
-                <input id="entEnabled" class="checkbox" type="checkbox" checked>
-                <label for="entEnabled">Enabled</label>
+              <!-- Status (Other) shown when dropdown=Other -->
+              <div class="field" id="entStatusOtherRow" hidden>
+                <label class="label" for="entStatusOther">Status (Other)</label>
+                <input id="entStatusOther" name="status_other" class="input" type="text" autocomplete="off" placeholder="Custom status">
               </div>
+
+              <!-- Status (Other) shown when dropdown=Other -->
+              <div class="field" id="entStatusOtherRow" hidden>
+                <label class="label" for="entStatusOther">Status (Other)</label>
+                <input id="entStatusOther" name="status_other" class="input" type="text" autocomplete="off" placeholder="Custom status">
+              </div>
+
+
+              <!-- Status (Other) shown when dropdown=Other -->
+              <div class="field" id="entStatusOtherRow" hidden>
+                <label class="label" for="entStatusOther">Status (Other)</label>
+                <input id="entStatusOther" name="status_other" class="input" type="text" autocomplete="off" placeholder="Custom status">
+              </div>
+
 
               <!-- Updated-at readout (read-only, not posted) -->
               <div class="field">

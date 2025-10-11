@@ -14,13 +14,13 @@ body.entrants main.wrap {
 .app-header .brand {
   display: flex;
   align-items: center;
-  gap: var(--headerGapX); /* defer to shared token */
+  gap: 8px; /* final value (merge of duplicated rules) */
   transform-origin: left center;
 }
 
 .app-header .page-label {
-  /* defer to shared header token for consistent spacing */
-  margin-left: var(--pageLabelGap);
+  /* Use unified page-label from operator.css; keep a small left margin for entrants layout */
+  margin-left: 40px;
 }
 
 .app-header__tools {
@@ -51,7 +51,7 @@ body.entrants main.wrap {
 
 /* ===== Left drawer (form) ============================================= */
 .drawer {
-  padding: 12px;
+  padding: 8px 10px; /* reduced padding to save vertical space */
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -64,28 +64,28 @@ body.entrants main.wrap {
   border: 0;
 }
 
-.field { margin: 10px 0; }
+.field { margin: 6px 0; }
 .label {
   display: block;
-  font-size: 12px;
-  letter-spacing: .12em;
+  font-size: 11px; /* slightly smaller label to compact layout */
+  letter-spacing: .10em;
   text-transform: uppercase;
   color: #b3b3b3; /* base; Field Mode overrides below */
-  margin-bottom: 6px;
+  margin-bottom: 4px; /* reduce space under labels */
 }
 
 .input {
   width: 100%;
-  padding: 8px 10px;
-  border-radius: 10px;
+  padding: 6px 8px; /* smaller vertical padding */
+  border-radius: 8px;
   border: 1px solid #173243;
   background: #0e151b;
   color: var(--text);
-  font-size: 15px;
+  font-size: 14px;
 }
 .input-sm {
-  padding: 6px 8px;
-  font-size: 14px;
+  padding: 5px 6px;
+  font-size: 13px;
   max-width: 360px;
 }
 
@@ -96,15 +96,15 @@ body.entrants main.wrap {
 .mono  { font-family: var(--mono); }
 
 .btn {
-  padding: 7px 10px;
-  border-radius: 10px;
+  padding: 6px 8px; /* tighten buttons */
+  border-radius: 8px;
   border: 1px solid #173243;
   background: #0e151b;
   color: var(--text);
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
 }
-.btn-sm { padding: 5px 8px; font-size: 13px; }
+.btn-sm { padding: 4px 6px; font-size: 12px; }
 .btn-ghost { background: transparent; border-color: transparent; }
 .btn-ghost.active { background: #0e151b; border-color: #173243; }
 .btn-primary { background: linear-gradient(180deg,#13485C,#0F3343); border-color: #2B3C48; }
@@ -172,10 +172,10 @@ body.entrants main.wrap {
 .label.attn { color: #ffd66e; text-shadow: 0 0 12px rgba(255,214,110,.35); }
 
 /* Combined Number + Team row */
-.field-row { display: flex; align-items: flex-end; gap: 12px; margin: 10px 0; }
-.field-row .field.short { flex: 0 0 100px; }
+.field-row { display: flex; align-items: flex-end; gap: 8px; margin: 6px 0; }
+.field-row .field.short { flex: 0 0 90px; }
 .field-row .field.grow  { flex: 1 1 auto; }
-.field-row .label { margin-bottom: 6px; }
+.field-row .label { margin-bottom: 4px; }
 @media (max-width:700px){ .field-row { flex-direction: column; align-items: stretch; } .field-row .field.short,.field-row .field.grow{ flex:1 1 100%; } }
 
 /* Color field (hex + picker) */
@@ -189,15 +189,15 @@ body.entrants main.wrap {
 .logo-field { margin: 8px 0; }
 .logo-row {
   display: grid;
-  grid-template-columns: 72px 1fr;
-  gap: 10px;
+  grid-template-columns: 56px 1fr; /* smaller preview */
+  gap: 8px;
   align-items: start;
 }
 
 .logo-preview {
-  width: 72px;
-  height: 72px;
-  border-radius: 8px;
+  width: 56px;
+  height: 56px;
+  border-radius: 6px;
   background: #0e151b;
   border: 1px solid #173243;
   display: grid;
@@ -205,7 +205,7 @@ body.entrants main.wrap {
   overflow: hidden;
 }
 .logo-placeholder {
-  width: 64px; height: 64px; border-radius: 16%;
+  width: 48px; height: 48px; border-radius: 12%;
   background:
     linear-gradient(45deg, rgba(0,180,255,.18) 25%, transparent 25%) -8px 0/16px 16px,
     linear-gradient(-45deg, rgba(34,197,94,.18) 25%, transparent 25%) 0 0/16px 16px,
@@ -464,7 +464,52 @@ body.entrants main.wrap {
 }
 
 /* Local micro-tweaks under TAG input */
-.pane--left .field:has(#entTag) { margin-bottom: 4px; }
-.pane--left .field:has(#entTag) .scan-progress { margin-top: 4px; margin-bottom: 2px; }
-.pane--left .field:has(#entTag) #scanMsg { min-height: .8em; margin: 2px 0; }
+.pane--left .field:has(#entTag) { margin-bottom: 2px; }
+.pane--left .field:has(#entTag) .scan-progress { margin-top: 2px; margin-bottom: 2px; }
+.pane--left .field:has(#entTag) #scanMsg { min-height: .7em; margin: 1px 0; }
+
+/* Attempt to keep Status dropdown and Enabled checkbox/button on one line */
+.pane--left .status-enabled-row { display: flex; gap: 8px; align-items: center; }
+.pane--left .status-enabled-row .field { margin: 0; }
+.pane--left #entStatus { flex: 1 1 auto; }
+.pane--left .enabled-control { flex: 0 0 auto; }
 /* Footer layout is provided by the shared operator stylesheet. */
+
+/* Ensure Status + Enabled live on one line and align nicely */
+.pane--left .status-enabled-row {
+  display: flex;
+  gap: 18px;
+  align-items: flex-end;       /* lines up with bottom of the select */
+  margin-top: 6px;             /* brings row up into the form rhythm */
+}
+
+/* Remove extra margins inside this row */
+.pane--left .status-enabled-row .field {
+  margin: 0;
+}
+
+/* Status dropdown scale (already present, kept for clarity) */
+#entStatus {
+  font-size: 12px;
+  padding: 6px 8px;
+}
+
+/* Enabled control scale and alignment to match 12px system */
+.pane--left .enabled-control {
+  display: inline-flex;
+  align-items: center;          /* center checkbox with label baseline */
+  gap: 6px;
+}
+
+/* Checkbox box roughly matches the dropdown’s visual weight */
+.pane--left .enabled-control .checkbox {
+  width: 18px;
+  height: 18px;
+  accent-color: #40E280;        /* same as other checkboxes in left pane */
+}
+
+/* “Enabled” label uses the same type size as the Status value */
+.pane--left .enabled-control label {
+  font-size: 14px;
+  line-height: 1.1;               /* avoids extra vertical wobble */
+}
