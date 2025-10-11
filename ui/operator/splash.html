@@ -5,11 +5,10 @@
   <title>ChronoCore — Loading…</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Non-blocking load of base.css -->
-  <link rel="stylesheet" href="../css/base.css" media="print" onload="this.media='all'">
-  <noscript><link rel="stylesheet" href="../css/base.css"></noscript>
-
   <style>
+    /* Page-local reset so this page is fully self-contained */
+    *, *::before, *::after { box-sizing: border-box; }
+    
     :root {
       --bg: #0b1117;
       --card: #0e151c;
@@ -23,7 +22,7 @@
       --gutter: calc(var(--logo) + var(--gap)); /* left indent for sub/hints/progress */
     }
 
-    html, body { height: 100%; }
+  html, body { height: 100%; }
     body {
       margin: 0;
       background: var(--bg);

@@ -8,206 +8,205 @@
   <!-- =====================================================================
        SETTINGS PAGE OVERVIEW
        ---------------------------------------------------------------------
-       This HTML page defines the Operator Settings screen for the CCRS
-       Operator interface. It provides a two-column layout (side navigation
-       + main content) and fixed header/footer sized for 1920×1080 displays.
+       Purpose
+       -------
+       This page is the Operator-facing Settings screen. It uses the same
+       header/footer chrome as the Entrants and Diagnostics pages and shows a
+       left-hand navigation with anchor links into sections within the right
+       scrollable pane. The layout is optimized for 1920×1080 with fixed
+       header/footer heights defined in base/operator CSS.
 
-       The intent is to give operators full visibility and control over
-       runtime configuration parameters — including diagnostics, debounce,
-       flags, missed-lap detection, etc. Each control here will eventually
-       map to runtime configuration endpoints in the backend.
+       Behavior
+       --------
+       • Left-nav links are anchors (e.g., #ingest) that scroll the INTERNAL
+         right-hand scroller (not the window). A scrollspy keeps the active
+         highlight in sync with the section in view.
+       • The actual input controls are progressively wired to the backend via
+         /setup/runtime (GET) and apply endpoints (POST). Those hooks live in
+         settings.js — this file focuses on structure and accessibility.
+
+       Structure
+       ---------
+       Header  : CCRS wordmark + page label + engine pill (from base.js)
+       Main    : .settingsWrap → .sideNav + .pane>.pane__scroll
+       Footer  : Status on left; right side reserved for future shortcuts
+
+       Dependencies
+       -------------
+       CSS  : base.css → operator.css → settings.css
+       JS   : base.js (helpers/CCRS namespace) + settings.js (page logic)
   ===================================================================== -->
 
   <!-- Shared foundation stylesheets -->
   <link rel="stylesheet" href="../css/base.css" />
   <link rel="stylesheet" href="../css/operator.css" />
 
-  <!-- Page-specific stylesheet for Settings -->
+  <!-- Page-specific stylesheet for Settings (left-nav, grids, etc.) -->
   <link rel="stylesheet" href="../css/settings.css" />
 
-  <!-- Base helper script for global functions (CCRS namespace) -->
+  <!-- Base helper script for global CCRS utilities (defines CCRS.* helpers) -->
   <script src="../js/base.js" defer></script>
+
+  <!-- Page logic: nav scrolling/scrollspy, runtime hydrate, apply/save -->
+  <script src="../js/settings.js" defer></script>
 </head>
 <body class="page settings">
   <!-- =====================================================================
-       HEADER SECTION (fixed)
+       HEADER (fixed)
        ---------------------------------------------------------------------
-       Includes the CCRS branding, current engine status label, and serves
-       as an always-visible navigation anchor.
+       The header mirrors the Entrants/Diagnostics style: a compact logo,
+       stacked wordmark, and a big page label. On the right, we show a pill
+       with the effective engine host label (if base.js exposes it).
   ===================================================================== -->
   <header class="app-header">
     <div class="brand">
-      <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo">
-      <div class="brand__wordmark" aria-label="ChronoCore Race Software">
-        <div class="wordmark__top">
-          <span class="wordmark__big">CHRONO</span>
-          <span class="wordmark__big">CORE</span>
+      <!-- ChronoCore brand (clickable link back to Home) -->
+      <a class="brand-link" href="/ui/operator/index.html" aria-label="Go to Home">
+        <img
+          class="brand-logo"
+          src="../img/CCRS_Logo.svg"
+          alt="ChronoCore Logo"
+        />
+        <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+          <div class="wordmark__top">
+            <span class="wordmark__big">CHRONO</span>
+            <span class="wordmark__big">CORE</span>
+          </div>
+          <div class="wordmark__bottom">RACE SOFTWARE</div>
         </div>
-        <div class="wordmark__bottom">RACE SOFTWARE</div>
-      </div>
+      </a>
+
+      <!-- Page-specific label -->
       <div class="page-label">Settings</div>
     </div>
 
+    <!-- Right-side cluster: nav -->
     <div class="app-header__tools">
-      <div class="pill" id="engineLabel">Engine: —</div>
+      <nav class="app-nav" aria-label="Site navigation">
+            <a class="app-nav__link" href="/ui/operator/index.html" aria-label="Home" title="Home">
+              <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#home"></use></svg>
+              <span class="sr-only">Home</span>
+            </a>
+
+            <div class="app-nav__menu" id="appsMenu" data-open="false">
+              <button type="button" class="app-nav__btn" aria-haspopup="true" aria-expanded="false"
+                      aria-controls="appsPanel" title="Menu">
+                <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#menu"></use></svg>
+                <span class="sr-only">Open menu</span>
+              </button>
+            <div class="app-nav__panel" id="appsPanel" role="menu" aria-labelledby="appsMenu">
+          <a href="/ui/operator/entrants.html" role="menuitem">Entrants &amp; Tags</a>
+          <a href="/ui/operator/operator.html" role="menuitem">Operator</a>
+          <a class="current" href="/ui/operator/settings.html" role="menuitem">Settings</a>
+          <a href="/ui/operator/diag.html" role="menuitem">Diagnostics</a>
+          <a href="/ui/operator/help.html" role="menuitem">Help</a>
+          </div>
+        </div>
+      </nav>
     </div>
   </header>
 
   <!-- =====================================================================
-       MAIN LAYOUT (two columns)
+       MAIN LAYOUT (two-column)
        ---------------------------------------------------------------------
-       Left column: sticky navigation.
-       Right column: scrollable cards for each configuration section.
+       Left  : sticky side navigation (anchors)
+       Right : scrollable pane (.pane__scroll) with one <section> per topic
+
+       NOTE: Each <section> has an id that matches the left-nav href.
+             The content inside each card can be grown as we wire backend.
   ===================================================================== -->
   <main class="settingsWrap">
+    <!-- Side navigation: add/remove links as sections evolve. The separator
+         visually isolates the final CTA (Apply/Save) from the others. -->
     <nav class="sideNav" aria-label="Settings sections">
-      <a href="#client" class="navLink">Client Role</a>
-      <a href="#engine" class="navLink">Engine Host</a>
-      <a href="#ingest" class="navLink">Ingest & Debounce</a>
+      <a href="#client"      class="navLink">Client Role</a>
+      <a href="#engine"      class="navLink">Engine Host</a>
+      <a href="#ingest"      class="navLink">Ingest &amp; Debounce</a>
       <a href="#diagnostics" class="navLink">Diagnostics</a>
-      <a href="#track" class="navLink">Track Locations & Bindings</a>
-      <a href="#flags" class="navLink">Flags</a>
-      <a href="#missed" class="navLink">Missed-Lap Detection</a>
-      <a href="#ui" class="navLink">UI & Audio</a>
+      <a href="#track"       class="navLink">Track Locations &amp; Bindings</a>
+      <a href="#flags"       class="navLink">Flags</a>
+      <a href="#missed"      class="navLink">Missed-Lap Detection</a>
+      <a href="#ui"          class="navLink">UI &amp; Audio</a>
 
+      <!-- Visual separator before the CTA link -->
       <div class="navSep" role="separator" aria-hidden="true"></div>
 
-
+      <!-- Primary CTA: Apply / Save (same-page anchor) -->
       <a href="#apply" class="navLink navLink--primary">Apply / Save</a>
     </nav>
 
+    <!-- Right content pane with its own scroll context. The scrollspy in
+         settings.js observes these sections relative to this container. -->
     <div class="pane pane--right">
       <div class="pane__scroll">
-        <section id="client" class="card"><h2>Client Role</h2></section>
-        <section id="engine" class="card"><h2>Engine Host</h2></section>
-        <section id="ingest" class="card"><h2>Ingest & Debounce</h2></section>
-        <section id="diagnostics" class="card"><h2>Diagnostics</h2></section>
-        <section id="track" class="card"><h2>Track Locations & Bindings</h2></section>
-        <section id="flags" class="card"><h2>Flags</h2></section>
-        <section id="missed" class="card"><h2>Missed-Lap Detection</h2></section>
-        <section id="ui" class="card"><h2>UI & Audio</h2></section>
-        <section id="apply" class="card"><h2>Apply / Save</h2></section>
+        <!-- In a separate pass, these sections were filled with controls.
+             Here we leave skeletal headings to keep this file focused on
+             structure and documentation. settings.js performs hydration. -->
+
+        <section id="client" class="card">
+          <h2>Client Role</h2>
+          <!-- Controls injected/managed by settings.js (role, saveRole, etc.) -->
+        </section>
+
+        <section id="engine" class="card">
+          <h2>Engine Host</h2>
+          <!-- effectiveHost / override fields live here (see settings.js). -->
+        </section>
+
+        <section id="ingest" class="card">
+          <h2>Ingest &amp; Debounce</h2>
+          <!-- Global debounce + per-location overrides + minLapMs. -->
+        </section>
+
+        <section id="diagnostics" class="card">
+          <h2>Diagnostics</h2>
+          <!-- Diagnostics enable, buffer size, transport, beep cap. -->
+        </section>
+
+        <section id="track" class="card">
+          <h2>Track Locations &amp; Bindings</h2>
+          <!-- Read-only lists for now; editor comes later. -->
+        </section>
+
+        <section id="flags" class="card">
+          <h2>Flags</h2>
+          <!-- Inference blocklist + post-green grace. -->
+        </section>
+
+        <section id="missed" class="card">
+          <h2>Missed-Lap Detection</h2>
+          <!-- Mode, window, sigma k, min gap, max inferred seq, mark flag. -->
+        </section>
+
+        <section id="ui" class="card">
+          <h2>UI &amp; Audio</h2>
+          <!-- Default sound + time display (local/UTC). -->
+        </section>
+
+        <section id="apply" class="card">
+          <h2>Apply / Save</h2>
+          <!-- Buttons + diff preview area handled by settings.js. -->
+        </section>
       </div>
     </div>
   </main>
 
   <!-- =====================================================================
-       FOOTER SECTION (fixed)
+       FOOTER (fixed)
        ---------------------------------------------------------------------
-       Displays connectivity and wall clock information for operator context.
+       Left shows network status; right is intentionally empty for now.
+       We can add quick links or version info later.
   ===================================================================== -->
-
   <footer class="app-footer">
     <div class="footer-left">
       <div class="status-dot" id="netDot"></div>
       <div id="netMsg">Ready</div>
     </div>
-    <div class="footer-right">
-      <a class="link" href="/admin/setup" target="_blank" rel="noopener">GET /setup/runtime</a>
+    <div class="footer-center">
+      <div class="pill pill--db" id="readyPill" aria-live="polite">DB: ready</div>
+      <div class="pill pill--db" id="engineLabel" aria-live="polite">Engine: —</div>
     </div>
+    <div class="footer-right"></div>
   </footer>
-
-  <!-- =====================================================================
-       PAGE SCRIPT (basic wiring)
-       ---------------------------------------------------------------------
-       Connects DOM elements, populates fields, and hooks into base.js.
-       This script will eventually fetch the runtime snapshot and enable
-       saving or hot-applying configuration updates.
-  ===================================================================== -->
-  <script>
-    (function () {
-      'use strict';
-
-      // CCRS namespace + tiny qs helper (keep these)
-      const CCRS = window.CCRS || {};
-      const $ = (sel, root) => (root || document).querySelector(sel);
-
-      // Collect important elements (your existing, robust version)
-      const ids = [
-        'role','saveRole','policySummary','effectiveHost','engineOverride','overrideHelp',
-        'testEngine','saveEngine','clearEngine','engineMsg','engineLabel',
-        'debounce','debounceOverrides','minLapMs',
-        'diagEnabled','diagBuffer','diagTransport','beepMax','testBeep',
-        'locList','bindList','flagBlock','flagGrace',
-        'missedMode','missedWindow','missedK','missedMinGap','missedMaxSeq','missedMark',
-        'soundDefault','timeDisplay','configDiff','applyHot','applyRestart','revert','applyMsg'
-      ];
-      const el = ids.reduce((acc, id) => {
-        if (typeof id !== 'string' || !id.trim()) return acc;   // skip holes/comments
-        acc[id] = document.getElementById(id) || null;
-        return acc;
-      }, {});
-
-      document.addEventListener('DOMContentLoaded', init);
-
-      function init() {
-        // Optional engine label
-        if (typeof CCRS.effectiveEngineLabel === 'function' && el.engineLabel) {
-          el.engineLabel.textContent = 'Engine: ' + CCRS.effectiveEngineLabel();
-        }
-        // Wire left nav (anchors → internal scroller + highlight)
-        enableLeftNav();
-      }
-
-      function enableLeftNav() {
-        const scroller = document.querySelector('.pane__scroll');
-        if (!scroller) return;
-
-        const links = Array.from(document.querySelectorAll('.sideNav .navLink[href^="#"]'));
-        const sections = links
-          .map(a => document.querySelector(a.getAttribute('href')))
-          .filter(Boolean);
-
-        // Immediate visual feedback on click + smooth scroll inside the pane
-        links.forEach(a => {
-          a.addEventListener('click', (e) => {
-            e.preventDefault();
-            const sel = a.getAttribute('href');
-            const target = document.querySelector(sel);
-            if (!target) return;
-
-            // Make clicked link active right away
-            links.forEach(l => l.classList.remove('active'));
-            a.classList.add('active');
-
-            // Compute target offset relative to the internal scroller
-            const top = target.getBoundingClientRect().top
-                      - scroller.getBoundingClientRect().top
-                      + scroller.scrollTop
-                      - 8; // tiny breathing room below the sticky h2
-            scroller.scrollTo({ top, behavior: 'smooth' });
-          });
-        });
-
-        // Scrollspy: keep active link in sync as you scroll the pane
-        if (sections.length) {
-          const linkById = Object.fromEntries(
-            links.map(l => [l.getAttribute('href'), l])
-          );
-
-          const io = new IntersectionObserver((entries) => {
-            // choose the most-visible section
-            let best = null, max = 0;
-            for (const e of entries) {
-              if (e.intersectionRatio >= max) {
-                max = e.intersectionRatio;
-                best = e.target;
-              }
-            }
-            if (!best) return;
-            links.forEach(l => l.classList.remove('active'));
-            const hit = linkById['#' + best.id];
-            if (hit) hit.classList.add('active');
-          }, {
-            root: scroller,
-            threshold: [0.35, 0.55, 0.75]
-          });
-
-          sections.forEach(sec => io.observe(sec));
-        }
-      }
-    })();
-    </script>
-
 </body>
 </html>

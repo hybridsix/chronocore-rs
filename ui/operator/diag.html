@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CCRS — Diagnostics / Live Sensors</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <!-- =====================================================================
+       DIAGNOSTICS / LIVE SENSORS PAGE
+       ---------------------------------------------------------------------
+       Purpose
+       -------
+       The Diagnostics page provides a real-time, read-only view of transponder
+       detections flowing through the system. It does NOT write to the database,
+       and can be used by race officials or teams to verify that transmitters
+       are being picked up correctly.
+
+       Behavior
+       --------
+       • Connects to /diagnostics/stream (Server-Sent Events)
+       • Displays each detection (timestamp, tag, entrant, number, source)
+       • Newest rows appear at the top
+       • Plays a soft beep on each detection (rate-limited)
+       • Obeys debounce + diagnostics settings from /setup/runtime
+       • Optional filters: known-only, show RSSI, pause stream, clear list
+       • UI is responsive, sized for 1920×1080 operator view
+
+       Dependencies
+       -------------
+       CSS : base.css → operator.css → diag.css
+       JS  : base.js (helpers) + diag.js (page logic)
+  ===================================================================== -->
+
+  <link rel="stylesheet" href="/ui/css/base.css" />
+  <link rel="stylesheet" href="/ui/css/operator.css" />
+  <link rel="stylesheet" href="/ui/css/diag.css" />
+
+  <script src="../js/base.js" defer></script>
+  <script src="../js/diag.js" defer></script>
+</head>
+
+<body class="diagnostics">
+  <!-- ==============================================================
+       HEADER — identical in layout to other operator pages
+  ============================================================== -->
+  <header class="app-header">
+    <div class="brand">
+      <a class="brand-link" href="/ui/operator/index.html" aria-label="Go to Home">
+        <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="CCRS Logo" />
+        <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+          <div class="wordmark__top">
+            <span class="wordmark__big">CHRONO</span>
+            <span class="wordmark__big">CORE</span>
+          </div>
+          <div class="wordmark__bottom">RACE SOFTWARE</div>
+        </div>
+      </a>
+
+      <div class="page-label">Diagnostics / Live Sensors</div>
+    </div>
+
+    <!-- Right-side cluster: nav + engine pill -->
+    <div class="app-header__tools">
+      <nav class="app-nav" aria-label="Site navigation">
+        <a class="app-nav__link" href="/ui/operator/index.html" aria-label="Home" title="Home">
+          <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#home"></use></svg>
+          <span class="sr-only">Home</span>
+        </a>
+
+        <div class="app-nav__menu" id="appsMenu" data-open="false">
+          <button type="button" class="app-nav__btn" aria-haspopup="true" aria-expanded="false" aria-controls="appsPanel" title="Menu">
+            <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#menu"></use></svg>
+            <span class="sr-only">Open menu</span>
+          </button>
+          <div class="app-nav__panel" id="appsPanel" role="menu" aria-labelledby="appsMenu">
+            <a href="/ui/operator/entrants.html" role="menuitem">Entrants &amp; Tags</a>
+            <a href="/ui/operator/operator.html" role="menuitem">Operator</a>
+            <a href="/ui/operator/settings.html" role="menuitem">Settings</a>
+            <a class="current" href="/ui/operator/diag.html" role="menuitem">Diagnostics</a>
+            <a href="/ui/operator/help.html" role="menuitem">Help</a>
+          </div>
+        </div>
+      </nav>
+
+    </div>
+  </header>
+
+  <!-- ==============================================================
+       MAIN CONTENT
+       --------------------------------------------------------------
+       The toolbar gives operators quick actions (Pause, Clear, etc.)
+       and live status (Diagnostics enabled/disabled warning).
+       Below it is a scrollable table of live detections.
+  ============================================================== -->
+  <main class="diagWrap">
+    <div class="toolBar" role="toolbar" aria-label="Diagnostics controls">
+      <div class="left">
+        <button id="btnPause" class="btn" aria-pressed="false">Pause</button>
+        <button id="btnClear" class="btn btn--subtle">Clear</button>
+        <label class="chk"><input id="chkBeep" type="checkbox" checked  /><span>Beep</span></label>
+        <label class="chk"><input id="chkKnownOnly" type="checkbox" /><span>Known Entrants Only</span></label>
+        <label class="chk"><input id="chkShowRssi" type="checkbox" checked  /><span>Show RSSI</span></label>
+      </div>
+      <div class="right">
+        <!-- Visible only when diagnostics.enabled == false -->
+        <div id="diagWarn" class="banner banner--warn" hidden>
+          Diagnostics disabled in settings.
+        </div>
+      </div>
+    </div>
+
+    <!-- Scrollable live detections table -->
+    <div class="pane">
+      <table class="liveTable" aria-label="Live detections stream">
+        <thead>
+        <tr>
+            <th class="col-time">Time</th>
+            <th class="col-source">Source</th>
+            <th class="col-tag">Tag ID</th>
+            <th class="col-num">#</th>           <!-- moved up: after Tag ID -->
+            <th class="col-entrant">Entrant</th> <!-- moved down: after # -->
+            <th class="col-rssi">RSSI</th>
+        </tr>
+        </thead>
+        <tbody id="liveBody"></tbody>
+      </table>
+    </div>
+  </main>
+
+  <!-- ==============================================================
+       FOOTER — standard operator footer; network/status placeholders
+  ============================================================== -->
+  <footer class="app-footer">
+    <div class="footer-left">
+      <div class="status-dot" id="netDot"></div>
+      <div id="netMsg">Ready</div>
+    </div>
+    <div class="footer-center">
+      <div class="pill pill--db" id="readyPill" aria-live="polite">DB: ready</div>
+      <div class="pill pill--db" id="engineLabel" aria-live="polite">Engine: —</div>
+    </div>
+    <div class="footer-right"></div>
+  </footer>
+
+<script>
+  (function () {
+    const menu = document.getElementById('appsMenu');
+    if (!menu) return;
+    const btn   = menu.querySelector('.app-nav__btn');
+    const panel = menu.querySelector('.app-nav__panel');
+
+    function openMenu(on) {
+      menu.dataset.open = on ? 'true' : 'false';
+      btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    }
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openMenu(menu.dataset.open !== 'true');
+      if (menu.dataset.open === 'true') {
+        const first = panel.querySelector('a');
+        if (first) first.focus();
+      }
+    });
+
+    document.addEventListener('click', () => openMenu(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') openMenu(false);
+    });
+
+    panel.addEventListener('keydown', (e) => {
+      const items = Array.from(panel.querySelectorAll('a'));
+      const i = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        (items[i + 1] || items[0]).focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        (items[i - 1] || items[items.length - 1]).focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault(); (items[0] || document.activeElement).focus();
+      } else if (e.key === 'End') {
+        e.preventDefault(); (items[items.length - 1] || document.activeElement).focus();
+      }
+    });
+  })();
+</script>
+</body>
+</html>
+

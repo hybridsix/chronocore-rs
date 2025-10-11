@@ -1,0 +1,12 @@
+# Minimal CCRS runtime stub (just enough for startup)
+engine:
+  diagnostics:
+    enabled: true
+
+publisher:
+  # server.py will force this to "inprocess" after loading.
+  mode: noop
+
+# Keep structure present; ScannerService can ignore unused parts.
+readers: []
+devices: []

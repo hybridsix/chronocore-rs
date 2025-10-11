@@ -1,10 +1,10 @@
-/* ==========================================================================
-   Operator Console — page styles
-   - Dark theme + sticky footer layout
-   - Header: logo + stacked wordmark (compact, left-aligned)
-   - Main "hero" card: two columns (brand left / actions right)
-   - Utility bits: section separator, flag button styles
-   ========================================================================== */
+/* ---------------------------------------------------------------------
+  OPERATOR CONSOLE — page styles
+  - Dark theme + sticky footer layout
+  - Header: logo + stacked wordmark (compact, left-aligned)
+  - Main "hero" card: two columns (brand left / actions right)
+  - Utility bits: section separator, flag button styles
+  --------------------------------------------------------------------- */
 
 /* ===== Global layout / tokens ===== */
 :root {
@@ -31,9 +31,14 @@ body {
 
 /* ===== Header (compact, left-aligned brand row) ===== */
 .app-header {
+  /* Use global header sizing tokens from base.css for consistency */
   display: flex;
   align-items: center;
-  padding: 8px 16px;            /* Y then X: tighten vertical height */
+  padding-top: var(--headerPadY, 8px);
+  padding-bottom: var(--headerPadY, 8px);
+  padding-left: var(--gutterX, 16px);
+  padding-right: var(--gutterX, 16px);
+  min-height: var(--headerH-ops, 72px);
   border-bottom: 1px solid #0b2230;
 }
 
@@ -46,8 +51,9 @@ body {
 
 /* Header logo only (scoped) — keeps black SVG white on dark header */
 .app-header .brand-logo {
-  width: 64px;                  /* adjust to taste without growing header */
-  height: auto;
+  /* scale the logo to the header height (respecting vertical padding) */
+  height: calc(var(--headerH,72px) - 2 * var(--headerPadY,8px));
+  width: auto;
   flex: 0 0 auto;
   filter: invert(1);
 }
@@ -76,6 +82,21 @@ body {
   font-size: clamp(11px, 1.4vw, 14px);
   letter-spacing: 0.18em;
   opacity: 0.92;
+}
+
+/* ---------------------------------------------------------------------
+  OPERATOR PAGE LABEL (scoped)
+  - Visual style for header page labels (Entrants, Diagnostics, Settings)
+  - Keep scoped here; move pure typography to `base.css` if needed
+  --------------------------------------------------------------------- */
+.app-header .page-label {
+  font-size: clamp(22px, 3vw, 32px);
+  font-weight: 700;
+  letter-spacing: .04em;
+  color: #E6F2F7;
+  margin-left: var(--pageLabelGap);
+  line-height: 1.2;
+  text-shadow: 0 2px 4px rgba(0,0,0,.40);
 }
 
 /* ===== Main grows to push footer down ===== */
@@ -170,17 +191,44 @@ main { flex: 1; }
 
 /* ===== Sticky footer ===== */
 .app-footer {
-  display: flex;
-  justify-content: space-between;      /* room for right-aligned widgets if needed */
-  align-items: center;
+  display: grid;
+  /* Use balanced columns so the center column (auto) stays centered
+     even when the left/right content widths change. */
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center; /* vertical centering */
   padding: 10px 16px;
   border-top: 1px solid #0b2230;
   font-size: 14px;
   min-height: var(--footer-h);
 }
 
-.footer-left { display: flex; align-items: center; gap: 8px; }
-.footer-right { opacity: .8; }
+.footer-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  justify-self: start;
+}
+
+.footer-right {
+  opacity: .8;
+  justify-self: end;
+}
+
+/* Optional centered footer area used on some pages (Entrants uses .footer-center) */
+.app-footer .footer-center {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  justify-self: center;
+}
+
+/* DB pill scaled for footer */
+.pill--db {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  line-height: 1.2;
+}
 
 /* Net status dot (color is driven by JS via CSS vars or class) */
 .status-dot {

@@ -1,9 +1,9 @@
-/* =========================================================
-   Spectator page styles (requires base.css first)
-   – leaderboard grid + two-column layout
-   – flag colors & animations
-   – PB flash effects
-   ========================================================= */
+/* ---------------------------------------------------------------------
+  SPECTATOR PAGE STYLES (requires base.css first)
+  - leaderboard grid + two-column layout
+  - flag colors & animations
+  - PB flash effects
+  --------------------------------------------------------------------- */
 
 /* ---------- Race clock cluster (right side of header) ---------- */
 .raceclock-wrap {

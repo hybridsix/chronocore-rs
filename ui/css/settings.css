@@ -1,13 +1,12 @@
-/* =====================================================================
-   SETTINGS PAGE STYLESHEET (VERBOSE)
-   ---------------------------------------------------------------------
-   This stylesheet defines layout and form styling for the Operator
-   Settings page. It extends base.css and operator.css, and ensures a
-   clean two-column layout optimized for 1920×1080 resolution.
+/* ---------------------------------------------------------------------
+  SETTINGS PAGE STYLESHEET (VERBOSE)
+  This stylesheet defines layout and form styling for the Operator
+  Settings page. It extends base.css and operator.css, and ensures a
+  clean two-column layout optimized for 1920×1080 resolution.
 
-   All CSS properties are expanded to multi-line for clarity and ease
-   of human review. Each section is commented to indicate intent.
-   ===================================================================== */
+  All CSS properties are expanded to multi-line for clarity and ease
+  of human review. Each section is commented to indicate intent.
+  --------------------------------------------------------------------- */
 
 :root {
   /* Footer height for layout calculations */
@@ -322,25 +321,27 @@ body.settings {
   color: #e7f8ff;
 }
 
-/* Active link must visually override the 'primary' CTA style */
-.sideNav .navLink.active {
-  background: rgba(0, 180, 255, 0.18);
-  border-color: #0b2230;
-  color: #e7f8ff;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, .35);
+/* Left nav active highlight and Primary CTA states are defined later
+   to centralize visual overrides. Earlier duplicates removed so the
+   final rules (below) are authoritative. */
+
+/* Visual separator above CTA */
+.sideNav .navSep {
+  height: 1px;
+  margin: 10px 6px 6px 6px;
+  background: linear-gradient(90deg, rgba(8,14,18,0) 0%, rgba(11,17,23,0.9) 50%, rgba(8,14,18,0) 100%);
+  border-radius: 1px;
 }
 
-/* Primary CTA (Apply/Save) should *not* look selected by default */
+/* CTA default + when active */
 .sideNav .navLink.navLink--primary {
-  background: rgba(0, 180, 255, 0.08);
+  background: rgba(0, 160, 255, 0.08);
   border-color: #0a1e2b;
   color: var(--text);
+  font-weight: 600;
 }
-
-/* If the primary link is also the active section, the active style wins */
 .sideNav .navLink.navLink--primary.active {
-  background: rgba(0, 180, 255, 0.22);
+  background: rgba(0, 190, 255, 0.22);
   border-color: #0b2230;
   color: #e7f8ff;
 }
-

@@ -22,25 +22,22 @@ This version keeps the original public surface but fixes the following:
      unless overridden in config/app.yaml.
 """
 
+import asyncio
+import datetime
+import json
+import logging
+import time
+import sqlite3
+from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+
 import aiosqlite
-from fastapi import FastAPI, HTTPException, Response, status, Request
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi import FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-
-from starlette.responses import JSONResponse
-from starlette.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-
-import logging
-
 from pydantic import BaseModel, Field, ValidationError, field_validator
-from typing import Optional as _Optional
-
-import asyncio
-import json
-import time
 
 from .db_schema import ensure_schema, tag_conflicts
 from .config_loader import get_db_path
@@ -72,10 +69,9 @@ def publish_tag(tag: str) -> float:
     return ts
 
 
-
-
-
+# ------------------------------------------------------------
 # CORS: permissive for development. Tighten for production.
+#------------------------------------------------------------
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -237,7 +233,6 @@ async def engine_entrant_assign_tag(payload: Dict[str, Any]):
         # Conflict check across ENABLED entrants, excluding this entrant
         if tag:
             # Use a short-lived sync connection for the helper (clean and clear).
-            import sqlite3
             with sqlite3.connect(DB_PATH) as sconn:
                 if tag_conflicts(sconn, tag, incumbent_entrant_id=entrant_id):
                     raise HTTPException(status_code=409, detail="Tag already assigned to another enabled entrant")
@@ -259,8 +254,6 @@ async def engine_entrant_assign_tag(payload: Dict[str, Any]):
 # ------------------------------------------------------------
 # Admin Entrants (authoritative DB read/write)
 # ------------------------------------------------------------
-from typing import Optional, List
-from pydantic import BaseModel, Field, field_validator
 
 class EntrantIn(BaseModel):
     """
@@ -337,7 +330,7 @@ class EntrantIn(BaseModel):
         """Tag after whitespace->None normalization."""
         return self.tag
 
-def _norm_tag(value: _Optional[str]) -> _Optional[str]:
+def _norm_tag(value: Optional[str]) -> Optional[str]:
     if value is None:
         return None
     s = str(value).strip()
@@ -550,13 +543,148 @@ async def ilap_inject(tag: str):
     return {"ok": True, "seen_at": ts}
 #
 
-app.on_event("startup")
+# --- Embedded scanner startup: publish via HTTP to our own FastAPI ---
+@app.on_event("startup")
 async def start_scanner():
+    """
+    Start the ScannerService but publish laps via HTTP into this server,
+    avoiding the in-process publisher hook and any circular imports.
+    """
     from backend.lap_logger import ScannerService, load_config
+
+    # Load your runtime config (we only need it to exist & parse)
     cfg = load_config("./config/ccrs.yaml")
-    cfg.publisher.mode = "inprocess"
+
+    # Force HTTP publishing so the scanner POSTs laps to our endpoint.
+    # Different builds of ScannerService may look for slightly different keys;
+    # we set the common ones so whichever exists gets used.
+    cfg.publisher.mode = "http"
+    # Most implementations use one of these:
+    setattr(cfg.publisher, "url", "http://127.0.0.1:8000/ilap/inject")
+    setattr(cfg.publisher, "endpoint", "http://127.0.0.1:8000/ilap/inject")
+    # If there is a nested HTTP config object, prime it too (harmless if absent):
+    if not hasattr(cfg.publisher, "http"):
+        setattr(cfg.publisher, "http", type("HttpCfg", (), {})())
+    setattr(cfg.publisher.http, "url", "http://127.0.0.1:8000/ilap/inject")
+    setattr(cfg.publisher.http, "timeout_s", 2.0)
+
+    # Spin up the scanner task
     app.state.stop_evt = asyncio.Event()
     app.state.task = asyncio.create_task(ScannerService(cfg).run(app.state.stop_evt))
+
+
+@app.on_event("shutdown")
+async def stop_scanner():
+    """
+    Gracefully stop the background scanner on shutdown.
+    """
+    stop_evt = getattr(app.state, "stop_evt", None)
+    task = getattr(app.state, "task", None)
+    if stop_evt:
+        stop_evt.set()
+    if task:
+        try:
+            await task
+        except Exception:
+            pass
+
+
+# ==============================================================================
+# Diagnostics / Live Sensors — SSE stream for diag.html
+# ==============================================================================
+
+    
+# In-memory pub/sub state
+DIAGNOSTICS_ENABLED: bool = True
+DIAGNOSTICS_BUFFER_SIZE: int = 500
+_diag_ring = deque(maxlen=DIAGNOSTICS_BUFFER_SIZE)
+_diag_subs: set[asyncio.Queue] = set()
+_diag_lock = asyncio.Lock()
+
+async def diag_publish(evt: dict) -> None:
+    """Publish a detection event to all diagnostics subscribers."""
+    if not DIAGNOSTICS_ENABLED:
+        return
+    if "time" not in evt:
+        evt = dict(evt)
+        evt["time"] = datetime.datetime.now(datetime.timezone.utc)\
+            .isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    _diag_ring.append(evt)
+    async with _diag_lock:
+        dead = []
+        for q in _diag_subs:
+            try:
+                q.put_nowait(evt)
+            except asyncio.QueueFull:
+                try:
+                    _ = q.get_nowait()
+                    q.put_nowait(evt)
+                except Exception:
+                    dead.append(q)
+        for q in dead:
+            _diag_subs.discard(q)
+
+@app.get("/diagnostics/stream")
+async def diagnostics_stream(request: Request):
+    """EventSource stream for diagnostics/live sensors."""
+    if not DIAGNOSTICS_ENABLED:
+        async def disabled_gen():
+            yield b'data: {"type":"status","message":"diagnostics_disabled"}\n\n'
+        return StreamingResponse(disabled_gen(), media_type="text/event-stream")
+
+    q = asyncio.Queue(maxsize=1024)
+    async with _diag_lock:
+        _diag_subs.add(q)
+
+    async def gen():
+        try:
+            for evt in list(_diag_ring):
+                if await request.is_disconnected():
+                    break
+                yield f"data: {json.dumps(evt, separators=(',',':'))}\n\n".encode()
+            while not await request.is_disconnected():
+                evt = await q.get()
+                yield f"data: {json.dumps(evt, separators=(',',':'))}\n\n".encode()
+        finally:
+            async with _diag_lock:
+                _diag_subs.discard(q)
+
+    return StreamingResponse(gen(), media_type="text/event-stream", headers={"Cache-Control": "no-store"})
+
+@app.post("/diagnostics/test_fire")
+async def diagnostics_test_fire():
+    """Inject a dummy detection for testing the diag.html frontend."""
+    evt = {
+        "tag_id": "1234567",
+        "entrant": {"name": "Thunder Lizards", "number": "42"},
+        "source": "Start/Finish",
+        "rssi": -63,
+    }
+    await diag_publish(evt)
+    return {"ok": True, "sent": evt}
+
+# Minimal runtime stub for frontends (Settings/Diagnostics)
+@app.get("/setup/runtime")
+async def setup_runtime():
+    return {
+        "engine": {
+            "ingest": {"debounce_ms": 250},
+            "diagnostics": {
+                "enabled": True,
+                "buffer_size": 500,
+                "stream": {"transport": "sse"},
+                "beep": {"max_per_sec": 5},
+            },
+        },
+        "race": {
+            "flags": {"inference_blocklist": ["YELLOW", "RED", "SC"], "post_green_grace_ms": 3000},
+            "missed_lap": {"enabled": False, "apply_mode": "propose", "window_laps": 5, "sigma_k": 2.0,
+                        "min_gap_ms": 8000, "max_consecutive_inferred": 1, "mark_inferred": True},
+        },
+        "track": {"locations": {"SF": "Start/Finish", "PIT_IN": "Pit In", "PIT_OUT": "Pit Out"}, "bindings": []},
+        "ui": {"operator": {"sound_default_enabled": True, "time_display": "local"}},
+        "meta": {"engine_host": "127.0.0.1:8000"},
+    }
 
 
 # ------------------------------------------------------------

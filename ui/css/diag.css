@@ -1,0 +1,210 @@
+/* ---------------------------------------------------------------------
+  DIAGNOSTICS PAGE STYLES (CCRS)
+  --------------------------------------------------------------------- */
+
+:root {
+  --footerH: 56px;
+  --toolbarH: 56px;
+}
+
+
+.diagWrap {
+  display: grid;
+  grid-template-rows: var(--toolbarH) 1fr;
+  gap: 10px;
+  min-height: calc(100vh - var(--headerH) - var(--footerH));
+  padding: 12px 16px;
+}
+
+.toolBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel);
+  border: 1px solid #0b0f13;
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-shadow: 0 0 0 1px #0c1116, 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+.toolBar .left,
+.toolBar .right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.chk {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 8px;
+}
+
+.banner {
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+}
+.banner--warn {
+  background: rgba(255, 170, 0, 0.12);
+  border: 1px solid rgba(255, 170, 0, 0.35);
+  color: #ffd599;
+}
+
+.pane {
+  background: #0c1318;
+  border: 1px solid #0b0f13;
+  border-radius: 12px;
+  overflow: auto;
+  max-height: calc(100vh - var(--headerH) - var(--footerH) - var(--toolbarH) - 34px);
+  box-shadow: 0 0 0 1px #0c1116, inset 0 0 0 1px #0a0f14;
+}
+
+.liveTable {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+.liveTable thead th {
+  position: sticky;
+  top: 0;
+  background: #0f171d;
+  border-bottom: 1px solid #0e151b;
+  text-align: left;
+  font-weight: 600;
+  padding: 10px;
+}
+.liveTable tbody tr {
+  border-bottom: 1px solid #0e151b;
+}
+.liveTable td {
+  padding: 8px 10px;
+}
+
+.col-time {
+  width: 180px;
+}
+.col-source {
+  width: 180px;
+}
+.col-tag {
+  width: 120px;
+  font-family: var(--mono);
+}
+
+/* Center the number column, give it comfy width for 4 digits */
+.col-num {
+  width: 80px;          /* enough for 4 digits + padding */
+  text-align: center;   /* center the value cells */
+  font-weight: 600;
+}
+
+/* Center RSSI values too */
+.col-rssi {
+  width: 80px;
+  text-align: center;
+}
+.liveTable tbody tr:nth-child(odd) td {
+  background: rgba(255,255,255,0.01);
+}
+
+@keyframes flashRow {
+  0%   { background: rgba(0, 180, 255, 0.20); }
+  100% { background: transparent; }
+}
+.newRow td {
+  animation: flashRow 480ms ease-out;
+}
+/* Override the default left-align for headers on these two */
+.liveTable thead .col-num,
+.liveTable thead .col-rssi {
+  text-align: center;
+}
+
+/* Let the table hide/show the RSSI column by toggling a class */
+.liveTable.hide-rssi .col-rssi {
+  display: none;
+}
+
+/* === RSSI mini-bar (smooth continuous fill) ======================== */
+.col-rssi { text-align: center; }
+
+.rssiWrap {
+  display: inline-flex;           /* keeps number + bar together and centered */
+  align-items: center;
+  gap: 6px;
+}
+
+.rssiVal {
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;          /* smaller than the main table font */
+  opacity: 0.6;             /* less visual weight */
+  margin-right: 4px;        /* small breathing room before the bar */
+}
+
+.rssiBar {
+  position: relative;
+  display: inline-block;
+  width: 56px;                    /* compact; tweak if you want wider */
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,0.08),
+    rgba(0,0,0,0.15)
+  );                               /* subtle track */
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.06);
+}
+
+.rssiFill {
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 0%;                       /* set by JS */
+  background-color: #00c853;       /* replaced by JS color */
+  border-radius: 4px;
+  transition: width 140ms ease-out, background-color 140ms linear;
+}
+
+/* ======================================================================
+   Header tools alignment (diagnostics page)
+   Keep the right-side nav / pills aligned to the right like entrants.html
+   ====================================================================== */
+body.diagnostics .app-header__tools {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+/* keep spacing between pills/controls in the tools cluster */
+body.diagnostics .app-header__tools .pill { margin-left: 12px; }
+
+/* Small gap between DB / Engine pills in the footer center for diag page */
+body.diagnostics .app-footer .footer-center .pill + .pill {
+  margin-left: 10px;
+}
+
+/* Mirror Entrants header spacing and brand behavior so typography/icons match */
+body.diagnostics .brand {
+  display: flex;
+  align-items: center;
+  gap: var(--headerGapX);
+  transform-origin: left center;
+}
+
+body.diagnostics .app-header .page-label {
+  margin-left: var(--pageLabelGap);
+}
+
+body.diagnostics .app-nav .icon {
+  width: var(--iconSize);
+  height: var(--iconSize);
+}
+
+/* Force header sizing to match operator pages exactly */
+body.diagnostics .app-header {
+  padding-top: var(--headerPadY);
+  padding-bottom: var(--headerPadY);
+  min-height: var(--headerH-ops);
+}

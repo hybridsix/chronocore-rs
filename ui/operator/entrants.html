@@ -1,3 +1,5 @@
+<!--  -->
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -6,9 +8,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- CSS order mirrors index.html -->
-  <link rel="stylesheet" href="../css/base.css" />
-  <link rel="stylesheet" href="../css/operator.css" />
-  <link rel="stylesheet" href="../css/entrants.css" />
+  <link rel="stylesheet" href="/ui/css/base.css" />
+  <link rel="stylesheet" href="/ui/css/operator.css" />
+  <link rel="stylesheet" href="/ui/css/entrants.css" />
 
   <!-- JS: helpers first, then page logic; both deferred -->
   <script src="../js/base.js" defer></script>
@@ -23,10 +25,16 @@
 
 <body class="entrants">
 
-  <!-- HEADER: brand + page label on the left; DB pill on the right -->
-  <header class="app-header">
-    <div class="brand">
-      <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo">
+<!-- HEADER: brand + page label on the left; DB pill + nav on the right -->
+<header class="app-header">
+  <div class="brand">
+    <!-- ChronoCore brand (clickable link back to Home) -->
+    <a class="brand-link" href="/ui/operator/index.html" aria-label="Go to Home">
+      <img
+        class="brand-logo"
+        src="../img/CCRS_Logo.svg"
+        alt="ChronoCore Logo"
+      />
       <div class="brand__wordmark" aria-label="ChronoCore Race Software">
         <div class="wordmark__top">
           <span class="wordmark__big">CHRONO</span>
@@ -34,13 +42,47 @@
         </div>
         <div class="wordmark__bottom">RACE SOFTWARE</div>
       </div>
-      <div class="page-label">Entrants &amp; Tags</div>
-    </div>
+    </a>
 
-    <div class="app-header__tools">
-      <div class="pill" id="readyPill" aria-live="polite">DB: checking…</div>
-    </div>
-  </header>
+    <!-- Page-specific label -->
+    <div class="page-label">Entrants &amp; Tags</div>
+  </div>
+
+  <!-- Right-side cluster: nav -->
+  <div class="app-header__tools">
+    <nav class="app-nav" aria-label="Site navigation">
+          <a class="app-nav__link" href="/ui/operator/index.html" aria-label="Home" title="Home">
+            <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#home"></use></svg>
+            <span class="sr-only">Home</span>
+          </a>
+
+          <div class="app-nav__menu" id="appsMenu" data-open="false">
+            <button type="button" class="app-nav__btn" aria-haspopup="true" aria-expanded="false"
+                    aria-controls="appsPanel" title="Menu">
+              <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#menu"></use></svg>
+              <span class="sr-only">Open menu</span>
+            </button>
+          <div class="app-nav__panel" id="appsPanel" role="menu" aria-labelledby="appsMenu">
+        <a class="current" href="/ui/operator/entrants.html" role="menuitem">Entrants &amp; Tags</a>
+        <a href="/ui/operator/operator.html" role="menuitem">Operator</a>
+        <a href="/ui/operator/settings.html" role="menuitem">Settings</a>
+        <a href="/ui/operator/diag.html" role="menuitem">Diagnostics</a>
+        <a href="/ui/operator/help.html" role="menuitem">Help</a>
+        </div>
+      </div>
+    </nav>
+  </div>
+</header>
+
+  <!-- =====================================================================
+       MAIN LAYOUT (two-pane)
+       ---------------------------------------------------------------------
+       Left  : Entrant drawer + tag scanner
+       Right : Entrants table
+
+    NOTE: This layout is similar to Settings, but without the left nav.
+
+  -->
 
   <main class="wrap">
     <!-- DB not ready warning -->
@@ -288,6 +330,9 @@
       <div class="status-dot" id="netDot"></div>
       <div id="netMsg">Ready</div>
     </div>
+    <div class="footer-center">
+      <div class="pill pill--db" id="readyPill" aria-live="polite">DB: ready</div>
+    </div>
     <div class="footer-right">
       <a class="link" href="/admin/entrants" target="_blank" rel="noopener">GET /admin/entrants</a>
     </div>
@@ -323,6 +368,52 @@
       <div id="qcMsg" class="form-msg" aria-live="polite"></div>
     </form>
   </dialog>
+
+<script>
+  (function () {
+    const menu = document.getElementById('appsMenu');
+    if (!menu) return;
+    const btn   = menu.querySelector('.app-nav__btn');
+    const panel = menu.querySelector('.app-nav__panel');
+
+    function openMenu(on) {
+      menu.dataset.open = on ? 'true' : 'false';
+      btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    }
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openMenu(menu.dataset.open !== 'true');
+      if (menu.dataset.open === 'true') {
+        // move focus to first item for keyboard flow
+        const first = panel.querySelector('a');
+        if (first) first.focus();
+      }
+    });
+
+    document.addEventListener('click', () => openMenu(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') openMenu(false);
+    });
+
+    panel.addEventListener('keydown', (e) => {
+      const items = Array.from(panel.querySelectorAll('a'));
+      const i = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        (items[i + 1] || items[0]).focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        (items[i - 1] || items[items.length - 1]).focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault(); (items[0] || document.activeElement).focus();
+      } else if (e.key === 'End') {
+        e.preventDefault(); (items[items.length - 1] || document.activeElement).focus();
+      }
+    });
+  })();
+</script>
+
 
 </body>
 </html>

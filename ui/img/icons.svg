@@ -1,0 +1,12 @@
+<!-- Minimal SVG sprite: icons inherit currentColor from CSS -->
+<svg xmlns="http://www.w3.org/2000/svg" aria-hidden="true" style="display:none">
+  <!-- Home icon (simple roof + base) -->
+  <symbol id="home" viewBox="0 0 24 24">
+    <path d="M3 10.5L12 3l9 7.5v9a1 1 0 0 1-1 1h-5.5a.5.5 0 0 1-.5-.5V14h-4v6.5a.5.5 0 0 1-.5.5H4a1 1 0 0 1-1-1v-9z"/>
+  </symbol>
+
+  <!-- Menu (hamburger) -->
+  <symbol id="menu" viewBox="0 0 24 24">
+    <path d="M3 6h18v2H3zM3 11h18v2H3zM3 16h18v2H3z"/>
+  </symbol>
+</svg>
