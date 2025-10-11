@@ -1,0 +1,62 @@
+/* Race Control page styles
+   NOTE: Do not style .app-header / .app-footer here — operator.css owns header/footer.
+   This file styles only the page content region.
+*/
+
+.op-page.race-control main.wrap {
+  padding: 16px;
+}
+
+/* Simple responsive grid for pills below header */
+.pill-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  align-items: stretch;
+  margin-bottom: 16px;
+}
+
+/* Generic pill styling (inherits theme tokens from operator/base) */
+.pill {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  padding: 10px 12px;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  background: var(--panelBg, #1f2430);
+  color: var(--text, #e8eaee);
+  outline: none;
+}
+.pill:focus { box-shadow: 0 0 0 2px var(--focus, #5aa9ff); }
+
+.pill__label {
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.85;
+}
+.pill__value {
+  font-variant-numeric: tabular-nums;
+  font-size: 28px;
+  line-height: 1.1;
+  font-weight: 700;
+}
+
+/* Layout scaffold */
+.rc-columns {
+  display: grid;
+  grid-template-columns: 1fr 340px;
+  gap: 16px;
+}
+@media (max-width: 1100px) {
+  .rc-columns { grid-template-columns: 1fr; }
+  .rc-secondary { order: -1; }
+}
+
+.rc-primary, .rc-secondary {
+  padding: 12px;
+  border-radius: 12px;
+  background: var(--panelBg, #1f2430);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+  min-height: 160px;
+}

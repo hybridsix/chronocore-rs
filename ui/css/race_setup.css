@@ -1,0 +1,7 @@
+/* Race Setup page styles
+   NOTE: Do not style .app-header / .app-footer here — operator.css owns header/footer.
+*/
+
+.op-page.race-setup main.wrap {
+  padding: 16px;
+}

@@ -41,6 +41,7 @@ import urllib.error
 import webbrowser
 from pathlib import Path
 from typing import Optional
+from http.client import HTTPResponse
 
 import webview  # requires: pywebview + a GUI backend (PySide6 recommended)
 # These imports are part of the ChronoCore backend and may no-op if not used directly here.
@@ -94,7 +95,7 @@ SCREENS = {
     "splash": (UI_DIR / "splash.html"),      # Small frameless splash while services warm up
     "home":   (UI_DIR / "index.html"),       # Main Operator UI entrypoint
     "about":  (UI_DIR / "about.html"),
-    "stats":  (UI_DIR / "stats.html"),
+    "results": (UI_DIR / "results_exports.html"),
     "entrants": (UI_DIR / "entrants.html"),
     "race_setup": (UI_DIR / "race_setup.html"),
     "race_control": (UI_DIR / "race_control.html"),
@@ -120,7 +121,7 @@ def _log(msg: str) -> None:
     print(f"[operator_launcher] {msg}", flush=True)
 
 
-def _http_get(url: str, timeout: float = 0.75) -> Optional[urllib.request.addinfourl]:
+def _http_get(url: str, timeout: float = 0.75) -> Optional[HTTPResponse]:
     """Tiny GET wrapper that returns a response or None on error; never throws."""
     try:
         req = urllib.request.Request(url, headers={"Accept": "application/json"})
@@ -342,9 +343,13 @@ class Api:
     def get_origin(self) -> str:
         """Return the current window origin, as seen from Python (for debugging)."""
         try:
-            return self.window.get_current_url() if self.window else "<no-window>"
+            if not self.window:
+                return "<no-window>"
+            url = self.window.get_current_url()
+            return url or "<unknown>"
         except Exception:
             return "<unknown>"
+
 
     # --------------------
     # Navigation helpers

@@ -1,0 +1,9 @@
+/* Results & Exports page styles
+   NOTE: Do not style .app-header / .app-footer here — operator.css owns header/footer.
+*/
+
+/* Content area scaffolding only */
+.op-page.results main.wrap {
+  /* room for content; header/footer sizing is shared */
+  padding: 16px;
+}

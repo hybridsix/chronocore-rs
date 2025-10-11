@@ -1,150 +1,60 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>Operator • Race Control</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Race Control — ChronoCore</title>
+    <link rel="stylesheet" href="../css/base.css" />
+    <link rel="stylesheet" href="../css/operator.css" />
+    <link rel="stylesheet" href="../css/race_control.css" />
+    <script src="../js/base.js" defer></script>
+  </head>
+  <body class="op-page race-control">
+    <header class="app-header" role="banner">
+      <div class="brand">
+        <a class="brand-link" href="/ui/operator/index.html" aria-label="Go to Home">
+          <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" />
+          <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+            <div class="wordmark__top">
+              <span class="wordmark__big">CHRONO</span>
+              <span class="wordmark__big">CORE</span>
+            </div>
+            <div class="wordmark__bottom">RACE SOFTWARE</div>
+          </div>
+        </a>
+        <div class="page-label">Race Control</div>
+      </div>
+      <div class="header-tools" aria-label="Header tools"><!-- intentionally empty --></div>
+    </header>
 
-  <!--
-    CSS imports
-    ----------
-    - base.css:      design tokens, layout utilities, global look
-    - spectator.css: shared flag banner styles + compact table rows (now includes Blue)
-    - operator.css:  grids, cards, spacing tuned for operator screens
-  -->
-  <link rel="stylesheet" href="../css/base.css" />
-  <link rel="stylesheet" href="../css/spectator.css" />
-  <link rel="stylesheet" href="../css/operator.css" />
-
-  <!--
-    JS imports
-    ----------
-    - base.js: exposes window.PRS = { makePoller, setNetStatus, startWallClock, fmtClock, ... }
-    - op_control.js: page wiring (flag posts, /race/state poll, DOM updates)
-  -->
-  <script src="../js/base.js" defer></script>
-  <script src="../js/op_control.js" defer></script>
-</head>
-
-<body class="race-control">
-  <!-- ───────────────────────────────────────────────────────────────
-       HEADER
-       - Title on the left
-       - Race clock (engine clock) on the right; updated by op_control.js
-       ─────────────────────────────────────────────────────────────── -->
-  <header class="app-header">
-    <div class="title">Operator • Race Control</div>
-
-    <!-- Race clock: shows engine time (mm:ss or h:mm:ss). Populated via /race/state.clock_ms -->
-    <div class="raceclock-wrap">
-      <div class="raceclock-label">Race Clock</div>
-      <div id="raceClock" class="pill pill-xl" aria-live="polite">--:--</div>
-    </div>
-  </header>
-
-  <!-- ───────────────────────────────────────────────────────────────
-       MAIN LAYOUT
-       - Two cards side-by-side on desktop:
-         1) Flag controls + live banner
-         2) Compact standings
-       - On narrow screens, operator.css stacks these vertically.
-       ─────────────────────────────────────────────────────────────── -->
-  <main class="wrap grid2-520">
-    <!-- CARD: Flag Controls -->
-    <section class="card" aria-labelledby="flagsHeading">
-      <h2 id="flagsHeading">Flags</h2>
-
-      <!--
-        Live Flag Banner
-        ----------------
-        - Shared visual component with spectator view.
-        - op_control.js toggles .hidden and applies .flag--{name}:
-          pre | green | yellow | red | white | blue | checkered
-      -->
-      <div class="flagBanner" style="margin-bottom: 10px;">
-        <div id="flagBanner" class="flag hidden" aria-live="polite">
-          <div class="flag__icon"></div>
-          <div id="flagLabel" class="flag__label">—</div>
+    <main class="wrap" role="main" aria-label="Race Control">
+      <!-- Page content starts here -->
+      <section class="page-body" aria-label="Controls and Status">
+        <!-- Race Clock Pill moved to main content -->
+        <div class="pill-grid" role="group" aria-label="Race Status Pills">
+          <div id="raceClockPill" class="pill clock" aria-live="polite" aria-atomic="true" tabindex="0">
+            <span class="pill__label">Race Clock</span>
+            <span class="pill__value" data-mm="00" data-ss="00" data-ff="00">00:00.00</span>
+          </div>
         </div>
+
+        <!-- Placeholder control regions to fill later -->
+        <div class="rc-columns">
+          <section class="rc-primary" aria-label="Primary Controls">
+            <!-- Start/Stop/Flags go here -->
+          </section>
+          <aside class="rc-secondary" aria-label="Session Details">
+            <!-- Heat selection, entrants, etc. -->
+          </aside>
+        </div>
+      </section>
+    </main>
+
+    <footer class="app-footer" role="contentinfo">
+      <div class="footer__inner">
+        <span id="netDot" class="net-dot" aria-hidden="true"></span>
+        <span id="netMsg" class="net-msg" aria-live="polite">Offline</span>
       </div>
-
-      <!--
-        Flag Buttons
-        ------------
-        Each button:
-         • class="flagbtn"
-         • data-flag="<name>" → op_control.js picks this up and POSTs /engine/flag
-        Full set includes Blue so the operator panel is complete.
-      -->
-      <div class="btnrow" role="group" aria-label="Race flags">
-        <button class="flagbtn" data-flag="pre"       title="Parade / Arm">Pre</button>
-        <button class="flagbtn" data-flag="green"     title="Start / Resume">Green</button>
-        <button class="flagbtn" data-flag="yellow"    title="Caution">Yellow</button>
-        <button class="flagbtn" data-flag="red"       title="Stop">Red</button>
-        <button class="flagbtn" data-flag="white"     title="Final Lap">White</button>
-        <button class="flagbtn" data-flag="blue"      title="Yield / Being Overtaken">Blue</button>
-        <button class="flagbtn" data-flag="checkered" title="Finish">Checkered</button>
-      </div>
-
-      <!-- Small helper note so operators know the exact backend call this triggers -->
-      <div class="hint" style="margin-top:8px">
-        Sends <code>POST /engine/flag</code> with body <code>{"flag":"&lt;name&gt;"}</code>.
-      </div>
-    </section>
-
-    <!-- CARD: Compact Standings -->
-    <section class="card" aria-labelledby="standingsHeading">
-      <h2 id="standingsHeading">Standings (Compact)</h2>
-
-      <!--
-        Header row for compact table
-        - Mirrors spectator's column semantics but condensed for operator glance.
-        - The body rows are injected into #rows by op_control.js.
-      -->
-      <div class="thead compact" style="margin-top:4px">
-        <div>#</div>
-        <div>Car</div>
-        <div>Team</div>
-        <div class="right">Lap</div>
-        <div class="right">Last</div>
-        <div class="right">Best</div>
-      </div>
-
-      <!-- Populated by renderStandings(state) in op_control.js -->
-      <div id="rows" class="rows compact" aria-live="polite"></div>
-
-      <!-- Optional usage hint for new operators -->
-      <div class="hint" style="margin-top:8px">
-        Ordered by the engine; updates every second from <code>/race/state</code>.
-      </div>
-    </section>
-  </main>
-
-  <!-- ───────────────────────────────────────────────────────────────
-       FOOTER
-       - Left: connection status dot + message (setNetStatus)
-       - Right: wall clock (real-world time; separate from race clock)
-       ─────────────────────────────────────────────────────────────── -->
-  <footer class="app-footer">
-    <div class="footer-left">
-      <div class="status-dot" id="netDot" aria-hidden="true"></div>
-      <div id="netMsg">Connecting…</div>
-    </div>
-    <div id="wallClock" class="pill" aria-label="Local time">--:--:--</div>
-  </footer>
-
-  <!--
-    Notes for maintainers
-    ---------------------
-    - This page has no inline logic. All behavior lives in op_control.js:
-        • Button → POST /engine/flag
-        • Poll /race/state → update #raceClock, #flagBanner, #rows
-    - Styling:
-        • The flag banner relies on spectator.css for .flag and .flag--{name} variants.
-        • operator.css provides layout (grid2-520, cards, spacing).
-    - Accessibility:
-        • aria-live is used on dynamic regions (flag banner, standings) so screen readers are informed.
-        • Buttons use clear labels/titles matching race vernacular.
-  -->
-</body>
+    </footer>
+  </body>
 </html>

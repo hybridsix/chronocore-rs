@@ -51,60 +51,53 @@
   <script src="../js/settings.js" defer></script>
 </head>
 <body class="page settings">
-  <!-- =====================================================================
-       HEADER (fixed)
-       ---------------------------------------------------------------------
-       The header mirrors the Entrants/Diagnostics style: a compact logo,
-       stacked wordmark, and a big page label. On the right, we show a pill
-       with the effective engine host label (if base.js exposes it).
-  ===================================================================== -->
   <header class="app-header">
-    <div class="brand">
-      <!-- ChronoCore brand (clickable link back to Home) -->
-      <a class="brand-link" href="/ui/operator/index.html" aria-label="Go to Home">
-        <img
-          class="brand-logo"
-          src="../img/CCRS_Logo.svg"
-          alt="ChronoCore Logo"
-        />
-        <div class="brand__wordmark" aria-label="ChronoCore Race Software">
-          <div class="wordmark__top">
-            <span class="wordmark__big">CHRONO</span>
-            <span class="wordmark__big">CORE</span>
-          </div>
-          <div class="wordmark__bottom">RACE SOFTWARE</div>
+  <div class="brand">
+    <!-- Brand: link back to Operator Home -->
+    <a class="brand-link" href="/ui/operator/index.html" aria-label="Go to Home">
+      <img
+        class="brand-logo"
+        src="../img/CCRS_Logo.svg"
+        alt="ChronoCore Logo"
+      />
+      <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+        <div class="wordmark__top">
+          <span class="wordmark__big">CHRONO</span>
+          <span class="wordmark__big">CORE</span>
         </div>
-      </a>
+        <div class="wordmark__bottom">RACE SOFTWARE</div>
+      </div>
+    </a>
 
-      <!-- Page-specific label -->
-      <div class="page-label">Settings</div>
-    </div>
+  <!-- Page-specific label -->
+  <div class="page-label">Settings</div>
+  </div>
 
+  <div class="app-header__tools">
     <!-- Right-side cluster: nav -->
-    <div class="app-header__tools">
-      <nav class="app-nav" aria-label="Site navigation">
-            <a class="app-nav__link" href="/ui/operator/index.html" aria-label="Home" title="Home">
-              <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#home"></use></svg>
-              <span class="sr-only">Home</span>
-            </a>
+    <nav class="app-nav" aria-label="Site navigation">
+          <a class="app-nav__link" href="/ui/operator/index.html" aria-label="Home" title="Home">
+            <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#home"></use></svg>
+            <span class="sr-only">Home</span>
+          </a>
 
-            <div class="app-nav__menu" id="appsMenu" data-open="false">
-              <button type="button" class="app-nav__btn" aria-haspopup="true" aria-expanded="false"
-                      aria-controls="appsPanel" title="Menu">
-                <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#menu"></use></svg>
-                <span class="sr-only">Open menu</span>
-              </button>
-            <div class="app-nav__panel" id="appsPanel" role="menu" aria-labelledby="appsMenu">
-          <a href="/ui/operator/entrants.html" role="menuitem">Entrants &amp; Tags</a>
-          <a href="/ui/operator/operator.html" role="menuitem">Operator</a>
-          <a class="current" href="/ui/operator/settings.html" role="menuitem">Settings</a>
-          <a href="/ui/operator/diag.html" role="menuitem">Diagnostics</a>
-          <a href="/ui/operator/help.html" role="menuitem">Help</a>
-          </div>
+          <div class="app-nav__menu" id="appsMenu" data-open="false">
+            <button type="button" class="app-nav__btn" aria-haspopup="true" aria-expanded="false"
+                    aria-controls="appsPanel" title="Menu">
+              <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#menu"></use></svg>
+              <span class="sr-only">Open menu</span>
+            </button>
+          <div class="app-nav__panel" id="appsPanel" role="menu" aria-labelledby="appsMenu">
+        <a href="/ui/operator/entrants.html" role="menuitem">Entrants &amp; Tags</a>
+        <a href="/ui/operator/operator.html" role="menuitem">Operator</a>
+        <a class="current" href="/ui/operator/settings.html" role="menuitem">Settings</a>
+        <a href="/ui/operator/diag.html" role="menuitem">Diagnostics</a>
+        <a href="/ui/operator/help.html" role="menuitem">Help</a>
         </div>
-      </nav>
-    </div>
-  </header>
+      </div>
+    </nav>
+  </div>
+</header>
 
   <!-- =====================================================================
        MAIN LAYOUT (two-column)
@@ -210,3 +203,47 @@
   </footer>
 </body>
 </html>
+
+<script>
+  (function () {
+    const menu = document.getElementById('appsMenu');
+    if (!menu) return;
+    const btn   = menu.querySelector('.app-nav__btn');
+    const panel = menu.querySelector('.app-nav__panel');
+
+    function openMenu(on) {
+      menu.dataset.open = on ? 'true' : 'false';
+      btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+    }
+
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      openMenu(menu.dataset.open !== 'true');
+      if (menu.dataset.open === 'true') {
+        const first = panel.querySelector('a');
+        if (first) first.focus();
+      }
+    });
+
+    document.addEventListener('click', () => openMenu(false));
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') openMenu(false);
+    });
+
+    panel.addEventListener('keydown', (e) => {
+      const items = Array.from(panel.querySelectorAll('a'));
+      const i = items.indexOf(document.activeElement);
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        (items[i + 1] || items[0]).focus();
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        (items[i - 1] || items[items.length - 1]).focus();
+      } else if (e.key === 'Home') {
+        e.preventDefault(); (items[0] || document.activeElement).focus();
+      } else if (e.key === 'End') {
+        e.preventDefault(); (items[items.length - 1] || document.activeElement).focus();
+      }
+    });
+  })();
+</script>
