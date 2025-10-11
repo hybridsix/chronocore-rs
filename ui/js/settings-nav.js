@@ -17,7 +17,7 @@
 
   // Optional: display the effective engine label if base.js provides it
   const engineLabel = document.getElementById('engineLabel');
-  if (engineLabel && window.PRS && typeof window.PRS.effectiveEngineLabel === 'function') {
-    engineLabel.textContent = 'Engine: ' + window.PRS.effectiveEngineLabel();
+  if (engineLabel && window.CCRS && typeof window.CCRS.effectiveEngineLabel === 'function') {
+    engineLabel.textContent = 'Engine: ' + window.CCRS.effectiveEngineLabel();
   }
 })();

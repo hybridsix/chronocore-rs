@@ -55,6 +55,20 @@
         window.open('/ui/spectator/spectator.html', '_blank');
       }
     </script>
+        <!-- BACK-compat shim for CCRS.apiUrl() -->
+    <script>
+      window.CCRS = window.CCRS || {};
+
+      // Back-compat shim: make CCRS.apiUrl a function if it isn't one yet
+      if (typeof window.CCRS.apiUrl !== 'function') {
+        window.CCRS.apiUrl = function (path) {
+          const base = (typeof window.CCRS.apiBase === 'string' && window.CCRS.apiBase) ? window.CCRS.apiBase : '';
+          return base + path;
+        };
+      }
+    </script>
+
+
   </head>
 
   <body class="index">
@@ -117,18 +131,7 @@
     <!-- Build version indicator -->
     <div class="version-pill" onclick="goto('about')">v0.1 Preview</div>
 
-    <!-- BACK-compat shim for CCRS.apiUrl() -->
-    <script>
-      window.CCRS = window.CCRS || {};
 
-      // Back-compat shim: make CCRS.apiUrl a function if it isn't one yet
-      if (typeof window.CCRS.apiUrl !== 'function') {
-        window.CCRS.apiUrl = function (path) {
-          const base = (typeof window.CCRS.apiBase === 'string' && window.CCRS.apiBase) ? window.CCRS.apiBase : '';
-          return base + path;
-        };
-      }
-    </script>
 
     <!-- PAGE WIRING (poll /race/state and update DOM) -->
     <script>

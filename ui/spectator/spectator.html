@@ -60,7 +60,7 @@
   <script>
     // --- Minimal shims if /ui/js/base.js isn't around -----------------------
     (function () {
-      if (window.PRS && typeof window.PRS.fetchJSON === "function") return;
+  if (window.CCRS && typeof window.CCRS.fetchJSON === "function") return;
       const $ = (s)=>document.querySelector(s);
       async function fetchJSON(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error(r.status); return r.json(); }
       function makePoller(fn,ms,onErr){ let t=null; const tick=async()=>{ try{await fn();}catch(e){onErr&&onErr(e);} finally{ t=setTimeout(tick,ms);} }; return { start(){ if(!t) tick(); }, stop(){ if(t) clearTimeout(t); t=null; } }; }
