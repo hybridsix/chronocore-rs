@@ -1,42 +1,16 @@
 /* ---------------------------------------------------------------------
   ENTRANTS PAGE — extends base.css/operator.css
   - Uses global --gutterX, --headerH, --footerH
-  - No brand scaling here (handled in base.css via .home / .brand-link)
-  --------------------------------------------------------------------- */
+  - No brand scaling here (handled in base.css via .home / 
 
-/* ===== Layout / header (Entrants-specific bits only) =================== */
-body.entrants main.wrap {
-  /* keep content aligned to global gutters; fallback protects if var missing */
-  padding: 8px var(--gutterX, 20px) 12px var(--gutterX, 20px);
-  max-width: none;
-}
-
-.app-header .brand {
-  display: flex;
-  align-items: center;
-  gap: 8px; /* final value (merge of duplicated rules) */
-  transform-origin: left center;
-}
-
-.app-header .page-label {
-  /* Use unified page-label from operator.css; keep a small left margin for entrants layout */
-  margin-left: 40px;
-}
-
-.app-header__tools {
-  margin-left: auto;
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-}
-.app-header__tools .pill { margin-left: 12px; }
+/* header brand spacing now unified in operator.css */
+/**/
 
 /* ===== Grid / panes ==================================================== */
 .ent-grid {
   display: grid;
   grid-template-columns: 1fr 2fr;
   gap: 12px;
-  min-height: calc(100dvh - var(--headerH) - var(--footerH) - 16px);
   height: auto;
   overflow: visible;
   margin: 0px 0;
@@ -45,7 +19,6 @@ body.entrants main.wrap {
 .pane { display: flex; min-width: 0; }
 .pane__scroll {
   flex: 1 1 auto;
-  max-height: calc(100dvh - var(--headerH) - var(--footerH) - 24px);
   overflow: auto;
 }
 
@@ -512,4 +485,5 @@ body.entrants main.wrap {
 .pane--left .enabled-control label {
   font-size: 14px;
   line-height: 1.1;               /* avoids extra vertical wobble */
+  margin-left: 10px;
 }

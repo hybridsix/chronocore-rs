@@ -46,6 +46,32 @@
     return ct.includes('application/json') ? res.json() : null;
   }
 
+window.CCRS = Object.assign(window.CCRS || {}, {
+  apiBase: '/api',
+  apiUrl(path) { return this.apiBase + path; },
+});
+
+
+// Ensure global CCRS object
+window.CCRS = window.CCRS || {};
+
+// Preserve any existing properties if base.js reassigns CCRS
+const _ccrs = window.CCRS;
+
+// Define helper for consistent API endpoint construction
+_ccrs.apiUrl = function (path) {
+  const base = (typeof _ccrs.apiBase === 'string' && _ccrs.apiBase) ? _ccrs.apiBase : '';
+  return base + path;
+};
+
+// Re-export for compatibility
+window.CCRS = _ccrs;
+
+
+
+
+
+
   /* -------------------------------------------
    * 3) JSON POST convenience (returns Response)
    * ------------------------------------------- */

@@ -43,7 +43,8 @@
 /* Non-home operator pages use the same header metrics */
 body:not(.home) .app-header {
   min-height: var(--headerH-ops);
-  padding: var(--headerPadY) 20px;
+  padding-left: var(--gutterX);
+  padding-right: var(--gutterX);
   display: flex;
   align-items: center;
   gap: var(--headerGapX);
@@ -499,12 +500,6 @@ body:not(.home) {
 /* Home page gets the hero height */
 body.home {
   --headerH: var(--headerH-hero);
-}
-
-/* Existing header block should already read --headerH */
-header.app-header {
-  padding: var(--headerPadY) var(--gutterX);
-  min-height: var(--headerH);
 }
 
 /* ===== Brand/link scaling (single source of truth) ===== */

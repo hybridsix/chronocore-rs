@@ -1,202 +1,194 @@
 <!doctype html>
 <html lang="en">
-<head>
-  <meta charset="utf-8" />
-  <title>CCRS — Operator Console</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <head>
+    <meta charset="utf-8" />
+    <title>CCRS — Operator Console</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- 
-    CSS imports:
-    - base.css : global variables, tokens, layout utilities
-    - spectator.css : shared flag banner + standings styles
-    - operator.css : operator-specific styles (grid layout, cards, hero area)
-  -->
-  <link rel="stylesheet" href="../css/base.css" />
-  <!-- <link rel="stylesheet" href="../css/spectator.css" />-->
-  <link rel="stylesheet" href="../css/operator.css" />
+    <!-- CSS imports
+         - base.css: global variables, tokens, layout utilities
+         - spectator.css: shared flag banner + standings styles (optional)
+         - operator.css: operator-specific styles (grid layout, cards, hero area)
+    -->
+    <link rel="stylesheet" href="/ui/css/base.css" />
+    <!-- <link rel="stylesheet" href="../css/spectator.css" /> -->
+    <link rel="stylesheet" href="/ui/css/operator.css" />
 
-  <!-- 
-    JS imports:
-    - base.js : shared helpers (setNetStatus, startWallClock, fmtClock, etc.)
-  -->
-  <script src="../js/base.js" defer></script>
+    <!-- JS imports
+         - base.js: shared helpers (setNetStatus, startWallClock, fmtClock, etc.)
+    -->
+    <script src="/ui/js/base.js" defer></script>
 
-  <script>
-    /**
-     * goto(screenId)
-     * ----------
-     * Operator navigation helper. In the embedded app (pywebview), 
-     * we may call into Python API. In a browser fallback, we just 
-     * redirect to the HTML file.
-     */
-    async function goto(screenId) {
-      if (window.pywebview?.api?.goto) {
-        try {
-          await window.pywebview.api.goto(screenId);
-        } catch (e) {
-          console.error("goto failed:", e);
-        }
-      } else {
-        // Fallback: load target page directly
-        location.href = screenId + ".html";
-      }
-    }
-
-    /**
-     * openSpectator()
-     * ----------
-     * Opens the spectator UI in an external browser window.
-     * - If running inside pywebview: call into Python API
-     * - Otherwise: open http://localhost:8000/ui in a new tab
-     */
-    async function openSpectator() {
-      if (window.pywebview?.api?.open_spectator) {
-        try {
-          await window.pywebview.api.open_spectator();
-          return;
-        } catch (e) {
-          console.error(e);
+    <script>
+      /**
+       * goto(screenId)
+       * Operator navigation helper. When running embedded (pywebview) we call
+       * into the Python API; otherwise fall back to a plain HTML redirect.
+       */
+      async function goto(screenId) {
+        if (window.pywebview?.api?.goto) {
+          try {
+            await window.pywebview.api.goto(screenId);
+          } catch (e) {
+            console.error('goto failed:', e);
+          }
+        } else {
+          // Fallback: load target page directly
+          location.href = screenId + '.html';
         }
       }
-      window.open("/ui/spectator/spectator.html", "_blank");
-    }
-  </script>
-</head>
 
-<body class="index">
-  <!-- ───────────────────────────────────────────────────────────────
-       HEADER: wordmark
-       ─────────────────────────────────────────────────────────────── -->
-<header class="app-header">
-  <!-- ChronoCore brand (logo + wordmark) -->
-  <div class="brand">
-    <!-- Logo on the left -->
-    <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo">
+      /**
+       * openSpectator()
+       * Open the spectator UI in a new browser tab. Prefer the pywebview
+       * API when available, otherwise open the local spectator page.
+       */
+      async function openSpectator() {
+        if (window.pywebview?.api?.open_spectator) {
+          try {
+            await window.pywebview.api.open_spectator();
+            return;
+          } catch (e) {
+            console.error(e);
+          }
+        }
+        window.open('/ui/spectator/spectator.html', '_blank');
+      }
+    </script>
+  </head>
 
-    <!-- Stacked wordmark on the right -->
-    <div class="brand__wordmark" aria-label="ChronoCore Race Software">
-      <div class="wordmark__top">
-        <span class="wordmark__big">CHRONO</span>
-        <span class="wordmark__big">CORE</span>
-      </div>
-      <div class="wordmark__bottom">RACE SOFTWARE</div>
-    </div>
-  </div>
-</header>
+  <body class="index">
+    <!-- HEADER: wordmark -->
+    <header class="app-header">
+      <!-- ChronoCore brand (logo + wordmark) -->
+      <div class="brand">
+        <!-- Logo on the left -->
+        <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo">
 
-  <!-- ───────────────────────────────────────────────────────────────
-       MAIN: split 2-column layout
-       LEFT = Navigation / Actions
-       ────────────────────────────────────────────────────────────── -->
-  <main class="wrap grid2-520">
-    <!-- LEFT COLUMN: Operator actions / navigation -->
-    <section class="hero card">
-      <div class="hero__inner">
-        <div class="hero__brand">
-          <!-- PRS logo (static asset) -->
-          <img class="brand-mark" src="../img/PRS_Logo.svg" alt="PRS Logo">
-          <p class="sub">Timing • Control • Moxie</p>
+        <!-- Stacked wordmark on the right -->
+        <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+          <div class="wordmark__top">
+            <span class="wordmark__big">CHRONO</span>
+            <span class="wordmark__big">CORE</span>
+          </div>
+          <div class="wordmark__bottom">RACE SOFTWARE</div>
         </div>
+      </div>
+    </header>
 
-        <!-- Navigation buttons (goto() handles routing) -->
-        <div class="hero__actions">
-          <button class="btn btn-primary" onclick="goto('race_setup')">Race Setup</button>
-          <button class="btn" onclick="goto('race_control')">Start / Race Control</button>
-          <button class="btn" onclick="goto('entrants')">Entrants & Tags</button>
-          <button class="btn" onclick="goto('stats')">Results & Exports</button>
-          <button class="btn" onclick="goto('diag')">Diagnostics / Live Sensors</button>
-          <button class="btn" onclick="goto('settings')">Setup & Devices</button>
-            <!-- separator between operator tools and spectator link -->
+    <!-- MAIN: split 2-column layout (LEFT = Navigation / Actions) -->
+    <main class="wrap grid2-520">
+      <!-- LEFT COLUMN: Operator actions / navigation -->
+      <section class="hero card">
+        <div class="hero__inner">
+          <div class="hero__brand">
+            <!-- PRS logo (static asset) -->
+            <img class="brand-mark" src="../img/PRS_Logo.svg" alt="PRS Logo">
+            <p class="sub">Timing • Control • Moxie</p>
+          </div>
+
+          <!-- Navigation buttons (goto() handles routing) -->
+          <div class="hero__actions">
+            <button class="btn btn-primary" onclick="goto('race_setup')">Race Setup</button>
+            <button class="btn" onclick="goto('race_control')">Start / Race Control</button>
+            <button class="btn" onclick="goto('entrants')">Entrants & Tags</button>
+            <button class="btn" onclick="goto('stats')">Results & Exports</button>
+            <button class="btn" onclick="goto('diag')">Diagnostics / Live Sensors</button>
+            <button class="btn" onclick="goto('settings')">Setup & Devices</button>
+            <!-- Separator between operator tools and spectator link -->
             <hr class="section-sep" aria-hidden="true">
-          <button class="btn" onclick="openSpectator()">Open Spectator View</button>
+            <button class="btn" onclick="openSpectator()">Open Spectator View</button>
+          </div>
         </div>
+      </section>
+    </main>
+
+    <!-- FOOTER: connection status + wall clock + version pill -->
+    <footer class="app-footer">
+      <div class="footer-left">
+        <!-- Network status dot + message -->
+        <div class="status-dot" id="netDot"></div>
+        <div id="netMsg"></div>
       </div>
-    </section>
+      <!-- Wall clock (real-world clock, separate from race clock) -->
+      <div id="wallClock" class="pill">--:--:--</div>
+    </footer>
 
+    <!-- Build version indicator -->
+    <div class="version-pill" onclick="goto('about')">v0.1 Preview</div>
 
-  </main>
+    <!-- BACK-compat shim for CCRS.apiUrl() -->
+    <script>
+      window.CCRS = window.CCRS || {};
 
-  <!-- ───────────────────────────────────────────────────────────────
-       FOOTER: connection status + wall clock + version pill
-       ─────────────────────────────────────────────────────────────── -->
-  <footer class="app-footer">
-    <div class="footer-left">
-      <!-- Network status dot + message -->
-      <div class="status-dot" id="netDot"></div>
-      <div id="netMsg"></div>
-    </div>
-    <!-- Wall clock (real-world clock, separate from race clock) -->
-    <div id="wallClock" class="pill">--:--:--</div>
-  </footer>
-
-  <!-- Build version indicator -->
-  <div class="version-pill" onclick="goto('about')">v0.1 Preview</div>
-
-  <!-- ───────────────────────────────────────────────────────────────
-       PAGE WIRING (poll /race/state and update DOM)
-       ─────────────────────────────────────────────────────────────── -->
-  <script>
-   window.addEventListener('DOMContentLoaded', () => {
-  // CCRS is guaranteed to exist now because deferred scripts run before this event
-
-  // Pull only what we actually use on the Home page
-  const { setNetStatus } = window.CCRS; // using CCRS.apiUrl/jsonFetch directly from window.CCRS
-
-  /**
-   * startSimpleWallClock(selector)
-   * ------------------------------
-   * Lightweight real-world clock for the footer.
-   * We use this here to keep Operator Home decoupled from race UI helpers.
-   */
-  function startSimpleWallClock(selector){
-    const el = document.querySelector(selector);
-    if (!el) return;
-    const fmt = (n) => String(n).padStart(2, "0");
-    function tick(){
-      const d = new Date();
-      el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
-    }
-    tick();
-    setInterval(tick, 1000);
-  }
-
-  // Kick off the footer wall clock immediately
-  startSimpleWallClock("#wallClock");
-
-  /**
-   * Lightweight reachability check
-   * ------------------------------
-   * We don't render live race widgets on Home, but it's still useful
-   * to reflect whether the engine answers. This poller only updates the
-   * footer status text and DOES NOT touch any other DOM.
-   */
-  // Local lightweight poller (makePoller not provided in production base.js)
-  let _reachTimer = null;
-  let _reachFailures = 0;
-  function startReachabilityPoll(ms = 2000) {
-    if (_reachTimer) clearInterval(_reachTimer);
-    _reachTimer = setInterval(async () => {
-      try {
-        const url = CCRS.apiUrl('/healthz');
-      const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-      if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
-
-        if (!r.ok) throw new Error(`/race/state failed: ${r.status} ${r.statusText}`);
-        _reachFailures = 0;
-        setNetStatus('ok');
-      } catch (err) {
-        _reachFailures++;
-        if (_reachFailures >= 2) setNetStatus('disconnected');
-        console.warn('reachability failed:', err?.message || err);
+      // Back-compat shim: make CCRS.apiUrl a function if it isn't one yet
+      if (typeof window.CCRS.apiUrl !== 'function') {
+        window.CCRS.apiUrl = function (path) {
+          const base = (typeof window.CCRS.apiBase === 'string' && window.CCRS.apiBase) ? window.CCRS.apiBase : '';
+          return base + path;
+        };
       }
-    }, ms);
-  }
-  setNetStatus('connecting');
-  startReachabilityPoll(2000);
+    </script>
 
-  });
-</script>
+    <!-- PAGE WIRING (poll /race/state and update DOM) -->
+    <script>
+      window.addEventListener('DOMContentLoaded', () => {
+        // CCRS is guaranteed to exist now because deferred scripts run before this event
 
-</body>
+        // Pull only what we actually use on the Home page
+        const { setNetStatus } = window.CCRS; // using CCRS.apiUrl/jsonFetch directly from window.CCRS
+
+        /**
+         * startSimpleWallClock(selector)
+         * Lightweight real-world clock for the footer. Keeps Operator Home
+         * decoupled from race UI helpers.
+         */
+        function startSimpleWallClock(selector) {
+          const el = document.querySelector(selector);
+          if (!el) return;
+          const fmt = (n) => String(n).padStart(2, '0');
+          function tick() {
+            const d = new Date();
+            el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
+          }
+          tick();
+          setInterval(tick, 1000);
+        }
+
+        // Kick off the footer wall clock immediately
+        startSimpleWallClock('#wallClock');
+
+        /**
+         * Lightweight reachability check
+         * We don't render live race widgets on Home, but it's still useful
+         * to reflect whether the engine answers. This poller only updates the
+         * footer status text and does NOT touch any other DOM.
+         */
+        // Local lightweight poller (makePoller not provided in production base.js)
+        let _reachTimer = null;
+        let _reachFailures = 0;
+        function startReachabilityPoll(ms = 2000) {
+          if (_reachTimer) clearInterval(_reachTimer);
+          _reachTimer = setInterval(async () => {
+            try {
+              const url = window.CCRS.apiUrl('/healthz');
+              const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+              if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
+
+              _reachFailures = 0;
+              setNetStatus('ok');
+            } catch (err) {
+              _reachFailures++;
+              if (_reachFailures >= 2) setNetStatus('disconnected');
+              console.warn('reachability failed:', err?.message || err);
+            }
+          }, ms);
+        }
+
+        setNetStatus('connecting');
+        startReachabilityPoll(2000);
+      });
+    </script>
+  </body>
 </html>
 

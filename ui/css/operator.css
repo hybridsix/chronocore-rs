@@ -4,12 +4,18 @@
   - Header: logo + stacked wordmark (compact, left-aligned)
   - Main "hero" card: two columns (brand left / actions right)
   - Utility bits: section separator, flag button styles
-  --------------------------------------------------------------------- */
+   --------------------------------------------------------------------- */
 
-/* ===== Global layout / tokens ===== */
 :root {
-  --footer-h: 48px;             /* footer height for consistent spacing */
-  --brand-nudge-x: 8px;         /* tiny optical push for hero brand (px) */
+  /* ===== Global layout / tokens ===== */
+
+  --headerPadY: 8px;
+  --headerH-ops: 72px;
+  --headerBrandGap: 8px;
+  --pageLabelGap: 40px;
+  --footer-h: 48px; /* footer height for consistent spacing */
+  --brand-nudge-x: 8px; /* tiny optical push for hero brand (px) */
+
   /* color tokens come from base.css; provide dark fallbacks */
   --bg: #0c131a;
   --text: #e6ebf0;
@@ -17,11 +23,15 @@
 }
 
 /* ===== Base page layout ===== */
-html, body { height: 100%; }
+
+html,
+body {
+  height: 100%;
+}
 
 body {
   margin: 0;
-  display: flex;                /* header → main → footer */
+  display: flex; /* header → main → footer */
   flex-direction: column;
   background: var(--bg);
   color: var(--text);
@@ -46,35 +56,33 @@ body {
 .app-header .brand {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--headerBrandGap, 8px);
 }
 
-/* Header logo only (scoped) — keeps black SVG white on dark header */
-.app-header .brand-logo {
-  /* scale the logo to the header height (respecting vertical padding) */
-  height: calc(var(--headerH,72px) - 2 * var(--headerPadY,8px));
-  width: auto;
-  flex: 0 0 auto;
-  filter: invert(1);
-}
-
-/* Wordmark stack (two big lines + small kicker) */
+/* Brand / wordmark — canonical rules (placed with header rules) */
 .app-header .brand__wordmark {
   display: flex;
   flex-direction: column;
   line-height: 1;
 }
+
 .app-header .wordmark__top {
   display: grid;
-  gap: 2px;                     /* space between CHRONO / CORE */
+  gap: 2px; /* space between lines (keeps earlier visual) */
+  grid-auto-flow: row;
+  grid-auto-rows: min-content;
+  align-content: start;
   letter-spacing: 0.06em;
 }
+
 .app-header .wordmark__big {
+  display: block;
   margin: 0;
   line-height: 1;
-  font-weight: 800;
-  font-size: clamp(18px, 3vw, 28px);
+  font-weight: 700;
+  font-size: clamp(17px, 2.6vw, 26px);
 }
+
 .app-header .wordmark__bottom {
   margin-top: 3px;
   line-height: 1;
@@ -84,40 +92,59 @@ body {
   opacity: 0.92;
 }
 
+/* Header logo only (scoped) — keeps black SVG white on dark header */
+.app-header .brand-logo {
+  /* scale the logo to the header height (respecting vertical padding) */
+  height: calc(var(--headerH-ops, 72px) - 2 * var(--headerPadY, 8px));
+  width: auto;
+  flex: 0 0 auto;
+  filter: invert(1);
+}
+
+
 /* ---------------------------------------------------------------------
   OPERATOR PAGE LABEL (scoped)
   - Visual style for header page labels (Entrants, Diagnostics, Settings)
   - Keep scoped here; move pure typography to `base.css` if needed
-  --------------------------------------------------------------------- */
+   --------------------------------------------------------------------- */
 .app-header .page-label {
   font-size: clamp(22px, 3vw, 32px);
   font-weight: 700;
-  letter-spacing: .04em;
+  letter-spacing: 0.04em;
   color: #E6F2F7;
   margin-left: var(--pageLabelGap);
   line-height: 1.2;
-  text-shadow: 0 2px 4px rgba(0,0,0,.40);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
 /* ===== Main grows to push footer down ===== */
-main { flex: 1; }
-.wrap { max-width: 1200px; margin: 0 auto; padding: 16px; }
+main {
+  flex: 1;
+}
+
+.wrap {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 16px;
+}
 
 /* ===== Cards ===== */
 .card {
   background: #0f141a;
   border: 1px solid #0b0f13;
   border-radius: 12px;
-  box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0,0,0,.35);
+  box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0, 0, 0, 0.35);
 }
 
 /* ===== Hero (two-column layout) ===== */
-.hero { padding: 0; }
+.hero {
+  padding: 0;
+}
 
 .hero__inner {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 360px;  /* left grows, right fixed */
+  grid-template-columns: 1fr 360px; /* left grows, right fixed */
   min-height: 320px;
 }
 
@@ -125,11 +152,12 @@ main { flex: 1; }
 .hero__inner::after {
   content: "";
   position: absolute;
-  top: 20px; bottom: 20px;
+  top: 20px;
+  bottom: 20px;
   left: calc(100% - 360px - 1px);
   width: 1px;
   background: #0b2230;
-  opacity: .9;
+  opacity: 0.9;
 }
 
 /* Left pane: brand block (centered within left column) */
@@ -171,13 +199,24 @@ main { flex: 1; }
   padding: 14px 16px;
   border-radius: 12px;
   cursor: pointer;
-  box-shadow: 0 0 0 1px #0c1116, 0 6px 16px rgba(0,0,0,.35);
-  transition: transform .06s ease, filter .2s ease;
+  box-shadow: 0 0 0 1px #0c1116, 0 6px 16px rgba(0, 0, 0, 0.35);
+  transition: transform 0.06s ease, filter 0.2s ease;
 }
-.btn:hover { filter: brightness(1.08); }
-.btn:active { transform: translateY(1px); }
+
+.btn:hover {
+  filter: brightness(1.08);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+
 .btn.btn-primary {
-  background: linear-gradient(180deg, rgba(0,180,255,.22), rgba(0,180,255,.06));
+  background: linear-gradient(
+    180deg,
+    rgba(0, 180, 255, 0.22),
+    rgba(0, 180, 255, 0.06)
+  );
   color: #dff3ff;
 }
 
@@ -185,7 +224,7 @@ main { flex: 1; }
 .section-sep {
   width: 100%;
   border: 0;
-  border-top: 1px solid rgba(160,190,210,0.25);
+  border-top: 1px solid rgba(160, 190, 210, 0.25);
   margin: 10px 0 6px;
 }
 
@@ -210,7 +249,7 @@ main { flex: 1; }
 }
 
 .footer-right {
-  opacity: .8;
+  opacity: 0.8;
   justify-self: end;
 }
 
@@ -232,7 +271,9 @@ main { flex: 1; }
 
 /* Net status dot (color is driven by JS via CSS vars or class) */
 .status-dot {
-  width: 10px; height: 10px; border-radius: 50%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
   background: var(--ok, #17c964);
 }
 
@@ -247,10 +288,13 @@ main { flex: 1; }
   border: 1px solid #0b2230;
   font-size: 12px;
   color: var(--text);
-  opacity: .95;
+  opacity: 0.95;
   cursor: pointer;
 }
-.version-pill:hover { filter: brightness(1.08); }
+
+.version-pill:hover {
+  filter: brightness(1.08);
+}
 
 /* ===== Flag controls (operator) — standalone, NOT limited to small screens ===== */
 .btnrow {
@@ -268,22 +312,57 @@ main { flex: 1; }
   cursor: pointer;
 }
 
-.flagbtn[data-flag="green"]     { background: rgba(34,197,94,0.12);   border-color: rgba(34,197,94,0.35); }
-.flagbtn[data-flag="yellow"]    { background: rgba(250,204,21,0.14);  border-color: rgba(250,204,21,0.40); }
-.flagbtn[data-flag="red"]       { background: rgba(239,68,68,0.14);   border-color: rgba(239,68,68,0.40); }
-.flagbtn[data-flag="white"]     { background: rgba(226,232,240,0.10); border-color: rgba(203,213,225,0.35); }
-.flagbtn[data-flag="blue"]      { background: rgba(59,130,246,0.14);  border-color: rgba(59,130,246,0.40); }
-.flagbtn[data-flag="checkered"] { background: rgba(148,163,184,0.12); border-color: rgba(148,163,184,0.35); }
-.flagbtn[data-flag="pre"]       { background: rgba(148,163,184,0.10); border-color: rgba(148,163,184,0.30); }
+.flagbtn[data-flag="green"] {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+.flagbtn[data-flag="yellow"] {
+  background: rgba(250, 204, 21, 0.14);
+  border-color: rgba(250, 204, 21, 0.4);
+}
+
+.flagbtn[data-flag="red"] {
+  background: rgba(239, 68, 68, 0.14);
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.flagbtn[data-flag="white"] {
+  background: rgba(226, 232, 240, 0.1);
+  border-color: rgba(203, 213, 225, 0.35);
+}
+
+.flagbtn[data-flag="blue"] {
+  background: rgba(59, 130, 246, 0.14);
+  border-color: rgba(59, 130, 246, 0.4);
+}
+
+.flagbtn[data-flag="checkered"] {
+  background: rgba(148, 163, 184, 0.12);
+  border-color: rgba(148, 163, 184, 0.35);
+}
+
+.flagbtn[data-flag="pre"] {
+  background: rgba(148, 163, 184, 0.1);
+  border-color: rgba(148, 163, 184, 0.3);
+}
 
 /* ===== Responsive tweaks ===== */
 @media (max-width: 900px) {
   .hero__inner {
-    grid-template-columns: 1fr;        /* stack columns on small screens */
+    grid-template-columns: 1fr; /* stack columns on small screens */
   }
-  .hero__inner::after { display: none; } /* hide divider */
-  .hero__brand {                          /* remove optical nudge on narrow */
+
+  .hero__inner::after {
+    display: none; /* hide divider */
+  }
+
+  .hero__brand {
+    /* remove optical nudge on narrow */
     align-content: start;
     transform: none;
   }
 }
+
+
+
