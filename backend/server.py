@@ -255,6 +255,15 @@ async def engine_entrant_assign_tag(payload: Dict[str, Any]):
 # Admin Entrants (authoritative DB read/write)
 # ------------------------------------------------------------
 
+from typing import Optional, Dict, Any
+from pydantic import BaseModel, Field, ValidationError, field_validator
+from fastapi import HTTPException
+import aiosqlite
+import sqlite3
+
+# If not already imported somewhere above:
+# from backend.db_schema import tag_conflicts  # adjust import path if needed
+
 class EntrantIn(BaseModel):
     """
     Authoritative entrant record for the database.
@@ -266,27 +275,23 @@ class EntrantIn(BaseModel):
       - 'tag': empty/whitespace becomes None; conflicts apply only when enabled==True and tag is not None
       - 'enabled': coerced to bool (accepts 1/0, "1"/"0", true/false)
     """
-    # CHANGED: optional id enables "create" semantics; id <= 0 also treated as create for back-compat with old id=0 posts
-    id: Optional[int] = Field(
-        default=None,
-        description="entrant_id primary key; None/<=0 means create"
-    )
+    id: Optional[int] = Field(default=None, description="entrant_id primary key; None/<=0 means create")
 
-    # KEEP your fields but make intent explicit
     number: Optional[str] = None
     name: str
     tag: Optional[str] = None
     enabled: bool = True
     status: str = "ACTIVE"
 
-    # ---- Normalizers / Coercions ----------------------------------------------------
+    # NEW: extra fields we actually want to persist
+    organization: Optional[str] = ""
+    spoken_name: Optional[str] = ""
+    color: Optional[str] = None
 
+    # ---- Normalizers / Coercions ----------------------------------------------------
     @field_validator('number', mode='before')
     @classmethod
     def _coerce_number(cls, v):
-        """
-        Accept '42' or 42 and store as string; allow None.
-        """
         if v is None:
             return None
         return str(v)
@@ -295,22 +300,21 @@ class EntrantIn(BaseModel):
     @classmethod
     def _normalize_tag(cls, v):
         """
-        Empty/whitespace-only tags become None so they don't participate in the unique-when-enabled rule.
+        Empty/whitespace-only tags become None so they don't participate
+        in the unique-when-enabled rule.
         """
         if v is None:
             return None
         s = str(v).strip()
         return s or None
 
+
     @field_validator('enabled', mode='before')
     @classmethod
     def _coerce_enabled(cls, v):
-        """
-        Accept booleans, 0/1, and '0'/'1' strings.
-        """
         if isinstance(v, bool):
             return v
-        if isinstance(v, (int,)):
+        if isinstance(v, int):
             return v == 1
         if isinstance(v, str):
             sv = v.strip().lower()
@@ -318,17 +322,11 @@ class EntrantIn(BaseModel):
                 return True
             if sv in ('0', 'false', 'no', 'n', 'off'):
                 return False
-        # Fallback to Python truthiness, but be explicit:
         return bool(v)
 
-    # Convenience helpers your route can use (optional)
     def is_create(self) -> bool:
-        """Return True if this payload should INSERT a new entrant."""
         return self.id is None or (isinstance(self.id, int) and self.id <= 0)
 
-    def normalized_tag(self) -> Optional[str]:
-        """Tag after whitespace->None normalization."""
-        return self.tag
 
 def _norm_tag(value: Optional[str]) -> Optional[str]:
     if value is None:
@@ -336,23 +334,22 @@ def _norm_tag(value: Optional[str]) -> Optional[str]:
     s = str(value).strip()
     return s or None
 
+
 @app.get("/admin/entrants")
 async def admin_list_entrants():
     """
     Authoritative read of entrants for Operator UI.
-
-    Output normalization rules:
-      - 'id'      : always an integer (SQLite primary key).
-      - 'number'  : always a string if present, else None.
-      - 'enabled' : always a boolean True/False, not 0/1.
-      - Other fields are passed through as stored.
     """
     async with aiosqlite.connect(DB_PATH) as db:
         db.row_factory = aiosqlite.Row
         cur = await db.execute("""
-            SELECT entrant_id AS id, number, name, tag, enabled, status
+            SELECT
+              entrant_id AS id,
+              number, name, tag, enabled,
+              status, organization, spoken_name, color,
+              logo, updated_at
             FROM entrants
-            ORDER BY entrant_id
+            ORDER BY CAST(number AS INTEGER) NULLS LAST, name
         """)
         rows = await cur.fetchall()
         await cur.close()
@@ -360,22 +357,18 @@ async def admin_list_entrants():
         out = []
         for r in rows:
             out.append({
-                # id stays an integer exactly as stored
                 "id": int(r["id"]) if r["id"] is not None else None,
-
-                # number always stringified so UI can treat it uniformly
                 "number": (str(r["number"]) if r["number"] is not None else None),
-
-                # other fields unchanged
                 "name": r["name"],
                 "tag": r["tag"],
-
-                # ensure strict boolean for enabled
                 "enabled": bool(r["enabled"]),
-
                 "status": r["status"],
+                "organization": r["organization"],
+                "spoken_name": r["spoken_name"],
+                "color": r["color"],
+                "logo": r["logo"],
+                "updated_at": r["updated_at"],
             })
-
         return out
 
 
@@ -384,23 +377,16 @@ async def admin_upsert_entrants(payload: Dict[str, Any]):
     """
     Create or update entrants in the authoritative DB.
 
-    Semantics:
-      • If 'id' is None, missing, or ≤ 0  → INSERT (SQLite assigns new entrant_id)
-      • If 'id' > 0                       → UPDATE that specific row (upsert)
     Rules:
-      • Among ENABLED entrants only, 'tag' must be unique (app-level pre-check + DB index backstop).
-      • All operations occur inside a single transaction (atomic batch).
+      • Among ENABLED entrants only, 'tag' must be unique.
+      • Atomic batch in a single transaction.
       • Returns 409 on conflict, 400 on bad payload, 200 on success.
     """
-
     entrants = payload.get("entrants")
     if not isinstance(entrants, list):
         raise HTTPException(status_code=400, detail="body must contain 'entrants' as a list")
 
-    
-    # ---------------------------------------------------------------------
-    # 1) Validate and normalize every entrant before touching the DB
-    # ---------------------------------------------------------------------
+    # 1) Validate/normalize
     entries: list[EntrantIn] = []
     for idx, item in enumerate(entrants):
         if not isinstance(item, dict):
@@ -411,70 +397,82 @@ async def admin_upsert_entrants(payload: Dict[str, Any]):
             raise HTTPException(status_code=400, detail=f"invalid entrant at index {idx}: {ve.errors()!r}")
         entries.append(e)
 
-    
-    # ---------------------------------------------------------------------
-    # 2) Open the DB transaction and enforce unique-tag rule
-    # ---------------------------------------------------------------------
+    # 2) Transaction + uniqueness guard
     async with aiosqlite.connect(DB_PATH) as db:
-        await db.execute("BEGIN IMMEDIATE")  # get write lock early for predictability
+        await db.execute("BEGIN IMMEDIATE")
         try:
-            import sqlite3
+            # App-level duplicate tag check (enabled & tag not null)
             with sqlite3.connect(DB_PATH) as sconn:
                 for e in entries:
-                    # Only enabled entrants with a non-null tag participate in the uniqueness rule
                     if e.enabled and e.tag:
-                        if tag_conflicts(sconn, e.tag, incumbent_entrant_id=(e.id if not e.is_create() else None)):
+                        if tag_conflicts(sconn, e.tag, incumbent_entrant_id=(None if e.is_create() else e.id)):
                             await db.execute("ROLLBACK")
                             raise HTTPException(
                                 status_code=409,
                                 detail=f"tag '{e.tag}' already assigned to another enabled entrant (while upserting id={e.id or 'new'})"
                             )
 
-            # -----------------------------------------------------------------
-            # 3) Perform inserts or upserts depending on id semantics
-            #    - For CREATE we capture cursor.lastrowid from aiosqlite.
-            #    - We also collect (client_idx, new_id) so the UI can learn ids.
-            # -----------------------------------------------------------------
             created = 0
             updated = 0
-            assigned_ids: list[dict] = []   # e.g. [{"client_idx": 0, "id": 17}]
+            assigned_ids: list[dict] = []
 
             for i, e in enumerate(entries):
-                # If you have a tag normalizer on the model, use it; otherwise stick with e.tag
-                tag_value = e.tag
-                # tag_value = e.normalized_tag()
+                tag_value = _norm_tag(e.tag)
 
                 if e.is_create():
                     # -------- INSERT (let SQLite assign entrant_id) --------
-                    # EXACTLY 5 placeholders for the 5 values we pass.
-                    # updated_at is set by SQLite, not as a bound parameter.
                     cur = await db.execute(
                         """
-                        INSERT INTO entrants (number, name, tag, enabled, status, updated_at)
-                        VALUES (?, ?, ?, ?, ?, strftime('%s','now'))
+                        INSERT INTO entrants
+                          (number, name, tag, enabled, status, organization, spoken_name, color, updated_at)
+                        VALUES
+                          (?,      ?,    ?,   ?,       ?,      ?,            ?,           ?,     strftime('%s','now'))
                         """,
-                        (e.number, e.name, tag_value, 1 if e.enabled else 0, e.status),
+                        (
+                            e.number,
+                            e.name,
+                            tag_value,
+                            1 if e.enabled else 0,
+                            e.status,
+                            e.organization or "",
+                            e.spoken_name or "",
+                            e.color,
+                        ),
                     )
                     new_id = cur.lastrowid
                     assigned_ids.append({"client_idx": i, "id": new_id})
                     await cur.close()
                     created += 1
                 else:
-                    # -------- UPSERT by existing id (PRIMARY KEY) --------
-                    # 6 placeholders for the 6 values we pass.
+                    # -------- UPSERT by PRIMARY KEY --------
                     await db.execute(
                         """
-                        INSERT INTO entrants (entrant_id, number, name, tag, enabled, status, updated_at)
-                        VALUES (?, ?, ?, ?, ?, ?, strftime('%s','now'))
+                        INSERT INTO entrants
+                          (entrant_id, number, name, tag, enabled, status, organization, spoken_name, color, updated_at)
+                        VALUES
+                          (?,          ?,      ?,    ?,   ?,       ?,      ?,            ?,           ?,     strftime('%s','now'))
                         ON CONFLICT(entrant_id) DO UPDATE SET
-                            number     = excluded.number,
-                            name       = excluded.name,
-                            tag        = excluded.tag,
-                            enabled    = excluded.enabled,
-                            status     = excluded.status,
-                            updated_at = strftime('%s','now')
+                          number       = excluded.number,
+                          name         = excluded.name,
+                          tag          = excluded.tag,
+                          enabled      = excluded.enabled,
+                          status       = excluded.status,
+                          organization = excluded.organization,
+                          spoken_name  = excluded.spoken_name,
+                          color        = excluded.color,
+                          updated_at   = strftime('%s','now')
                         """,
-                        (e.id, e.number, tag_value, 1 if e.enabled else 0, e.status),
+                        (
+                            e.id,
+                            e.number,
+                            e.name,
+                            tag_value,
+                            1 if e.enabled else 0,
+                            e.status,
+                            e.organization or "",
+                            e.spoken_name or "",
+                            e.color,
+                        ),
                     )
                     updated += 1
 
@@ -487,12 +485,9 @@ async def admin_upsert_entrants(payload: Dict[str, Any]):
                 "assigned_ids": assigned_ids,
             }
 
-
-            
         except HTTPException:
-            raise  # already rolled back above
+            raise
         except sqlite3.IntegrityError as ie:
-            # Defensive backstop if DB-level unique index fires first
             await db.execute("ROLLBACK")
             raise HTTPException(status_code=409, detail=f"uniqueness violation: {ie}")
         except Exception as ex:

@@ -135,7 +135,7 @@ def run_session(port: str, min_lap: float = 3.0):
         print("Closed serial and DB.")
 
 def main():
-    parser = argparse.ArgumentParser(description="PRS – Minimal console race session")
+    parser = argparse.ArgumentParser(description="CCRS – Minimal console race session")
     parser.add_argument("port", help="Serial port (e.g. COM3 or /dev/ttyUSB0)")
     parser.add_argument("--min-lap", type=float, default=3.0, help="Minimum lap seconds (dup filter)")
     args = parser.parse_args()

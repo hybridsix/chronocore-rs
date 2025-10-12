@@ -72,10 +72,10 @@
         return `${String(m).padStart(2,"0")}:${String(ss).padStart(2,"0")}`;
       }
       function startWallClock(sel){ const el=$(sel); const up=()=>{ const d=new Date(); el.textContent = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`; }; up(); const id=setInterval(up,1000); return ()=>clearInterval(id); }
-      window.PRS = { $, fetchJSON, makePoller, setNetStatus, fmtClock, startWallClock };
+      window.CCRS = { $, fetchJSON, makePoller, setNetStatus, fmtClock, startWallClock };
     })();
 
-    const { $, fetchJSON, makePoller, setNetStatus, fmtClock, startWallClock } = window.PRS;
+    const { $, fetchJSON, makePoller, setNetStatus, fmtClock, startWallClock } = window.CCRS;
 
     // Human-friendly flag titles (use hyphen, not em-dash)
     const FLAG_TITLES = {

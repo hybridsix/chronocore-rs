@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-SQLite migration to PRS schema v0.2.0 (tag-based, no bib; transponders has org/display_name)
+SQLite migration to CCRS schema v0.2.0 (tag-based, no bib; transponders has org/display_name)
 - Makes a timestamped backup first
 - Migrates laps: bib -> tag (if needed)
 - Migrates transponders: team/bib -> org/display_name (if needed)
@@ -9,7 +9,7 @@ SQLite migration to PRS schema v0.2.0 (tag-based, no bib; transponders has org/d
 
 import os, shutil, sqlite3, time, sys
 
-DB_PATH = os.environ.get("PRS_DB", "laps.sqlite")
+DB_PATH = os.environ.get("CCRS_DB", os.environ.get("PRS_DB", "laps.sqlite"))
 
 def table_exists(conn, name):
     r = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (name,)).fetchone()

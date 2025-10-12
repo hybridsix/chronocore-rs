@@ -1,6 +1,6 @@
 import csv, sqlite3, pathlib, sys
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent   # project root (…/prs_starter)
+ROOT = pathlib.Path(__file__).resolve().parent.parent   # project root (…/ccrs)
 DB    = ROOT / "laps.sqlite"
 
 # allow optional output path: python export_csv.py C:\path\to\file.csv

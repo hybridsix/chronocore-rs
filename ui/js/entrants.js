@@ -1,12 +1,99 @@
 /* ==========================================================================
    CCRS — Entrants & Tags page logic
    - Forward-only helpers via window.CCRS
-   - setNetStatus(ok:boolean, message:string)
+   - CCRS.setNetStatus(ok:boolean, message:string)
    - DB pill uses /readyz (immediate + poller)
    - Entrants CRUD via /admin/entrants (bulk contract, single item)
    ========================================================================== */
 (function () {
   'use strict';
+
+  /* --- SAFETY SHIM: guarantee a global fillForm(row) that hydrates ALL fields --- */
+(function () {
+  if (typeof window.fillForm === 'function') return;  // already defined elsewhere
+
+  function normHex(v) {
+    if (v == null) return null;
+    const s = String(v).trim().replace(/^#/, '');
+    if (/^[0-9a-f]{3}$/i.test(s)) return ('#' + s[0]+s[0]+s[1]+s[1]+s[2]+s[2]).toUpperCase();
+    if (/^[0-9a-f]{6}$/i.test(s)) return ('#' + s).toUpperCase();
+    return null;
+  }
+
+  window.fillForm = function fillForm(row = {}) {
+    if (!row || typeof row !== 'object') row = {};
+
+    // Core
+    const byId = (id) => document.getElementById(id);
+    const setVal = (id, v='') => { const el = byId(id); if (el) el.value = v; };
+    const setChk = (id, v=false) => { const el = byId(id); if (el) el.checked = !!v; };
+
+    setVal('entId',      row.id ?? '');
+    setVal('entNumber',  row.number ?? '');
+    setVal('entName',    row.name ?? '');
+    setVal('entTag',     row.tag ?? '');
+    setChk('entEnabled', !!row.enabled);
+
+    // Extras
+    const statusEl = byId('entStatus');  if (statusEl) statusEl.value = row.status || 'ACTIVE';
+    const orgEl    = byId('entOrg');     if (orgEl)    orgEl.value    = row.organization || '';
+    const spEl     = byId('entSpoken');  if (spEl)     spEl.value     = row.spoken_name || '';
+
+    // Color text + picker
+    const cNorm = normHex(row.color);
+    const colorText   = byId('entColor');
+    const colorPicker = byId('entColorPicker');
+    if (colorText)   colorText.value   = cNorm || '';
+    if (colorPicker) colorPicker.value = cNorm || '#22C55E';
+
+    // Last Updated: supports <time id="entUpdated"> or <input id="entUpdatedAt">
+    const updEl = byId('entUpdated') || byId('entUpdatedAt');
+    if (updEl) {
+      if (row.updated_at) {
+        const d = new Date(row.updated_at * 1000);
+        if (updEl.tagName === 'TIME') {
+          updEl.dateTime = d.toISOString();
+          updEl.textContent = d.toLocaleString();
+        } else {
+          updEl.value = d.toLocaleString();
+        }
+      } else {
+        if (updEl.tagName === 'TIME') {
+          updEl.dateTime = '';
+          updEl.textContent = '—';
+        } else {
+          updEl.value = '';
+        }
+      }
+    }
+  };
+})();
+
+
+/* ===================== CCRS MODEL INDEX (injected) =====================
+   Global single source of truth for entrants by id. We keep this idempotent
+   so repeated script loads won't redeclare or throw.
+======================================================================== */
+window.ROSTER_BY_ID = window.ROSTER_BY_ID || new Map();
+
+// Normalize backend rows into a stable shape used by the editor.
+window.normalizeEntrant = window.normalizeEntrant || function normalizeEntrant(raw) {
+  if (!raw) return null;
+  const id = raw.id ?? raw.entrant_id ?? null;
+  return {id,
+    number:       String(raw.number ?? ''),
+    name:         raw.name ?? '',
+    tag:          raw.tag ?? null,
+    enabled:      Boolean(raw.enabled ?? 1),
+    status:       raw.status ?? 'ACTIVE',
+    organization: raw.organization ?? '',
+    spoken_name:  raw.spoken_name ?? '',
+    color:        raw.color ?? null,
+    updated_at:   raw.updated_at ?? null,
+    logo:         raw.logo ?? null,};
+};
+
+
 
   // --- Helpers from base.js (forward-only) ---
   if (!window.CCRS) {
@@ -367,30 +454,38 @@
     try {
       const r = await fetch('/readyz', { cache: 'no-store' });
       setReadyUI(r.ok);
-      setNetStatus(true, r.ok ? 'Ready' : 'Not ready');
+      CCRS.setNetStatus(true, r.ok ? 'Ready' : 'Not ready');
     } catch {
       setReadyUI(false);
-      setNetStatus(false, 'Offline');
+      CCRS.setNetStatus(false, 'Offline');
     }
   }
 
   async function loadEntrants() {
     try {
-      const data = await fetchJSON('/admin/entrants', { cache: 'no-store' });
+      const data = await CCRS.fetchJSON('/admin/entrants', { cache: 'no-store' });
       if (!Array.isArray(data)) throw new Error('Bad entrants payload');
-      ALL = data;
+      
+      // Build normalized lookup for Edit hydration (id -> full row)
+      window.ROSTER_BY_ID.clear();
+      const __arr = Array.isArray(data) ? data : [];
+      for (const e of __arr) {
+        const n = window.normalizeEntrant(e);
+        if (n && n.id != null) window.ROSTER_BY_ID.set(n.id, n);
+      }
+ALL = data;
       render();
-      setNetStatus(true, `OK — ${ALL.length} entrants`);
+      CCRS.setNetStatus(true, `OK — ${ALL.length} entrants`);
       highlightSelection();
     } catch (err) {
       console.error('[Entrants] loadEntrants failed:', err.message || err);
-      setNetStatus(false, 'Failed to load entrants');
+      CCRS.setNetStatus(false, 'Failed to load entrants');
     }
   }
 
   async function saveEntrant(one) {
     try {
-      const res = await postJSON('/admin/entrants', { entrants: [ one ] });
+      const res = await CCRS.postJSON('/admin/entrants', { entrants: [ one ] });
 
       if (res.status === 409) {
         setFormMsg('That tag is already assigned to another enabled entrant.', 'error');
@@ -406,12 +501,12 @@
       try { body = await res.json(); } catch (_) {}
       await loadEntrants();
       setFormMsg('Entrant saved.', 'ok');
-      setNetStatus(true, 'Entrant saved');
+      CCRS.setNetStatus(true, 'Entrant saved');
       return { ok:true, code:200, body };
     } catch (err) {
       const code = err?.response?.status ?? 0;
       setFormMsg(err.message || 'Save failed; check connection/logs.', 'error');
-      setNetStatus(false, 'Save failed');
+      CCRS.setNetStatus(false, 'Save failed');
       return { ok:false, code, body:null };
     }
   }
@@ -466,14 +561,25 @@
         <div class="right small muted"></div>
       `;
 
-      el.querySelector('[data-act="edit"]').addEventListener('click', () => fillForm(row));
+      el.querySelector('[data-act="edit"]').addEventListener('click', () => window.fillForm(row));
       el.querySelector('[data-act="tag"]').addEventListener('click', async () => {
         const current = String(row.tag ?? '');
         const val = prompt(`Set tag for “${row.name}” (digits only; blank = clear):`, current);
         if (val === null) return;
         const clean = val.trim();
-        if (clean !== '' && !/^\d+$/.test(clean)) { setNetStatus(false, 'Tag must be digits only'); return; }
-        const body = { id: row.id, number: row.number, name: row.name, tag: clean === '' ? null : clean, enabled: row.enabled };
+        if (clean !== '' && !/^\d+$/.test(clean)) { CCRS.setNetStatus(false, 'Tag must be digits only'); return; }
+        const body = {
+          id,
+          number: full.number,
+          name: full.name,
+          tag: clean === '' ? null : clean,
+          enabled: !!full.enabled,
+          status: full.status ?? 'ACTIVE',
+          organization: full.organization ?? '',
+          spoken_name: full.spoken_name ?? '',
+          color: full.color ?? null,
+        };
+
         el.classList.add('captured');
         const { ok, code } = await saveEntrant(body);
         if (!ok) {
@@ -487,8 +593,18 @@
       });
 
       el.addEventListener('dblclick', (ev) => {
+        // Ignore double-clicks that originate from action buttons
         if (ev.target.closest('.actions')) return;
-        fillForm(row);
+
+        // Resolve id from row or dataset
+        const id = (row.id ?? row.entrant_id ?? Number(el?.dataset?.id));
+
+        // Prefer a normalized, cached full row when available
+        const full = (window.ROSTER_BY_ID instanceof Map)
+          ? (window.ROSTER_BY_ID.get(id) || (window.normalizeEntrant ? window.normalizeEntrant(row) : row))
+          : row;
+
+        window.fillForm(full);
       });
 
       els.rows.appendChild(el);
@@ -502,40 +618,76 @@
      ========================= */
   function clearForm() {
     selectedId = null;
-    els.entId.value = '';
-    els.entNumber.value = '';
-    els.entName.value = '';
-    els.entTag.value = '';
-    els.entEnabled.checked = true;
-    setFormMsg('', '');
-    highlightSelection();
-  }
+    try { els && els.entId && (els.entId.value = ''); } catch(_){}
+    try { els && els.entNumber && (els.entNumber.value = ''); } catch(_){}
+    try { els && els.entName && (els.entName.value = ''); } catch(_){}
+    try { els && els.entTag && (els.entTag.value = ''); } catch(_){}
+    try { els && els.entEnabled && (els.entEnabled.checked = true); } catch(_){}
+
+    const setVal = (id, v='') => { const el = document.getElementById(id); if (el) el.value = v; };
+    setVal('entOrg', '');
+    setVal('entSpoken', '');
+    setVal('entColor', '');
+    setVal('entColorPicker', '#22C55E');
+    const statusEl = document.getElementById('entStatus'); if (statusEl) statusEl.value = 'ACTIVE';
+
+    const updEl = document.getElementById('entUpdated') || document.getElementById('entUpdatedAt');
+    if (updEl) {
+      if (updEl.tagName === 'TIME') { updEl.dateTime = ''; updEl.textContent = '—'; }
+      else { updEl.value = ''; }
+    }
+    document.querySelectorAll('.ent-row.active').forEach(el => el.classList.remove('active'));
+    setFormMsg && setFormMsg('', 'ok');
+}
   function fillForm(row = {}) {
-    // row now defaults to an empty object if undefined
-    selectedId = row.id ?? null;
+  // Robust left-pane hydration with normalized row
+  if (!row || typeof row !== 'object') row = {};
+  selectedId = row.id ?? null;
 
-    els.entId.value      = row.id ?? '';
-    els.entNumber.value  = row.number ?? '';
-    els.entName.value    = row.name ?? '';
-    els.entTag.value     = row.tag ?? '';
-    els.entEnabled.checked = !!row.enabled;
+  // Core
+  try { els && els.entId && (els.entId.value = row.id ?? ''); } catch (_){}
+  try { els && els.entNumber && (els.entNumber.value = row.number ?? ''); } catch (_){}
+  try { els && els.entName && (els.entName.value = row.name ?? ''); } catch (_){}
+  try { els && els.entTag && (els.entTag.value = row.tag ?? ''); } catch (_){}
+  try { els && els.entEnabled && (els.entEnabled.checked = !!row.enabled); } catch (_){}
 
-    // NEW: defensive defaults for color sync
-    if (els.entColor && els.entColorPicker) {
-      const norm = normalizeHexColor(row.color);
-      if (norm && isStrictHex6(norm)) {
-        els.entColor.value    = norm;
-        els.entColorPicker.value = norm;
-        els.entColor.classList.remove('input-error');
+  // Extras via document.getElementById to be resilient
+  (function(){
+    const statusEl = document.getElementById('entStatus');
+    if (statusEl) statusEl.value = row.status || 'ACTIVE';
+
+    const orgEl = document.getElementById('entOrg');
+    if (orgEl) orgEl.value = row.organization || '';
+
+    const spokenEl = document.getElementById('entSpoken');
+    if (spokenEl) spokenEl.value = row.spoken_name || '';
+
+    const normalizeHex = (v) => {
+      if (v == null) return null;
+      const s = String(v).trim().replace(/^#/, '');
+      if (/^[0-9a-f]{3}$/i.test(s)) return ('#' + s[0]+s[0]+s[1]+s[1]+s[2]+s[2]).toUpperCase();
+      if (/^[0-9a-f]{6}$/i.test(s)) return ('#' + s).toUpperCase();
+      return null;
+    };
+    const c = normalizeHex(row.color);
+    const colorText   = document.getElementById('entColor');
+    const colorPicker = document.getElementById('entColorPicker');
+    if (colorText)   colorText.value   = c || '';
+    if (colorPicker) colorPicker.value = c || '#22C55E';
+
+    const updEl = document.getElementById('entUpdated') || document.getElementById('entUpdatedAt');
+    if (updEl) {
+      if (row.updated_at) {
+        const d = new Date(row.updated_at * 1000);
+        if (updEl.tagName === 'TIME') { updEl.dateTime = d.toISOString(); updEl.textContent = d.toLocaleString(); }
+        else { updEl.value = d.toLocaleString(); }
       } else {
-        els.entColor.value    = '';
-        els.entColorPicker.value = '#22C55E';
-        els.entColor.classList.remove('input-error');
+        if (updEl.tagName === 'TIME') { updEl.dateTime = ''; updEl.textContent = '—'; }
+        else { updEl.value = ''; }
       }
     }
-
-    // ... rest of your fillForm() logic
-  }
+  })();
+}
 
 
   function validateForm(show) {
@@ -549,23 +701,43 @@
     if (show) setFormMsg(msg, msg ? 'error' : 'ok');
     return !msg;
   }
-  function formToPayload() {
-    const id = els.entId.value ? Number(els.entId.value) : null;
-    const numberStr = els.entNumber.value.trim();
-    const name = clamp(els.entName.value, 40);
-    const tagRaw = els.entTag.value.trim();
-    const tag = tagRaw === '' ? null : digitsOnly(tagRaw);
-    const enabled = !!els.entEnabled.checked;
 
-      // NEW — Color normalized to #RRGGBB or null
+  function formToPayload() {
+    const id        = els.entId?.value ? Number(els.entId.value) : null;
+    const numberStr = els.entNumber?.value?.trim() ?? '';
+    const name      = String(els.entName?.value ?? '').slice(0, 40);
+
+    const tagRaw = els.entTag?.value?.trim() ?? '';
+    const tag    = tagRaw === '' ? null : tagRaw.replace(/\D+/g, '');
+
+    const enabled = !!(els.entEnabled && els.entEnabled.checked);
+
+    // Normalize color to #RRGGBB or null
     let color = null;
     if (els.entColor) {
-      const norm = normalizeHexColor(els.entColor.value);
-      color = (norm && isStrictHex6(norm)) ? norm : null;
+      const s = String(els.entColor.value || '').trim().replace(/^#/, '');
+      if (/^[0-9a-f]{3}$/i.test(s)) color = ('#' + s[0]+s[0]+s[1]+s[1]+s[2]+s[2]).toUpperCase();
+      else if (/^[0-9a-f]{6}$/i.test(s)) color = ('#' + s).toUpperCase();
     }
 
-    return { id, number: Number(numberStr), name, tag, enabled, color };
+    // NEW: pull the extra fields
+    const organization = document.getElementById('entOrg')?.value?.trim() || '';
+    const spoken_name  = document.getElementById('entSpoken')?.value?.trim() || '';
+    const status       = document.getElementById('entStatus')?.value || 'ACTIVE';
+
+    return {
+      id,
+      number: Number(numberStr),
+      name,
+      tag,
+      enabled,
+      color,
+      organization,   // <<< now included
+      spoken_name,    // <<< now included
+      status,
+    };
   }
+
 
   /* =========================
      409 Conflict handling
@@ -581,7 +753,7 @@
     // focus the single Tag field
     els.entTag.value = tagDigits;
     els.entTag.focus();
-    setNetStatus(false, '409 — duplicate tag');
+    CCRS.setNetStatus(false, '409 — duplicate tag');
   }
 
   /* =========================
@@ -606,7 +778,18 @@
     if (!isValidNum(num))   { setQCMsg('Number must be a positive integer.', 'error'); return; }
     if (!isValidTeam(name)) { setQCMsg('Team must be 2–40 characters.', 'error'); return; }
 
-    const payload = { id: null, number: Number(num), name, tag: digitsOnly(tag), enabled };
+    const payload = {
+      id: null,
+      number: Number(num),
+      name,
+      tag: tag ? tag.replace(/\D+/g, '') : null,
+      enabled,
+      color: null,
+      organization: '',
+      spoken_name: '',
+      status: 'ACTIVE',
+    };
+
     const { ok, code, body } = await saveEntrant(payload);
 
     if (!ok) {
@@ -636,7 +819,7 @@
     if (newId != null) {
       selectedId = newId;
       const row = findById(newId);
-      if (row) fillForm(row);
+      if (row) window.fillForm(row);
       flashRowById(newId, 'captured');
     }
   }
@@ -670,6 +853,7 @@
       if (!validateForm(true)) return;
       if (!dbReady) { setFormMsg('DB is not ready; please wait.', 'error'); return; }
       const one = formToPayload();
+      //console.log('[POST /admin/entrants] payload:', one); // DEBUG
       const { ok } = await saveEntrant(one);
       if (ok) clearForm();
     });
@@ -764,7 +948,7 @@
 
     // --- Scan control fns inside wireEvents (scoped) ---
     async function onScanStart() {
-      if (!dbReady) { setNetStatus(false, 'DB not ready'); return; }
+      if (!dbReady) { CCRS.setNetStatus(false, 'DB not ready'); return; }
       lastScannedTag = null;
       setScanUI('scanning');
       startProgressBar(CONFIG.SCAN_MS);
@@ -811,7 +995,7 @@
         selectedId = existing.id;
         highlightSelection();
         flashRowById(existing.id, 'captured');
-        setNetStatus(true, `Tag already on ${existing.name} (#${existing.number})`);
+        CCRS.setNetStatus(true, `Tag already on ${existing.name} (#${existing.number})`);
       } else {
         // Nudge required fields
         els.entNumber.focus();
@@ -827,18 +1011,29 @@
     async function onAssign() {
       const tag = (els.entTag.value || '').trim();
       if (!/^\d+$/.test(tag) || tag.length < CONFIG.MIN_TAG_LEN) {
-        setNetStatus(false, 'Tag must be 7+ digits');
+        CCRS.setNetStatus(false, 'Tag must be 7+ digits');
         return;
       }
 
       // If a row is selected → assign to that entrant
       if (selectedId != null) {
         const row = findById(selectedId);
-        if (!row) { setNetStatus(false, 'Selection lost — refresh'); return; }
-        const body = { id: row.id, number: row.number, name: row.name, tag, enabled: row.enabled };
+        if (!row) { CCRS.setNetStatus(false, 'Selection lost — refresh'); return; }
+        const body = {
+          id,
+          number: full.number,
+          name: full.name,
+          tag: clean === '' ? null : clean,
+          enabled: !!full.enabled,
+          status: full.status ?? 'ACTIVE',
+          organization: full.organization ?? '',
+          spoken_name: full.spoken_name ?? '',
+          color: full.color ?? null,
+        };
+
         const { ok, code } = await saveEntrant(body);
         if (!ok && code === 409) { handleConflict(tag); return; }
-        if (ok) { flashRowById(row.id, 'captured'); setNetStatus(true, 'Tag assigned'); }
+        if (ok) { flashRowById(row.id, 'captured'); CCRS.setNetStatus(true, 'Tag assigned'); }
         return;
       }
 
@@ -848,7 +1043,7 @@
         selectedId = existing.id;
         fillForm(existing);
         flashRowById(existing.id, 'captured');
-        setNetStatus(true, `Loaded ${existing.name} (#${existing.number})`);
+        CCRS.setNetStatus(true, `Loaded ${existing.name} (#${existing.number})`);
         return;
       }
 
@@ -866,7 +1061,7 @@
   // Boot
   (function start() {
     // Immediate “connecting” text; flips on data/ready events
-    setNetStatus(true, 'Connecting…');
+    CCRS.setNetStatus(true, 'Connecting…');
 
     // Ready poller + immediate check so pill updates fast
     const readyPoll = makePoller(pollReady, 2500, () => setReadyUI(false));
@@ -1068,3 +1263,22 @@ document.addEventListener('DOMContentLoaded', () => {
     console.warn('Tooltip init failed:', e);
   }
 });
+
+
+// expose for external handlers
+window.fillForm = fillForm;
+
+
+/* __DELEGATED_EDIT__ — always hydrate with full row, even if a per-row handler ran first */
+(function(){
+  const root = document.getElementById('rows');
+  if (!root) return;
+  root.addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-act="edit"]');
+    if (!btn) return;
+    const rowEl = btn.closest('.ent-row');
+    const id = Number(rowEl?.dataset?.id);
+    const full = (window.ROSTER_BY_ID instanceof Map) ? (window.ROSTER_BY_ID.get(id) || null) : null;
+    if (full) { window.fillForm(full); }
+  });
+})();
