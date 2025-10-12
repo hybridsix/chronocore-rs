@@ -529,3 +529,5 @@ body:not(.home) .brand-link { transform: scale(0.75); }  /* compact everywhere *
 body.home .brand-link       { transform: scale(1); }     /* big on Home */
 
 
+.btn.danger  { background: #b91c1c; color: #fff; }
+.btn.danger:hover { background: #991b1b; }

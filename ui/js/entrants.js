@@ -179,6 +179,13 @@ window.normalizeEntrant = window.normalizeEntrant || function normalizeEntrant(r
   let sortKey = 'number';       // sort column
   let sortDir = 1;              // 1 asc, -1 desc
 
+  function resolveIdAndLabelFromRowEl(rowEl) {
+    const idVal = Number(rowEl?.dataset?.id);
+    const full  = (window.ROSTER_BY_ID && window.ROSTER_BY_ID.get(idVal)) || {};
+    const label = `${(full.number ?? '—')} · ${(full.name ?? '')}`.trim();
+    return { idVal, full, label };
+  }
+
   /* ================================================
      Scan Adapter: SSE preferred, Polling fallback
      =============================================== */
@@ -511,6 +518,27 @@ ALL = data;
     }
   }
 
+
+  // Permanently delete one entrant by id.
+  // Backend contract (proposed): POST /admin/entrants/delete { ids: [<id>] }
+  async function deleteEntrant(id) {
+    try {
+      const res = await CCRS.postJSON('/admin/entrants/delete', { ids: [ id ] });
+
+      if (!res.ok) {
+        const txt = await res.text().catch(() => '');
+        return { ok:false, code:res.status, body:txt };
+      }
+      let body = null;
+      try { body = await res.json(); } catch (_) {}
+      return { ok:true, code:200, body };
+    } catch (err) {
+      const code = err?.response?.status ?? 0;
+      return { ok:false, code, body:null };
+    }
+  }
+
+
   /* =========================
      Render helpers
      ========================= */
@@ -557,6 +585,7 @@ ALL = data;
         <div class="actions">
           <button class="btn btn-sm btn-chip" data-act="edit" title="Edit">Edit</button>
           <button class="btn btn-sm btn-chip" data-act="tag" title="Assign tag">Set Tag</button>
+          <button class="btn btn-sm btn-chip danger" data-act="delete" title="Delete">Delete</button>
         </div>
         <div class="right small muted"></div>
       `;
@@ -591,6 +620,38 @@ ALL = data;
           flashRowById(row.id, 'captured');
         }
       });
+
+      // Delete -> confirm, then (when backend is ready) call deleteEntrant(id)
+      el.querySelector('[data-act="delete"]').addEventListener('click', async () => {
+        // Resolve a stable id + friendly label
+        const idVal = full.id ?? row.id ?? row.entrant_id ?? Number(el.dataset.id);
+        const label = `${(full.number ?? row.number ?? '—')} · ${(full.name ?? row.name ?? '')}`.trim();
+
+        const ok = confirm(
+          `Delete entrant permanently?\n\n${label}\n\nThis cannot be undone.`
+        );
+        if (!ok) return;
+
+        // Not wired yet — give user feedback but do nothing destructive
+        CCRS.setNetStatus(false, 'Delete not implemented yet on server.');
+        setFormMsg('Delete not implemented yet on server.', 'error');
+
+        // When backend exists, call deleteEntrant(idVal) and then:
+        // window.ROSTER_BY_ID?.delete(idVal);
+        // ALL = ALL.filter(r => (r.id ?? r.entrant_id) !== idVal);
+        // render(); clearForm();
+      });
+
+
+        // Optimistic UI cleanup on success
+        //window.ROSTER_BY_ID && window.ROSTER_BY_ID.delete(id);
+        //ALL = (Array.isArray(ALL) ? ALL.filter(r => (r.id ?? r.entrant_id) !== id) : []);
+        //render();
+        //clearForm();
+        //setFormMsg('Entrant deleted.', 'ok');
+        //CCRS.setNetStatus(true, 'Entrant deleted');
+      //});
+
 
       el.addEventListener('dblclick', (ev) => {
         // Ignore double-clicks that originate from action buttons
