@@ -203,7 +203,7 @@
   border: 1px solid #0f141a;
   border-top: none;
   border-radius: 0 0 10px 10px;
-  margin: 0 12px 12px;
+  margin: 0 0 12px;
   background: repeating-linear-gradient(
     to bottom,
     #141a20 0px,
@@ -690,7 +690,7 @@ main.wrap {
   flex: 1 1 auto;       /* fills under the header */
   min-height: 0;
   overflow: auto;       /* scrolls internally when data exists */
-  margin: 0 12px 8px;   /* small nudge: a bit closer to the footer */
+  margin: 0 0px 8px;   /* small nudge: a bit closer to the footer */
 }
 
 
@@ -856,14 +856,6 @@ main.wrap {
   border-right: none;
 }
 
-/* 3) Carry column dividers down the rows so the grid reads clearly */
-.pane--right .ent-table-card .rows .ent-row > div {
-  border-right: 1px solid #163042;  /* slightly dimmer than header line */
-}
-.pane--right .ent-table-card .rows .ent-row > div:last-child {
-  border-right: none;
-}
-
 
 .ent-table-card .rows .ent-row {
   min-height: var(--rowH);
@@ -911,12 +903,7 @@ main.wrap {
 .pane--right .ent-table-card .ent-thead > div:last-child {
   border-right: none;
 }
-.pane--right .ent-table-card .rows .ent-row > div {
-  border-right: 1px solid #2b5874;  /* visible on dark stripes */
-}
-.pane--right .ent-table-card .rows .ent-row > div:last-child {
-  border-right: none;
-}
+
 
 /* ================================================================
    Right table — top controls bar (filter + chips + refresh)
@@ -1006,10 +993,12 @@ main.wrap {
 }
 .pane--right .ent-table-card .ent-thead > div:last-child { border-right: none; }
 
+/* Rows: keep the dividers, but make them a bit subtler */
 .pane--right .ent-table-card .rows .ent-row > div {
-  border-right: 1px solid #2b5874;         /* visible on zebra stripes */
+  border-right: 0px solid #2b5874;         /* visible on zebra stripes set to 0 for inviisble */
 }
 .pane--right .ent-table-card .rows .ent-row > div:last-child { border-right: none; }
+
 
 /* ================================================================
    Right table — push Refresh to the right + pad the filter block

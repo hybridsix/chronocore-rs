@@ -531,3 +531,12 @@ body.home .brand-link       { transform: scale(1); }     /* big on Home */
 
 .btn.danger  { background: #b91c1c; color: #fff; }
 .btn.danger:hover { background: #991b1b; }
+
+/* Info icon should never show focus since it's not focusable */
+.info-icon { outline: none; }
+
+/* Optional tooltip-like behavior: reveal the hint only when explicitly opened */
+.field[data-hint-open="1"] .hint,
+.field[data-hint-open="1"] .hint.small {
+  display: block !important;
+}

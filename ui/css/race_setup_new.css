@@ -1,0 +1,296 @@
+/* ======================================================================
+   CCRS Race Setup — page-specific CSS (Equal Columns v2)
+   - Three equal columns using CSS variables (no overlap, no drift)
+   - Fixed 1920 canvas friendly; centered grid
+   - Clean cards, aligned Limit rows, accessible focus
+   - Entrants-style Save button (teal gradient, rounded square)
+   ====================================================================== */
+
+/* -------- Palette (scoped) ------------------------------------------ */
+.race-setup {
+  --bg: #0b131b;
+  --panel: #0f1a24;
+  --panel-edge: #213243;
+  --panel-shadow: rgba(0, 0, 0, 0.35);
+  --text: #e6edf3;
+  --text-dim: #c0cad3;
+  --text-muted: #99a7b4;
+  --accent: #1e88e5;
+  --teal-1: #15627A;  /* entrants save button gradient top */
+  --teal-2: #104C60;  /* entrants save button gradient bottom */
+  --teal-edge: #2b4a63;
+  --danger: #ba2d2d;
+  --title-bar-top: #15627A;
+  --title-bar-bot: #104C60;
+  --title-bar-edge:  #2a475e;     /* border color */
+  --title-text:      #e8f2fb;     /* readable on dark teal */
+}
+
+/* -------- Page canvas ----------------------------------------------- */
+.race-setup main.wrap {
+  padding: 16px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* -------- Three equal columns (fixed), centered --------------------- */
+.race-setup .rs-grid {
+  --col: 500px;     /* tweak this single value for column width */
+  --gap: 24px;      /* horizontal/vertical gap */
+
+  display: grid;
+  grid-template-columns: repeat(3, var(--col));
+  gap: var(--gap);
+  justify-content: center;   /* center on 1920 canvas */
+  align-items: start;
+  padding-bottom: 96px;      /* leave room for sticky row */
+}
+
+/* Every direct section fills its grid area (no hard px width) */
+.race-setup .rs-grid > section {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  justify-self: stretch;
+  align-self: start;
+}
+
+/* Keep the Overrides card in the right column */
+.race-setup .rs-right {
+  grid-column: 3 / span 1;
+  align-self: start;
+}
+
+/* -------- Cards ------------------------------------------------------ */
+.race-setup .rs-card {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 12px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.3));
+}
+
+.race-setup .card__title {
+  margin: 0 0 10px 0;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: .02em;
+  color: var(--title-text);
+  background: linear-gradient(180deg, var(--title-bar-top), var(--title-bar-bot));
+  border: 1px solid var(--title-bar-edge);
+  border-radius: 2px;
+  /* soft top highlight for that “lit” look */
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+/* -------- Form layout ------------------------------------------------ */
+.race-setup .field {
+  margin-bottom: 12px;
+}
+
+.race-setup .label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 13px;
+  color: var(--text-dim);
+}
+
+.race-setup .hint {
+  margin-top: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.race-setup .row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0; /* allow inner shrink */
+}
+
+/* Align Laps / Duration label column */
+.race-setup .label-col {
+  display: inline-block;
+  width: 150px;
+  color: var(--text-dim);
+}
+
+/* Inputs */
+.race-setup .input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  height: 36px;
+  padding: 6px 10px;
+  color: var(--text);
+  background: #0c141c;
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  box-sizing: border-box;
+}
+
+.race-setup .input.small {
+  width: 120px;
+  min-width: 90px;
+}
+
+.race-setup .input.medium {
+  min-width: 0;
+  flex: 1 1 240px;
+}
+
+/* Radios / checkboxes */
+.race-setup .radio,
+.race-setup .checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+/* Disabled row greys without layout jump */
+.race-setup .row.is-disabled,
+.race-setup .row :disabled,
+.race-setup .field.is-disabled {
+  opacity: 0.55;
+}
+
+/* Divider */
+.race-setup .divider {
+  height: 1px;
+  margin: 10px 0 12px;
+  background: var(--panel-edge);
+  border-radius: 1px;
+}
+
+/* -------- Buttons ---------------------------------------------------- */
+.race-setup .btn {
+  min-height: 36px;
+  padding: 6px 12px;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px; /* rounded square */
+  background: #141e28;
+  color: var(--text);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.race-setup .btn:hover {
+  filter: brightness(1.07);
+}
+
+/* Entrants-style primary (teal gradient) */
+.race-setup .btn.btn-primary {
+  background: linear-gradient(180deg, var(--teal-1), var(--teal-2));
+  border-color: var(--teal-edge);
+  color: #e6f7ff;
+}
+
+/* Primary action for bottom bar (bright) */
+.race-setup .btn.btn--primary {
+  background: linear-gradient(180deg, #18a0ff, #0b7ec7);
+  border-color: #0a64a0;
+  color: #ffffff;
+}
+
+/* Ghost button (bottom bar) */
+.race-setup .btn.btn--ghost {
+  background: transparent;
+}
+
+/* -------- Sticky action row ----------------------------------------- */
+.race-setup .sticky-row {
+  position: sticky;
+  bottom: 0;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 12px;
+  align-items: center;
+  padding: 10px 12px;
+  margin-top: 18px;
+  background: linear-gradient(180deg, rgba(0,0,0,0), rgba(9,14,19,0.95));
+  border-top: 1px solid var(--panel-edge);
+  box-shadow: 0 -2px 10px var(--panel-shadow);
+}
+
+.race-setup .summary {
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.race-setup .readiness {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.race-setup .chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-edge);
+  background: #101820;
+  font-size: 12px;
+  color: var(--text);
+}
+
+/* -------- Focus states (accessibility) ------------------------------- */
+.race-setup .input:focus,
+.race-setup select:focus,
+.race-setup .btn:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+
+/* Grey/disable the Custom-save row when not in Custom mode */
+.race-setup .field.is-disabled * {
+  pointer-events: none;
+}
+
+/* Disabled button appearance (including teal primary) */
+.race-setup .btn[disabled] {
+  filter: none;
+  cursor: not-allowed;
+  background: #1a2631;
+  color: #8fa4b7;
+  border-color: #2a3b4b;
+  box-shadow: none;
+}
+
+/* === Inner groups: bigger legend + labels (Limit / Countdowns / Rank) === */
+
+/* If your HTML uses fieldsets, this styles all inner bordered groups */
+.race-setup .rs-card fieldset {
+  border: 2px solid var(--panel-edge);
+  border-radius: 4px;
+  padding: 12px 12px 14px;
+  margin-bottom: 12px;
+}
+
+.race-setup .rs-card fieldset > legend {
+  font-size: 17px;          /* ↑ title size inside inner borders */
+  font-weight: 700;
+  line-height: 1.2;
+  padding: 0 8px;           /* sits on the border cleanly */
+  color: var(--text);
+}
+
+/* Inside those groups, bump control text a bit */
+.race-setup .rs-card fieldset .label,
+.race-setup .rs-card fieldset .checkbox,
+.race-setup .rs-card fieldset .radio {
+  font-size: 15px;          /* ↑ control/label text */
+}
+
+/* If you have explicit classes for the three groups, this targets just those */
+.race-setup .rs-card .group--limit > legend,
+.race-setup .rs-card .group--countdowns > legend,
+.race-setup .rs-card .group--rank > legend { 
+  font-size: 18px;          /* a hair larger for the three key groups */
+}
+

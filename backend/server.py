@@ -31,6 +31,7 @@ import sqlite3
 from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+import yaml
 
 import aiosqlite
 from fastapi import FastAPI, HTTPException, Request, Response, status
@@ -83,6 +84,7 @@ app.add_middleware(
 # Try <repo>/ui first; fall back to <repo>/backend/static
 PROJECT_ROOT = Path(__file__).resolve().parents[1]  # <repo> when server.py is in backend/
 UI_DIR = PROJECT_ROOT / "ui"
+MODES_PATH = (PROJECT_ROOT / "config" / "race_modes.yaml").resolve()
 #STATIC_DIR = UI_DIR if UI_DIR.exists() else Path(__file__).resolve().parent / "static"
 #app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
 STATIC_DIR = Path(__file__).resolve().parent.parent / "ui"   # => project_root/ui
@@ -144,6 +146,64 @@ def _normalize_tag(raw: Any) -> Optional[str]:
         return None
     s = str(raw).strip()
     return s or None
+
+# ------------------------------------------------------------
+# Race Modes YAML (for UI consumption)
+# ------------------------------------------------------------
+def _load_modes_file() -> dict:
+    try:
+        data = yaml.safe_load(MODES_PATH.read_text(encoding="utf-8")) or {}
+    except FileNotFoundError:
+        return {}
+    # tolerate either {"modes": {...}} or a bare mapping
+    return data.get("modes", data)
+
+def _save_modes_file(modes: dict) -> None:
+    MODES_PATH.parent.mkdir(parents=True, exist_ok=True)
+    MODES_PATH.write_text(
+        yaml.safe_dump({"modes": modes}, allow_unicode=True, sort_keys=True),
+        encoding="utf-8",
+    )
+
+class ModeUpsert(BaseModel):
+    id: str
+    mode: dict
+
+# ---------------- Race setup: modes ----------------
+
+@app.get("/setup/race_modes")
+def get_race_modes():
+    """Return built-in modes for Race Setup, read from root/config/race_modes.yaml."""
+    return {"modes": _load_modes_file()}
+
+@app.post("/setup/race_modes/save")
+def save_race_mode(payload: ModeUpsert):
+    """Upsert a single mode in root/config/race_modes.yaml (used by 'Custom → Save Mode')."""
+    modes = _load_modes_file()
+    modes[payload.id] = payload.mode
+    _save_modes_file(modes)
+    return {"ok": True, "id": payload.id}
+
+# --------------- Readiness compatibility (UI pings these) ---------------
+
+@app.get("/health")
+def health_alias():
+    # UI expects /health; you also expose /healthz and /readyz.
+    return {"status": "ok", "service": "ccrs-backend"}
+
+@app.get("/admin/entrants/enabled_count")
+async def entrants_enabled_count():
+    async with aiosqlite.connect(DB_PATH) as db:
+        cur = await db.execute("SELECT COUNT(*) FROM entrants WHERE enabled=1")
+        row = await cur.fetchone()
+        await cur.close()
+        return {"count": int(row[0] if row and row[0] is not None else 0)}
+
+@app.get("/decoders/status")
+def decoders_status_stub():
+    # Replace with real decoder detection when available.
+    return {"online": 0}
+
 
 # ------------------------------------------------------------
 # Endpoints
@@ -493,6 +553,101 @@ async def admin_upsert_entrants(payload: Dict[str, Any]):
         except Exception as ex:
             await db.execute("ROLLBACK")
             raise HTTPException(status_code=500, detail=f"admin upsert failed: {type(ex).__name__}: {ex}")
+
+
+
+# ------------------------------------------------------------
+# Delete Preflight does this entrant have data linked?
+# ------------------------------------------------------------
+
+@app.get("/admin/entrants/{entrant_id}/inuse")
+async def entrant_inuse(entrant_id: int):
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+
+        # 1) Identity (404 if missing)
+        cur = await db.execute(
+            "SELECT entrant_id AS id, number, name FROM entrants WHERE entrant_id=?",
+            (entrant_id,)
+        )
+        row = await cur.fetchone()
+        await cur.close()
+        if not row:
+            raise HTTPException(status_code=404, detail="entrant not found")
+
+        # 2) Safe counters (return 0 if tables/cols not found or any other error)
+        async def _count(tbl: str, col: str, val: int) -> int:
+            try:
+                c = await db.execute(f"SELECT COUNT(*) FROM {tbl} WHERE {col}=?", (val,))
+                r = await c.fetchone()
+                await c.close()
+                return int(r[0] if r and r[0] is not None else 0)
+            except Exception as ex:
+                # Log to server console; never bubble to client
+                print(f"[inuse] count failed for {tbl}.{col}={val}: {type(ex).__name__}: {ex}")
+                return 0
+
+        passes_cnt = await _count("passes", "entrant_id", entrant_id)
+        laps_cnt   = await _count("lap_events", "entrant_id", entrant_id)
+
+        return {
+            "id": row["id"],
+            "number": row["number"],
+            "name": row["name"],
+            "counts": { "passes": passes_cnt, "lap_events": laps_cnt }
+        }
+
+
+
+# ======================= DELETE (hard delete by id) =======================
+
+@app.post("/admin/entrants/delete")
+async def delete_entrant(request: Request):
+    try:
+        payload = await request.json()
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid JSON body")
+
+    # Accept either { id } or { ids: [...] }
+    ids = payload.get("ids")
+    if ids is None:
+        one = payload.get("id")
+        if one is None:
+            raise HTTPException(status_code=400, detail="missing 'id' (or 'ids')")
+        ids = [one]
+
+    # Coerce to ints and dedupe
+    try:
+        ids = [int(x) for x in ids]
+    except Exception:
+        raise HTTPException(status_code=400, detail="ids must be integers")
+
+    if not ids:
+        raise HTTPException(status_code=400, detail="no ids provided")
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        await db.execute("BEGIN IMMEDIATE")
+        try:
+            deleted = []
+            for eid in ids:
+                await db.execute("DELETE FROM entrants WHERE entrant_id=?", (eid,))
+                ch = await (await db.execute("SELECT changes()")).fetchone()
+                if ch and ch[0] > 0:
+                    deleted.append(eid)
+            await db.commit()
+        except Exception as ex:
+            await db.execute("ROLLBACK")
+            raise HTTPException(status_code=500, detail=f"delete failed: {type(ex).__name__}: {ex}")
+
+    if not deleted:
+        raise HTTPException(status_code=404, detail="entrant not found")
+
+    return {"deleted": deleted}
+
+
+
+
+
 
 # ------------------------------------------------------------
 # Polling endpoint (UI fallback)

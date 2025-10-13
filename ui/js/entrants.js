@@ -449,9 +449,37 @@ window.normalizeEntrant = window.normalizeEntrant || function normalizeEntrant(r
 
 
 
+  /* =========================
+    Deletion helpers
+   ========================= */
 
 
+async function getEntrantInUse(id) {
+  try {
+    return await CCRS.fetchJSON(`/admin/entrants/${id}/inuse?ts=${Date.now()}`, { cache: 'no-store' });
+  } catch (e) {
+    // Quiet fallback: treat as "no history" rather than erroring
+    console.debug('[Entrants] inuse preflight skipped (using defaults):', e?.message || e);
+    return { id, number: '', name: '', counts: { passes: 0, lap_events: 0 } };
+  }
+}
 
+
+async function deleteEntrant(id) {
+  try {
+    const res = await CCRS.postJSON('/admin/entrants/delete', { id });
+    if (!res.ok) {
+      const txt = await res.text().catch(()=>'');
+      return { ok:false, code:res.status, body:txt };
+    }
+    let body = null;
+    try { body = await res.json(); } catch(_) {}
+    return { ok:true, code:200, body };
+  } catch (err) {
+    const code = err?.response?.status ?? 0;
+    return { ok:false, code, body:null };
+  }
+}
 
 
   /* =========================
@@ -571,6 +599,7 @@ ALL = data;
     const rows = filteredSortedRows();
     els.rows.innerHTML = '';
 
+        
     for (const row of rows) {
       const el = document.createElement('div');
       el.className = 'ent-row' + (row.enabled ? '' : ' disabled');
@@ -587,7 +616,7 @@ ALL = data;
           <button class="btn btn-sm btn-chip" data-act="tag" title="Assign tag">Set Tag</button>
           <button class="btn btn-sm btn-chip danger" data-act="delete" title="Delete">Delete</button>
         </div>
-        <div class="right small muted"></div>
+        <div class="right small muted status-cell">${row.status}</div>
       `;
 
       el.querySelector('[data-act="edit"]').addEventListener('click', () => window.fillForm(row));
@@ -621,25 +650,61 @@ ALL = data;
         }
       });
 
-      // Delete -> confirm, then (when backend is ready) call deleteEntrant(id)
+      // Delete with preflight and typed-confirm if entrant has data
       el.querySelector('[data-act="delete"]').addEventListener('click', async () => {
-        // Resolve a stable id + friendly label
-        const idVal = full.id ?? row.id ?? row.entrant_id ?? Number(el.dataset.id);
-        const label = `${(full.number ?? row.number ?? '—')} · ${(full.name ?? row.name ?? '')}`.trim();
+        // Resolve id + full safely
+        const id = row.id ?? row.entrant_id ?? Number(el.dataset.id);
+        const full = (window.ROSTER_BY_ID instanceof Map ? window.ROSTER_BY_ID.get(id) : row) || row;
+        const teamName = String(full.name ?? '').trim();
+        const label = `${full.number ?? '—'} · ${teamName}`;
 
-        const ok = confirm(
-          `Delete entrant permanently?\n\n${label}\n\nThis cannot be undone.`
-        );
-        if (!ok) return;
+        // Preflight: do they have passes/laps?
+        let needsTypedConfirm = false;
+        let counts = { passes: 0, lap_events: 0 };
 
-        // Not wired yet — give user feedback but do nothing destructive
-        CCRS.setNetStatus(false, 'Delete not implemented yet on server.');
-        setFormMsg('Delete not implemented yet on server.', 'error');
+        try {
+          const info = await getEntrantInUse(id);
+          counts = info?.counts || counts;
+          needsTypedConfirm = ((counts.passes || 0) + (counts.lap_events || 0)) > 0;
+        } catch (_) {
+          // If preflight fails, fall back to a plain confirm
+        }
 
-        // When backend exists, call deleteEntrant(idVal) and then:
-        // window.ROSTER_BY_ID?.delete(idVal);
-        // ALL = ALL.filter(r => (r.id ?? r.entrant_id) !== idVal);
-        // render(); clearForm();
+        if (!needsTypedConfirm) {
+          const ok = confirm(`Delete entrant permanently?\n\n${label}\n\nThis cannot be undone.`);
+          if (!ok) return;
+        } else {
+          const typed = prompt(
+            `This entrant has recorded data (passes: ${counts.passes}, laps: ${counts.lap_events}).\n` +
+            `To confirm hard delete, type the Team name exactly:\n\n${teamName}\n`
+          );
+          if (typed == null) return; // cancelled
+          if (String(typed).trim().toLowerCase() !== teamName.toLowerCase()) {
+            setFormMsg('Delete cancelled — team name did not match.', 'error');
+            CCRS.setNetStatus(false, 'Delete cancelled');
+            return;
+          }
+        }
+
+        // Perform delete
+        const { ok, code } = await deleteEntrant(id);
+        if (!ok) {
+          const msg = (code === 404) ? 'Entrant not found (already deleted?)'
+                    : 'Delete failed.';
+          setFormMsg(msg, 'error');
+          CCRS.setNetStatus(false, msg);
+          return;
+        }
+
+        // Update UI state
+        try { window.ROSTER_BY_ID && window.ROSTER_BY_ID.delete(id); } catch(_) {}
+        if (Array.isArray(ALL)) {
+          ALL = ALL.filter(r => (r.id ?? r.entrant_id) !== id);
+        }
+        render();
+        clearForm();
+        setFormMsg('Entrant deleted.', 'ok');
+        CCRS.setNetStatus(true, 'Entrant deleted');
       });
 
 
