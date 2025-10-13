@@ -350,6 +350,7 @@
     els.modeSelect?.addEventListener('change', (e) => {
       applyModeToForm(e.target.value);
     });
+    
   }
 
   // ------------------------------------------------------------------------

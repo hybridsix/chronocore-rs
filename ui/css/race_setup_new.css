@@ -74,7 +74,7 @@
 .race-setup .card__title {
   margin: 0 0 10px 0;
   padding: 8px 12px;
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1.2;
   font-weight: 700;
   letter-spacing: .02em;
@@ -94,10 +94,14 @@
 .race-setup .label {
   display: block;
   margin-bottom: 6px;
-  font-size: 13px;
+  font-size: 16px;
   color: var(--text-dim);
 }
 
+.race-setup .label-col,
+.race-setup .sub {
+  font-size: 16px; 
+}
 .race-setup .hint {
   margin-top: 6px;
   font-size: 12px;
@@ -109,6 +113,14 @@
   align-items: center;
   gap: 8px;
   min-width: 0; /* allow inner shrink */
+}
+
+/* Slightly more vertical rhythm for rows inside cards so inputs don't touch */
+.race-setup .rs-card .row {
+  margin-bottom: 8px;
+}
+.race-setup .rs-card .row:last-child {
+  margin-bottom: 0;
 }
 
 /* Align Laps / Duration label column */
@@ -148,7 +160,14 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  font-size: 14px;
+  font-size: 15px; /* bump by 1px to match entrants labels */
+}
+
+/* Match Entrants page: larger green checkboxes for operator controls */
+.race-setup .checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: #40E280; /* green used in entrants left pane */
 }
 
 /* Disabled row greys without layout jump */
@@ -217,7 +236,7 @@
 }
 
 .race-setup .summary {
-  font-size: 13px;
+  font-size: 18px;
   color: var(--text-muted);
 }
 

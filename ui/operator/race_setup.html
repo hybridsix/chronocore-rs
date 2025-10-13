@@ -171,32 +171,39 @@
             <!-- Countdowns -->
             <fieldset class="field">
               <legend class="label">Countdowns</legend>
-              <div class="row">
-                <label class="checkbox">
-                  <input id="startEnabled" type="checkbox" />
-                  <span>Start countdown</span>
-                </label>
-                <label class="sub" for="startFromS">from</label>
-                <input id="startFromS" class="input small" type="number" min="1" step="1" value="10" />
+              <div class="row" id="rowStartCountdown">
+                <div class="label-col">
+                  <label class="checkbox">
+                    <input id="startEnabled" type="checkbox" />
+                    <span>Start (s)</span>
+                  </label>
+                </div>
+                <input id="startFromS" class="input small" aria-label="Start seconds" type="number" min="1" step="1" value="10" />
               </div>
-              <div class="row">
-                <label class="checkbox">
-                  <input id="endEnabled" type="checkbox" />
-                  <span>End countdown</span>
-                </label>
-                <label class="sub" for="endFromS">from</label>
-                <input id="endFromS" class="input small" type="number" min="1" step="1" value="10" />
+              <div class="row" id="rowEndCountdown">
+                <div class="label-col">
+                  <label class="checkbox">
+                    <input id="endEnabled" type="checkbox" />
+                    <span>End (s)</span>
+                  </label>
+                </div>
+                <input id="endFromS" class="input small" aria-label="End seconds" type="number" min="1" step="1" value="10" />
               </div>
-              <div class="row">
-                <label class="sub" for="timeoutS">Timeout padding (s)</label>
-                <input id="timeoutS" class="input small" type="number" min="0" step="1" value="0" />
+              <div class="row" id="rowTimeout">
+                <div class="label-col">
+                  <label class="checkbox">
+                    <input id="timeoutEnabled" type="checkbox" />
+                    <span>Timeout pad (s)</span>
+                  </label>
+                </div>
+                <input id="timeoutS" class="input small" type="number" min="0" step="1" value="0" aria-label="Timeout padding seconds" />
               </div>
             </fieldset>
           </section>
 
-          <!-- ===== RIGHT: Comms & Announcements ===== -->
-          <section class="card rs-card" aria-label="Comms and Announcements">
-            <h2 class="card__title">Comms &amp; Announcements</h2>
+          <!-- ===== RIGHT: Sound & Settings ===== -->
+          <section class="card rs-card" aria-label="Sound and Settings">
+            <h2 class="card__title">Sound &amp; Settings</h2>
 
             <div class="field">
               <label class="label" for="lapIndication">Lap indication</label>
@@ -228,6 +235,46 @@
                 <label class="checkbox">
                   <input id="bestLapSpeech" type="checkbox" />
                   <span>Announce best laps</span>
+                </label>
+              </div>
+            </fieldset>
+
+            <!-- Timing sounds (Beep on seconds, horns, flags) -->
+            <fieldset class="field">
+              <legend class="label">Timing sounds</legend>
+              <div class="row" id="rowBeepSeconds">
+                <label class="checkbox">
+                  <input id="beepSecondsEnabled" type="checkbox" />
+                  <span>Countdown beep on last</span>
+                </label>
+                <input id="beepSecondsInterval" class="input small" type="number" min="1" step="1" value="1" aria-label="Seconds before zero" />
+                <span class="sub">s</span>
+              </div>
+
+              <div class="row" id="rowStartingHorn">
+                <label class="checkbox">
+                  <input id="startingHorn" type="checkbox" />
+                  <span>Starting horn</span>
+                </label>
+              </div>
+
+              <div class="row" id="rowWhiteFlag">
+                <label class="checkbox">
+                  <input id="whiteFlagSound" type="checkbox" />
+                  <span>White flag sound</span>
+                </label>
+                <label class="sub" for="whiteFlagMode">at</label>
+                <select id="whiteFlagMode" class="input small">
+                  <option value="auto">Auto</option>
+                  <option value="last_minute">Last minute</option>
+                  <option value="last_lap">Last lap</option>
+                </select>
+              </div>
+
+              <div class="row" id="rowCheckeredFlag">
+                <label class="checkbox">
+                  <input id="checkeredFlagSound" type="checkbox" />
+                  <span>Checkered flag horn</span>
                 </label>
               </div>
             </fieldset>
