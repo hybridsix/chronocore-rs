@@ -1,62 +1,487 @@
-/* Race Control page styles
-   NOTE: Do not style .app-header / .app-footer here — operator.css owns header/footer.
-   This file styles only the page content region.
-*/
+/* =====================================================================
+   RACE CONTROL — page-level styles
+   ---------------------------------------------------------------------
+   This file sticks to layout and visuals inside <main>. Common header/
+   footer/brand/nav styles come from base.css and operator.css.
+   ===================================================================== */
 
-.op-page.race-control main.wrap {
-  padding: 16px;
-}
+:root { --toolbarH: 56px; }
 
-/* Simple responsive grid for pills below header */
-.pill-grid {
+.rcWrap {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 12px;
-  align-items: stretch;
-  margin-bottom: 16px;
+  grid-template-rows: var(--toolbarH) 1fr;
+  gap: 10px;
+  padding: 12px 16px;
 }
 
-/* Generic pill styling (inherits theme tokens from operator/base) */
-.pill {
+/* Reuse the Diagnostics toolbar look */
+.toolBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--panel);
+  border: 1px solid #0b0f13;
+  border-radius: 12px;
+  padding: 8px 10px;
+  box-shadow: 0 0 0 1px #0c1116, 0 8px 24px rgba(0,0,0,0.35);
+}
+.toolBar .left, .toolBar .right { display: flex; align-items: center; gap: 8px; }
+.toolBar .sep { opacity: 0.5; padding: 0 4px; }
+
+/* Two panes under the toolbar */
+.rcGrid {
+  display: grid;
+  grid-template-columns: 560px 1fr;
+  gap: 12px;
+  min-height: 0;
+}
+
+/* Pane look & feel (match Diagnostics .pane) */
+.pane {
+  background: #0c1318;
+  border: 1px solid #0b0f13;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px #0c1116, inset 0 0 0 1px #0a0f14;
   display: grid;
   grid-template-rows: auto 1fr;
+  min-height: 0;
+}
+.pane__head {
   padding: 10px 12px;
-  border-radius: 10px;
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-  background: var(--panelBg, #1f2430);
-  color: var(--text, #e8eaee);
-  outline: none;
+  font-weight: 700;
+  background: #0f171d;
+  border-bottom: 1px solid #0e151b;
 }
-.pill:focus { box-shadow: 0 0 0 2px var(--focus, #5aa9ff); }
+.pane__body { padding: 12px; overflow: auto; }
 
-.pill__label {
-  font-size: 12px;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  opacity: 0.85;
+/* Buttons / inputs */
+.btn { /* inherit base/operator buttons if they exist; otherwise fall back */
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #172532;
+  border: 1px solid #263546;
+  color: var(--text);
+  cursor: pointer;
 }
-.pill__value {
-  font-variant-numeric: tabular-nums;
-  font-size: 28px;
-  line-height: 1.1;
+.btn-primary { background: linear-gradient(180deg,#15627A,#104C60); border-color:#2b4a63; }
+.btn-success { background: linear-gradient(180deg,#1f7a4d,#165a39); border-color:#2c5f47; }
+.btn-danger  { background: linear-gradient(180deg,#8b3434,#672525); border-color:#6d3a3a; }
+.radio, .checkbox { display: inline-flex; align-items: center; gap: 6px; }
+
+/* Flag pad */
+.flag-pad {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.flag {
+  padding: 12px 10px;
+  border-radius: 10px;
+  color: #fff;
+  border: 1px solid #2a3b4b;
+  cursor: pointer;
   font-weight: 700;
 }
+.flag--green     { background: #1c7a3a; }
+.flag--yellow    { background: #a4861e; }
+.flag--white     { background: #bfc6cf; color: #1a1a1a; }
+.flag--red       { background: #9a2e2e; }
+.flag--checkered { background: repeating-linear-gradient(45deg,#222 0 10px,#eee 10px 20px); color:#111; }
+.flag--blue      { background: #2c5fb7; }
+.flag.hold { position: relative; overflow: hidden; }
+.flag.hold[data-hold="arming"]::after {
+  content: "HOLD…";
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.25);
+  display: grid; place-items: center;
+  font-weight: 900;
+}
 
-/* Layout scaffold */
-.rc-columns {
+/* Timers + live lists */
+.timers {
   display: grid;
-  grid-template-columns: 1fr 340px;
-  gap: 16px;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-bottom: 12px;
 }
-@media (max-width: 1100px) {
-  .rc-columns { grid-template-columns: 1fr; }
-  .rc-secondary { order: -1; }
+.timer { background: rgba(255,255,255,0.02); border: 1px solid #10202b; border-radius: 8px; padding: 10px; }
+.timer__label { color: var(--text-dim); margin-bottom: 6px; }
+.timer__value { font-size: 28px; font-weight: 900; }
+
+.liveSplit { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-height: 0; }
+.liveHead  { font-weight: 700; margin-bottom: 6px; }
+.liveList  { list-style: none; margin: 0; padding: 0; border: 1px solid #0e151b; border-radius: 8px; min-height: 120px; }
+.liveList li { padding: 6px 8px; border-bottom: 1px solid #0e151b; color: var(--muted); }
+.liveList li:last-child { border-bottom: 0; }
+
+/* Flag chip in toolbar */
+.flag-chip {
+  display: inline-block;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-weight: 800;
+  background: #2b3b4b;
+  border: 1px solid #3b4d61;
+}
+.flag-chip[data-flag="green"] { background: #1c7a3a; border-color:#2a7a4b; }
+.flag-chip[data-flag="yellow"]{ background: #a4861e; border-color:#b79a2a; }
+.flag-chip[data-flag="white"] { background: #bfc6cf; color:#111; border-color:#d1d7de; }
+.flag-chip[data-flag="red"]   { background: #9a2e2e; border-color:#b23b3b; }
+.flag-chip[data-flag="blue"]  { background: #2c5fb7; border-color:#3c6fcc; }
+
+/* ================== Race Control: Left flags column ================== */
+#paneFlags .pane__body {
+  display: grid;
+  grid-template-columns: 200px 1fr;  /* left fixed 200px, right fills */
+  gap: 12px;
+  align-items: start;
+  min-height: 0;
 }
 
-.rc-primary, .rc-secondary {
-  padding: 12px;
-  border-radius: 12px;
-  background: var(--panelBg, #1f2430);
-  box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-  min-height: 160px;
+#flagColumn {
+  width: 200px;
+  min-width: 200px;
+  display: grid;
+  grid-auto-rows: minmax(64px, auto); /* tall rows for big hit targets */
 }
+
+/* Single column of big buttons */
+#flagPad.flag-pad {
+  display: grid;
+  grid-template-columns: 1fr;  /* one column */
+  gap: 10px;                   /* small margin between buttons */
+}
+
+/* Bigger, easier buttons with reduced rounding */
+#flagPad .flag {
+  padding: 18px 12px;
+  font-size: 18px;
+  border-radius: 8px;          /* reduced curvature */
+}
+
+/* Right side can hold notes/hint; flex as needed */
+#flagInfo { min-width: 0; }
+
+/* ================================================================
+   Race Control: adopt Race Setup palette + title-bar look
+   (scoped to .race-control so we don't affect other pages)
+   ================================================================ */
+.race-control {
+  --bg: #0b131b;
+  --panel: #0f1a24;
+  --panel-edge: #213243;
+  --panel-shadow: rgba(0, 0, 0, 0.35);
+  --text: #e6edf3;
+  --text-dim: #c0cad3;
+  --text-muted: #99a7b4;
+  --title-bar-top: #15627A;
+  --title-bar-bot: #104C60;
+  --title-bar-edge: #2a475e;
+  --title-text: #e8f2fb;
+}
+
+/* Match Race Setup card/pane visuals */
+.race-control .pane {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  box-shadow: 0 0 0 1px #0c1116, inset 0 0 0 1px #0a0f14;
+}
+
+.race-control .pane__head {
+  color: var(--title-text);
+  background: linear-gradient(180deg, var(--title-bar-top), var(--title-bar-bot));
+  border-bottom: 1px solid var(--title-bar-edge);
+  /* subtle top highlight */
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+/* ================================================================
+   Flags: single tall column, uniform BIG buttons
+   - Left column stays ~200px wide
+   - Buttons are equal width & height
+   - Text size unified across all buttons
+   ================================================================ */
+:root {
+  /* tune these three and everything scales together */
+  --flag-col-w: 200px;
+  --flag-btn-h: 84px;       /* ≈1.5x taller than before */
+  --flag-btn-fz: 20px;      /* unified label size */
+}
+
+/* Make the Flags pane body split into left (fixed) and right (flex) */
+#paneFlags .pane__body {
+  display: grid;
+  grid-template-columns: var(--flag-col-w) 1fr;
+  gap: 12px;
+  align-items: start;
+  min-height: 0;
+}
+
+/* Ensure the left column is fixed width */
+#flagColumn {
+  width: var(--flag-col-w);
+  min-width: var(--flag-col-w);
+  display: grid;
+}
+
+/* Single column, equal-height rows, 8px vertical gap */
+#flagPad.flag-pad {
+  display: grid;
+  grid-template-columns: 1fr;                 /* one column */
+  grid-auto-rows: var(--flag-btn-h);          /* all rows same height */
+  row-gap: 8px;                               /* requested vertical spacing */
+}
+
+/* Make each flag fill its row, with reduced rounding and bigger text */
+#flagPad .flag {
+  width: 100%;
+  height: 100%;
+  padding: 0;                                  /* let height come from the row */
+  border-radius: 8px;                          /* reduced curvature */
+  font-size: var(--flag-btn-fz);
+  font-weight: 800;
+  display: grid;                               /* center the label cleanly */
+  place-items: center;
+  line-height: 1.1;                            /* crisp large type */
+  letter-spacing: .02em;
+}
+
+/* Optional: slightly brighten on hover without changing size */
+#flagPad .flag:hover { filter: brightness(1.06); }
+#flagPad .flag:active { transform: translateY(1px); }
+
+/* Right-side of the pane (hint/notes/anything else) */
+#flagInfo { min-width: 0; color: var(--text-muted); }
+/* ================================
+   Flags pane: compact + uniform
+   ================================ */
+
+/* Tunables: button column width, height, text size, and the extra width the pane has beyond a button */
+:root {
+  --flag-col-w: 200px;     /* whole left column width */
+  --flag-btn-h: 88px;      /* button height (≈1.5x current) */
+  --flag-btn-fz: 20px;     /* all flag labels same size */
+  --flag-pane-pad: 8px;    /* inner padding for pane__body */
+  --flag-pane-extra: 10px; /* pane is ~10px wider than buttons */
+}
+
+/* Make the left pane size itself to content (first column) */
+.rcGrid {
+  grid-template-columns: max-content 1fr;
+}
+
+/* Lock the Flags pane to just a hair wider than the button column
+   (+2px accounts for the pane’s left+right borders) */
+#paneFlags {
+  width: calc(var(--flag-col-w) + (var(--flag-pane-pad) * 2) + var(--flag-pane-extra) + 2px);
+}
+
+/* Stack column + info vertically (info sits below the buttons) */
+#paneFlags .pane__body {
+  display: grid;
+  grid-template-columns: 1fr;       /* single column layout */
+  gap: 8px;                         /* space between column and the note below */
+  padding: var(--flag-pane-pad);
+}
+
+/* The left flag column is a single grid with equal-height rows */
+#flagColumn {
+  width: var(--flag-col-w);
+  min-width: var(--flag-col-w);
+}
+
+#flagPad.flag-pad {
+  display: grid;
+  grid-template-columns: 1fr;       /* one column of buttons */
+  grid-auto-rows: var(--flag-btn-h);/* all buttons same height */
+  row-gap: 8px;                     /* requested vertical gap */
+}
+
+/* Big, uniform buttons with reduced rounding and unified type */
+#flagPad .flag {
+  width: 100%;
+  height: 100%;
+  padding: 0;                       /* height comes from grid row */
+  border-radius: 8px;               /* less curvy */
+  font-size: var(--flag-btn-fz);
+  font-weight: 800;
+  display: grid; place-items: center;
+  line-height: 1.1;
+  letter-spacing: .02em;
+}
+#flagPad .flag:hover  { filter: brightness(1.06); }
+#flagPad .flag:active { transform: translateY(1px); }
+
+/* Note below the column */
+#flagInfo { color: var(--text-muted); }
+#flagInfo .hint { margin-top: 2px; }
+
+
+.race-control .pane__head::before { content: none !important; }
+
+/* Inset title bars that match Race Setup */
+.race-control {
+  --title-bar-top:  #15627A;
+  --title-bar-bot:  #104C60;
+  --title-bar-edge: #2a475e;
+  --title-text:     #e8f2fb;
+
+  /* tweak if you want a hair more/less inset */
+  --pane-head-inset-x: 8px;
+  --pane-head-inset-y: 6px;
+  --pane-head-radius:  8px;   /* reduced, not bubbly */
+}
+
+.race-control .pane__head {
+  /* inset the bar inside the pane’s border */
+  margin: var(--pane-head-inset-y) var(--pane-head-inset-x) 10px;
+  padding: 8px 12px;
+
+  color: var(--title-text);
+  font-weight: 700;
+
+  background: linear-gradient(180deg, var(--title-bar-top), var(--title-bar-bot));
+  border: 1px solid var(--title-bar-edge);
+  border-radius: var(--pane-head-radius);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+/* ======================================================================
+   Race Control — unify look with Race Setup + lock to 1920×1080
+   ====================================================================== */
+
+/* -------- Fixed canvas (1920×1080) ---------------------------------- */
+body.race-control {
+  min-width: 1920px;
+  min-height: 1080px;
+}
+
+/* Only the main content area is constrained/centered; header/footer remain full-width */
+.rcWrap {
+  width: 1920px;
+  margin: 0 auto;
+}
+
+/* -------- Palette copied from Race Setup (scoped) -------------------- */
+.race-control {
+  --bg: #0b131b;
+  --panel: #0f1a24;
+  --panel-edge: #213243;
+  --panel-shadow: rgba(0, 0, 0, 0.35);
+  --text: #e6edf3;
+  --text-dim: #c0cad3;
+  --text-muted: #99a7b4;
+  --teal-1: #15627A;
+  --teal-2: #104C60;
+  --teal-edge: #2b4a63;
+  --title-bar-top: #15627A;
+  --title-bar-bot: #104C60;
+  --title-bar-edge: #2a475e;
+  --title-text: #e8f2fb;
+}
+
+/* Card/pane visuals to match Race Setup */
+.race-control .pane {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px #0c1116, inset 0 0 0 1px #0a0f14;
+}
+
+/* Inset title bar look like Race Setup card titles */
+.race-control .pane__head {
+  margin: 6px 8px 10px;
+  padding: 8px 12px;
+  color: var(--title-text);
+  font-weight: 700;
+  background: linear-gradient(180deg, var(--title-bar-top), var(--title-bar-bot));
+  border: 1px solid var(--title-bar-edge);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
+}
+
+/* -------- Toolbar: match panel style -------------------------------- */
+.toolBar {
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px #0c1116, 0 8px 24px rgba(0,0,0,0.35);
+}
+
+/* -------- Left Flags column (compact + uniform) --------------------- */
+:root {
+  --flag-col-w: 200px;   /* column width */
+  --flag-btn-h: 88px;    /* equal button height (~1.5x tall) */
+  --flag-btn-fz: 20px;   /* uniform label size */
+  --flag-gap: 8px;       /* requested vertical gap */
+}
+
+/* Set the grid columns: left pane auto (content width), right flexible */
+.rcGrid { grid-template-columns: max-content 1fr; }
+
+/* Flags pane width: just a hair wider than the button column */
+#paneFlags {
+  width: calc(var(--flag-col-w) + 16px + 2px); /* +pad+border */
+}
+
+#paneFlags .pane__body {
+  display: grid;
+  grid-template-columns: 1fr;   /* stack (column only) */
+  padding: 8px;
+  gap: var(--flag-gap);
+}
+
+#flagColumn {
+  width: var(--flag-col-w);
+  min-width: var(--flag-col-w);
+}
+
+#flagPad.flag-pad {
+  display: grid;
+  grid-template-columns: 1fr;           /* one column of buttons */
+  grid-auto-rows: var(--flag-btn-h);    /* equal height */
+  row-gap: var(--flag-gap);
+}
+
+/* Big, uniform buttons; reduced rounding; centered labels */
+#flagPad .flag {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border-radius: 8px;
+  font-size: var(--flag-btn-fz);
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  line-height: 1.1;
+  letter-spacing: .02em;
+}
+
+/* Keep existing colors; remove SC/VSC/Black styles if present */
+.flag--black { display: none !important; }
+.flag--sc    { display: none !important; }
+.flag--vsc   { display: none !important; }
+
+/* Optional: brighten on hover without resize jitter */
+#flagPad .flag:hover  { filter: brightness(1.06); }
+#flagPad .flag:active { transform: translateY(1px); }
+
+/* -------- Live pane minor tweaks (align with Race Setup tone) ------- */
+.timers .timer {
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+}
+
+.liveList {
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+}
+
+/* -------- Buttons (fallback if not inherited from operator.css) ----- */
+.btn-primary { background: linear-gradient(180deg, var(--teal-1), var(--teal-2)); border-color: var(--teal-edge); color: #e6f7ff; }
+.btn-success { background: linear-gradient(180deg, #1f7a4d, #165a39); border-color:#2c5f47; }
+.btn-danger  { background: linear-gradient(180deg, #8b3434, #672525); border-color:#6d3a3a; }
