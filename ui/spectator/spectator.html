@@ -21,18 +21,18 @@
     <div class="title">Live Timing — Spectator</div>
     <!-- Simulator status pill (hidden until state arrives) -->
     <div class="sim-wrap">
-      <div class="pill hidden" id="simPill" aria-live="polite">SIMULATOR ACTIVE</div>
+  <div class="pill hidden" id="simPill">SIMULATOR ACTIVE</div>
     </div>
     <div class="raceclock-wrap">
       <div class="raceclock-label">Race&nbsp;Clock</div>
-      <div class="pill pill-xl" id="raceClock" aria-live="polite" aria-label="Race clock">--:--</div>
+  <div class="pill pill-xl" id="raceClock">--:--</div>
     </div>
   </header>
 
   <main>
     <!-- Flag banner -->
-    <div id="flagBanner" class="flag hidden" aria-live="polite">
-      <div class="flag__icon" aria-hidden="true"></div>
+    <div id="flagBanner" class="flag hidden">
+      <div class="flag__icon"></div>
       <div class="flag__label" id="flagLabel">—</div>
     </div>
 
@@ -114,7 +114,6 @@
         host.dataset.currentFlag = '';
         lbl.textContent = '';
         host.removeAttribute('title');
-        host.removeAttribute('aria-label');
         return;
       }
 
@@ -136,8 +135,7 @@
 
       const text = FLAG_TITLES[f] || (f.charAt(0).toUpperCase() + f.slice(1));
       lbl.textContent = text;
-      host.setAttribute('title', text);
-      host.setAttribute('aria-label', text);
+  host.setAttribute('title', text);
       host.dataset.currentFlag = f;
     }
 

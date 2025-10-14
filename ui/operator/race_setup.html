@@ -41,13 +41,13 @@
       <div class="app-header__tools">
   <nav class="app-nav">
           <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
-            <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#home"></use></svg>
+            <svg class="icon"><use href="../img/icons.svg#home"></use></svg>
             <span class="sr-only">Home</span>
           </a>
 
           <div class="app-nav__menu" id="appsMenu" data-open="false">
             <button type="button" class="app-nav__btn" title="Menu">
-              <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#menu"></use></svg>
+              <svg class="icon"><use href="../img/icons.svg#menu"></use></svg>
               <span class="sr-only">Open menu</span>
             </button>
             <div class="app-nav__panel" id="appsPanel">
@@ -178,7 +178,7 @@
                     <span>Start (s)</span>
                   </label>
                 </div>
-                <input id="startFromS" class="input small" aria-label="Start seconds" type="number" min="1" step="1" value="10" />
+                <input id="startFromS" class="input small" type="number" min="1" step="1" value="10" />
               </div>
               <div class="row" id="rowEndCountdown">
                 <div class="label-col">
@@ -187,7 +187,7 @@
                     <span>End (s)</span>
                   </label>
                 </div>
-                <input id="endFromS" class="input small" aria-label="End seconds" type="number" min="1" step="1" value="10" />
+                <input id="endFromS" class="input small" type="number" min="1" step="1" value="10" />
               </div>
               <div class="row" id="rowTimeout">
                 <div class="label-col">
@@ -196,7 +196,7 @@
                     <span>Timeout pad (s)</span>
                   </label>
                 </div>
-                <input id="timeoutS" class="input small" type="number" min="0" step="1" value="0" aria-label="Timeout padding seconds" />
+                <input id="timeoutS" class="input small" type="number" min="0" step="1" value="0" />
               </div>
             </fieldset>
           </section>
@@ -250,7 +250,7 @@
                     <span>Countdown beep on last</span>
                   </label>
                 </div>
-                <input id="beepSecondsInterval" class="input small" type="number" min="1" step="1" value="1" aria-label="Seconds before zero" />
+                <input id="beepSecondsInterval" class="input small" type="number" min="1" step="1" value="1" />
                 <span class="sub">s</span>
               </div>
 
@@ -353,7 +353,7 @@
         const panel = menu.querySelector('.app-nav__panel');
         function openMenu(on) {
           menu.dataset.open = on ? 'true' : 'false';
-          btn.setAttribute('aria-expanded', on ? 'true' : 'false');
+          // aria-expanded removed
         }
         btn.addEventListener('click', (e) => {
           e.stopPropagation();

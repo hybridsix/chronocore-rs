@@ -29,13 +29,13 @@
 <header class="app-header">
   <div class="brand">
     <!-- ChronoCore brand (clickable link back to Home) -->
-    <a class="brand-link" href="/ui/operator/index.html" aria-label="Go to Home">
+  <a class="brand-link" href="/ui/operator/index.html">
       <img
         class="brand-logo"
         src="../img/CCRS_Logo.svg"
         alt="ChronoCore Logo"
       />
-      <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+  <div class="brand__wordmark">
         <div class="wordmark__top">
           <span class="wordmark__big">CHRONO</span>
           <span class="wordmark__big">CORE</span>
@@ -50,24 +50,23 @@
 
   <!-- Right-side cluster: nav -->
   <div class="app-header__tools">
-    <nav class="app-nav" aria-label="Site navigation">
-          <a class="app-nav__link" href="/ui/operator/index.html" aria-label="Home" title="Home">
-            <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#home"></use></svg>
+  <nav class="app-nav">
+          <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
+            <svg class="icon"><use href="../img/icons.svg#home"></use></svg>
             <span class="sr-only">Home</span>
           </a>
 
           <div class="app-nav__menu" id="appsMenu" data-open="false">
-            <button type="button" class="app-nav__btn" aria-haspopup="true" aria-expanded="false"
-                    aria-controls="appsPanel" title="Menu">
-              <svg class="icon" aria-hidden="true"><use href="../img/icons.svg#menu"></use></svg>
+            <button type="button" class="app-nav__btn" title="Menu">
+              <svg class="icon"><use href="../img/icons.svg#menu"></use></svg>
               <span class="sr-only">Open menu</span>
             </button>
-          <div class="app-nav__panel" id="appsPanel" role="menu" aria-labelledby="appsMenu">
-        <a class="current" href="/ui/operator/entrants.html" role="menuitem">Entrants &amp; Tags</a>
-        <a href="/ui/operator/operator.html" role="menuitem">Operator</a>
-        <a href="/ui/operator/settings.html" role="menuitem">Settings</a>
-        <a href="/ui/operator/diag.html" role="menuitem">Diagnostics</a>
-        <a href="/ui/operator/help.html" role="menuitem">Help</a>
+          <div class="app-nav__panel" id="appsPanel">
+        <a class="current" href="/ui/operator/entrants.html">Entrants &amp; Tags</a>
+        <a href="/ui/operator/operator.html">Operator</a>
+        <a href="/ui/operator/settings.html">Settings</a>
+        <a href="/ui/operator/diag.html">Diagnostics</a>
+        <a href="/ui/operator/help.html">Help</a>
         </div>
       </div>
     </nav>
@@ -86,7 +85,7 @@
 
   <main class="wrap">
     <!-- DB not ready warning -->
-    <div id="readyWarn" class="flag hidden" role="status" aria-live="polite">
+  <div id="readyWarn" class="flag hidden">
       <div class="flag__label">Database isn’t ready yet. You can browse, but saving is disabled.</div>
     </div>
 
@@ -120,12 +119,12 @@
               </div>
 
               <!-- Slim progress bar appears only while scanning -->
-              <div class="scan-progress" aria-hidden="true">
+              <div class="scan-progress">
                 <div id="scanBar"></div>
               </div>
 
               <!-- Small status line for scan feedback -->
-              <div id="scanMsg" class="small muted" aria-live="polite"></div>
+              <div id="scanMsg" class="small muted"></div>
 
               <!-- HINT: converted to tooltip by JS/CSS -->
               <div class="hint small">Digits only. Scanning fills this field.</div>
@@ -197,15 +196,13 @@
                     type="text"
                     autocomplete="off"
                     placeholder="#22c55e"
-                    aria-describedby="entColorHint"
                   />
                   <!-- Native color picker (note: popup theming is OS-controlled) -->
                   <input
                     id="entColorPicker"
                     class="color-picker"
                     type="color"
-                    value="#22c55e"
-                    aria-label="Pick team color" />
+                    value="#22c55e" />
                 </div>
 
                 <!-- HINT: converted to tooltip by JS/CSS -->
@@ -218,7 +215,7 @@
               <div class="field logo-field">
                 <label class="label">Team Logo</label>
                 <div class="logo-row">
-                  <div class="logo-preview" aria-label="Team logo preview">
+                  <div class="logo-preview">
                     <div class="logo-placeholder" title="Placeholder — PRS/ChronoCore mark"></div>
                   </div>
                   <!-- RIGHT COLUMN: buttons + (hidden) hint -->
@@ -296,7 +293,7 @@
                     readonly
                   />
                 </label>
-                <div class="small muted" id="entUpdatedAt" aria-live="polite">—</div>
+                <div class="small muted" id="entUpdatedAt">—</div>
               </div>
 
               <div class="buttons">
@@ -305,10 +302,10 @@
                 <button type="button" id="newBtn" class="btn btn-ghost">New</button>
               </div>
 
-              <div id="formMsg" class="form-msg" aria-live="polite"></div>
+              <div id="formMsg" class="form-msg"></div>
             </form>
 
-            <hr class="section-sep" aria-hidden="true">
+            <hr class="section-sep">
             <!-- Bulk actions (UI only, both stubs for now) -->
             <div class="bulk">
               <div class="bulk-buttons">
@@ -331,7 +328,7 @@
             <div class="table-header">
               <div class="filters">
                 <input id="q" class="input input-sm" type="search" placeholder="Filter tag / number / team">
-                <div class="chip-group" role="group" aria-label="Enabled filter">
+                <div class="chip-group">
                   <button class="btn-ghost btn-chip active" data-filter="all">All</button>
                   <button class="btn-ghost btn-chip" data-filter="enabled">Enabled</button>
                   <button class="btn-ghost btn-chip" data-filter="disabled">Disabled</button>
@@ -351,7 +348,7 @@
                 <div class="th">Actions</div>
                 <div class="th right">Status</div>
               </div>
-              <div id="rows" class="rows scroll" role="table" aria-label="Entrants table"></div>
+              <div id="rows" class="rows scroll"></div>
             </div>
           </div>
         </div>
@@ -366,7 +363,7 @@
       <div id="netMsg">Ready</div>
     </div>
     <div class="footer-center">
-      <div class="pill pill--db" id="readyPill" aria-live="polite">DB: ready</div>
+  <div class="pill pill--db" id="readyPill">DB: ready</div>
     </div>
     <div class="footer-right">
       <a class="link" href="/admin/entrants" target="_blank" rel="noopener">GET /admin/entrants</a>
@@ -400,7 +397,7 @@
         <button id="qcCancel" value="cancel" class="btn">Cancel</button>
         <button id="qcCreate" value="default" class="btn btn-primary">Create (Enter)</button>
       </div>
-      <div id="qcMsg" class="form-msg" aria-live="polite"></div>
+  <div id="qcMsg" class="form-msg"></div>
     </form>
   </dialog>
 
@@ -413,7 +410,6 @@
 
     function openMenu(on) {
       menu.dataset.open = on ? 'true' : 'false';
-      btn.setAttribute('aria-expanded', on ? 'true' : 'false');
     }
 
     btn.addEventListener('click', (e) => {

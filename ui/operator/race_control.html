@@ -10,11 +10,11 @@
     <script src="../js/base.js" defer></script>
   </head>
   <body class="op-page race-control">
-    <header class="app-header" role="banner">
+  <header class="app-header">
       <div class="brand">
-        <a class="brand-link" href="/ui/operator/index.html" aria-label="Go to Home">
+  <a class="brand-link" href="/ui/operator/index.html">
           <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" />
-          <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+          <div class="brand__wordmark">
             <div class="wordmark__top">
               <span class="wordmark__big">CHRONO</span>
               <span class="wordmark__big">CORE</span>
@@ -24,15 +24,15 @@
         </a>
         <div class="page-label">Race Control</div>
       </div>
-      <div class="header-tools" aria-label="Header tools"><!-- intentionally empty --></div>
+  <div class="header-tools"><!-- intentionally empty --></div>
     </header>
 
-    <main class="wrap" role="main" aria-label="Race Control">
+  <main class="wrap">
       <!-- Page content starts here -->
-      <section class="page-body" aria-label="Controls and Status">
+  <section class="page-body">
         <!-- Race Clock Pill moved to main content -->
-        <div class="pill-grid" role="group" aria-label="Race Status Pills">
-          <div id="raceClockPill" class="pill clock" aria-live="polite" aria-atomic="true" tabindex="0">
+  <div class="pill-grid">
+          <div id="raceClockPill" class="pill clock" tabindex="0">
             <span class="pill__label">Race Clock</span>
             <span class="pill__value" data-mm="00" data-ss="00" data-ff="00">00:00.00</span>
           </div>
@@ -40,20 +40,20 @@
 
         <!-- Placeholder control regions to fill later -->
         <div class="rc-columns">
-          <section class="rc-primary" aria-label="Primary Controls">
+          <section class="rc-primary">
             <!-- Start/Stop/Flags go here -->
           </section>
-          <aside class="rc-secondary" aria-label="Session Details">
+          <aside class="rc-secondary">
             <!-- Heat selection, entrants, etc. -->
           </aside>
         </div>
       </section>
     </main>
 
-    <footer class="app-footer" role="contentinfo">
+  <footer class="app-footer">
       <div class="footer__inner">
-        <span id="netDot" class="net-dot" aria-hidden="true"></span>
-        <span id="netMsg" class="net-msg" aria-live="polite">Offline</span>
+  <span id="netDot" class="net-dot"></span>
+  <span id="netMsg" class="net-msg">Offline</span>
       </div>
     </footer>
   </body>
