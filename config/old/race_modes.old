@@ -1,0 +1,135 @@
+# ChronoCore — Race Modes (v1.1)
+# ---------------------------------------------------------------------------
+# Presets that pre-fill the Race Setup form. Operators can edit freely.
+# "Free play" is represented as limit.type = time with value_s = 0 (no limit).
+#
+# Limit schema:
+#   limit:
+#     type: time | laps
+#     value_s: <int>     # seconds, when type=time (0 means unlimited)
+#     value_laps: <int>  # laps,  when type=laps
+#     soft_end: <bool>   # only meaningful when type=time and value_s>0
+# ---------------------------------------------------------------------------
+
+modes:
+
+  practice:
+    label: "Practice (Free Play)"
+    limit:
+      type: time
+      value_s: 0              # unlimited time == free play
+      soft_end: true          # irrelevant at 0, kept for clarity
+    rank_method: best_lap
+    min_lap_s: 4.1
+    countdown:
+      start_enabled: false
+      end_enabled: false
+      timeout_s: 0
+    announcements:
+      lap_indication: beep
+      rank_enabled: false
+      rank_interval_laps: 0
+      rank_change_speech: false
+      best_lap_speech: false
+
+  qualifying:
+    label: "Qualifying (Group, 1h soft)"
+    limit:
+      type: time
+      value_s: 3600           # 1 hour default
+      soft_end: true          # do not auto-stop on expiry
+    rank_method: best_lap
+    min_lap_s: 4.1
+    countdown:
+      start_enabled: false
+      end_enabled: false
+      timeout_s: 0
+    announcements:
+      lap_indication: beep
+      rank_enabled: false
+      rank_interval_laps: 0
+      rank_change_speech: false
+      best_lap_speech: false
+
+  sprint:
+    label: "Sprint (15 min)"
+    limit:
+      type: time
+      value_s: 900            # per PRS rules
+      soft_end: false
+    rank_method: total_laps
+    min_lap_s: 4.1
+    countdown:
+      start_enabled: true
+      start_from_s: 10
+      end_enabled: false
+      timeout_s: 0
+    announcements:
+      lap_indication: beep
+      rank_enabled: false
+      rank_interval_laps: 0
+      rank_change_speech: false
+      best_lap_speech: false
+
+  endurance:
+    label: "Endurance (75 min)"
+    limit:
+      type: time
+      value_s: 4500
+      soft_end: false
+    rank_method: total_laps
+    min_lap_s: 4.1
+    countdown:
+      start_enabled: true
+      start_from_s: 10
+      end_enabled: true
+      end_from_s: 10
+      timeout_s: 0
+    announcements:
+      lap_indication: beep        # on
+      rank_enabled: false         # off
+      rank_interval_laps: 0
+      rank_change_speech: false
+      best_lap_speech: true       # on
+    relay:
+      driver_change_interval_s: 900  # every 15 minutes
+      change_horn: true
+
+  hotlap10:
+    label: "Hot-Lap Challenge (10 min)"
+    limit:
+      type: time
+      value_s: 600
+      soft_end: false
+    rank_method: best_lap
+    min_lap_s: 4.1
+    countdown:
+      start_enabled: true
+      start_from_s: 10
+      end_enabled: false
+      timeout_s: 0
+    announcements:
+      lap_indication: beep
+      rank_enabled: false
+      rank_interval_laps: 0
+      rank_change_speech: false
+      best_lap_speech: false
+
+  sprint_laps10:
+    label: "Sprint (10 laps)"
+    limit:
+      type: laps
+      value_laps: 10
+    rank_method: total_laps
+    min_lap_s: 4.1
+    countdown:
+      start_enabled: true
+      start_from_s: 10
+      end_enabled: false
+      timeout_s: 0
+    announcements:
+      lap_indication: beep
+      rank_enabled: false
+      rank_interval_laps: 0
+      rank_change_speech: false
+      best_lap_speech: false

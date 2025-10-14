@@ -1,0 +1,288 @@
+/* ======================================================================
+   Race Setup — page styles (v1.1)
+   - Grid + cards + sticky action row
+   - Shares header/footer with operator.css
+   ====================================================================== */
+
+.race-setup main.wrap {
+  padding: var(--gutterY, 16px) var(--gutterX, 16px);
+}
+
+.rs-grid {
+  grid-template-columns: repeat(3, 1fr);
+
+  display: grid;
+  
+  gap: var(--gap-lg, 16px);
+  padding-bottom: 100px; /* space for sticky action row */
+}
+
+@media (max-width: 1200px) {
+  .rs-grid {
+  grid-template-columns: repeat(3, 1fr);
+  }
+}
+@media (max-width: 800px) {
+  .rs-grid {
+  grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.card.rs-card {
+  background: var(--panel, #121212);
+  border: 1px solid var(--panelEdge, #2a2a2a);
+  border-radius: var(--radius, 12px);
+  padding: 16px;
+  box-shadow: var(--shadow-sm, 0 2px 8px rgba(0,0,0,0.3));
+}
+
+.card__title {
+  margin: 0 0 8px 0;
+  font-size: var(--fs-h3, 20px);
+  color: var(--textStrong, #fff);
+}
+
+.field {
+  display: block;
+  margin-bottom: 14px;
+}
+.field .label {
+  display:block;
+  margin-bottom:6px;
+  color:var(--textDim, #cfd8dc);
+  font-size:var(--fs-small, 14px);
+  letter-spacing:.02em;
+}
+.field .hint {
+  margin-top: 6px;
+  font-size: var(--fs-small, 14px);
+  color: var(--textMuted, #a0a0a0);
+}
+.field .hint .hint__link {
+  margin-left: 8px;
+}
+
+.row {
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.row .grow {
+  flex:1 1 auto;
+}
+
+.input {
+  width: 100%;
+  min-height: 36px;
+  background: var(--inputBg, #0f0f10);
+  color: var(--text, #e8e8e8);
+  border: 1px solid var(--panelEdge, #2a2a2a);
+  border-radius: 8px;
+  padding: 6px 10px;
+}
+.input.small {
+  width: 120px;
+  min-width: 100px;
+}
+
+.btn {
+  min-height: 36px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--btnBg, #1b1b1c);
+  color: var(--text, #fff);
+  border: 1px solid var(--panelEdge, #2a2a2a);
+}
+.btn:hover {
+  filter: brightness(1.1);
+}
+.btn--primary {
+  background: var(--accent, #1e88e5);
+  border-color: transparent;
+}
+.btn--ghost {
+  background: transparent;
+}
+
+.radio, .checkbox {
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+}
+.sub {
+  color: var(--textDim, #cfd8dc);
+  font-size: var(--fs-small, 14px);
+}
+
+.divider {
+  height: 1px;
+  margin: 10px 0 12px;
+  background: var(--panelEdge, #2a2a2a);
+  border-radius: 1px;
+}
+
+/* Sticky bottom row */
+.sticky-row {
+  position: sticky;
+  bottom: calc(var(--footer-h, 48px) + 0px);
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 12px 14px;
+  margin-top: 16px;
+  background: linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(10,10,12,0.85) 35%);
+  border-top: 1px solid var(--panelEdge, #2a2a2a);
+  backdrop-filter: blur(8px);
+}
+@media (max-width: 900px) { .sticky-row { grid-template-columns: 1fr; } }
+
+.summary {
+  color: var(--textMuted, #b0bec5);
+  font-size: var(--fs-small, 14px);
+}
+.readiness {
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+}
+.chip {
+  display:inline-flex;
+  align-items:center;
+  gap:6px;
+  padding:6px 10px;
+  border-radius:999px;
+  border:1px solid var(--panelEdge, #2a2a2a);
+  background:#121316;
+  color:#e8e8e8;
+  font-size:var(--fs-small,14px);
+}
+.chip.ok {
+  background:#103315;
+  border-color:#1f5e2a;
+}
+.chip.warn {
+  background:#332b10;
+  border-color:#5e4e1f;
+}
+.chip.err {
+  background:#331010;
+  border-color:#5e1f1f;
+}
+
+.actions {
+  display:flex;
+  gap:8px;
+  justify-self:end;
+}
+
+.input:focus, .btn:focus, select:focus {
+  outline:2px solid var(--accent,#1e88e5);
+  outline-offset:2px;
+}
+
+/* Entrants-style primary button (rounded square, teal gradient) */
+.btn-primary {
+  background: linear-gradient(180deg, #15627A, #104C60);
+  border-color: #2b4a63;
+  color: #e6f7ff;
+  border-width: 1px;
+  border-style: solid;
+  border-radius: 10px;      /* rounded square, not pill */
+  font-weight: 600;
+}
+.btn-primary:hover {
+  filter: brightness(1.07);
+}
+.btn-primary:focus {
+  outline: 2px solid #2b97bd;
+  outline-offset: 2px;
+}
+
+/* Align the first column labels in the Limit rows */
+.label-col {
+  display: inline-block;
+  min-width: 150px;
+}
+
+/* Grey-out rows/inputs that are disabled */
+.row.is-disabled,
+.row :disabled {
+  opacity: 0.55;
+}
+
+/* Inputs in cards size to container; drop any fixed px width */
+.rs-card .input,
+.rs-card select.input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.rs-grid,
+.rs-grid > *,
+.rs-card,
+.row {
+  min-width: 0;
+}
+
+/* ======================================================================
+   Equal, fixed columns for 1920x1080 + safer inner sizing
+   ====================================================================== */
+
+/* Column and gap knobs (tweak if you want them wider/narrower) */
+.race-setup {
+  --rs-col: 560px;   /* width of each column */
+  --rs-gap: 16px;    /* space between columns */
+}
+
+/* Three equal fixed columns, centered within the page */
+.rs-grid {
+  display: grid;
+  grid-template-columns: var(--rs-col) var(--rs-col) var(--rs-col);
+  gap: var(--rs-gap);
+  justify-content: center;    /* center the whole grid on 1920 canvas */
+  padding-bottom: 100px;      /* leave room for the sticky row */
+}
+
+/* Keep the right-hand “Overrides” (or any extra right card) in column 3 */
+.rs-right {
+  grid-column: 3 / span 1;
+  align-self: start;
+}
+
+/* Let inner elements shrink so they never force a track wider */
+.rs-grid,
+.rs-grid > *,
+.rs-card,
+.row {
+  min-width: 0;
+  box-sizing: border-box;
+}
+
+/* Inputs follow their column (no fixed px widths) */
+.rs-card .input,
+.rs-card select.input {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Align “Laps / Duration” rows; grey inactive without moving layout */
+.label-col {
+  display: inline-block;
+  width: 150px;
+}
+.row.is-disabled,
+.row :disabled {
+  opacity: 0.55;
+}
+
+/* Slightly tighter rhythm so the right column doesn’t look taller */
+.rs-card .field {
+  margin-bottom: 12px;
+}
+.rs-card .field:last-child {
+  margin-bottom: 0;
+}
+

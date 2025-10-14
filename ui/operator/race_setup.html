@@ -9,8 +9,8 @@
     <link rel="stylesheet" href="/ui/css/base.css" />
     <link rel="stylesheet" href="/ui/css/operator.css" />
 
-    <!-- Page-specific styles -->
-    <link rel="stylesheet" href="/ui/css/race_setup_new.css" />
+  <!-- Page-specific styles -->
+  <link rel="stylesheet" href="/ui/css/race_setup.css" />
 
     <!-- Shared JS -->
     <script src="../js/base.js" defer></script>
@@ -202,7 +202,7 @@
           </section>
 
           <!-- ===== RIGHT: Sound & Settings ===== -->
-          <section class="card rs-card" aria-label="Sound and Settings">
+          <section class="card rs-card rs-right" aria-label="Sound and Settings">
             <h2 class="card__title">Sound &amp; Settings</h2>
 
             <div class="field">
@@ -216,12 +216,13 @@
 
             <fieldset class="field">
               <legend class="label">Rank announcements</legend>
-              <div class="row">
-                <label class="checkbox">
-                  <input id="rankEnabled" type="checkbox" />
-                  <span>Enabled</span>
-                </label>
-                <label class="sub" for="rankInterval">every</label>
+              <div class="row" id="rowRankAnnouncements">
+                <div class="label-col">
+                  <label class="checkbox">
+                    <input id="rankEnabled" type="checkbox" />
+                    <span>Enabled every</span>
+                  </label>
+                </div>
                 <input id="rankInterval" class="input small" type="number" min="1" step="1" value="4" />
                 <span class="sub">laps</span>
               </div>
@@ -243,10 +244,12 @@
             <fieldset class="field">
               <legend class="label">Timing sounds</legend>
               <div class="row" id="rowBeepSeconds">
-                <label class="checkbox">
-                  <input id="beepSecondsEnabled" type="checkbox" />
-                  <span>Countdown beep on last</span>
-                </label>
+                <div class="label-col">
+                  <label class="checkbox">
+                    <input id="beepSecondsEnabled" type="checkbox" />
+                    <span>Countdown beep on last</span>
+                  </label>
+                </div>
                 <input id="beepSecondsInterval" class="input small" type="number" min="1" step="1" value="1" aria-label="Seconds before zero" />
                 <span class="sub">s</span>
               </div>
@@ -259,11 +262,12 @@
               </div>
 
               <div class="row" id="rowWhiteFlag">
-                <label class="checkbox">
-                  <input id="whiteFlagSound" type="checkbox" />
-                  <span>White flag sound</span>
-                </label>
-                <label class="sub" for="whiteFlagMode">at</label>
+                <div class="label-col">
+                  <label class="checkbox">
+                    <input id="whiteFlagSound" type="checkbox" />
+                    <span>White flag sound at</span>
+                  </label>
+                </div>
                 <select id="whiteFlagMode" class="input small">
                   <option value="auto">Auto</option>
                   <option value="last_minute">Last minute</option>
@@ -291,26 +295,37 @@
 
            <div class="divider"></div>
 
-            <div class="field">
-              <label class="checkbox">
-                <input id="decoderBypass" type="checkbox" />
-                <span class="sub">Decoder bypass (allow start without decoders)</span>
-              </label>
-            </div>
+            <fieldset class="field">
+              <legend class="label">Bypass</legend>
+              <div class="row">
+                <label class="checkbox">
+                  <input id="decoderBypass" type="checkbox" />
+                  <span class="sub">Decoder bypass (allow start without decoders)</span>
+                </label>
+              </div>
+              <div class="row">
+                <label class="checkbox">
+                  <input id="entrantsBypass" type="checkbox" />
+                  <span class="sub">Entrants bypass (allow start with no entrants)</span>
+                </label>
+              </div>
+            </fieldset>
           </section>
         </form>
 
         <!-- Sticky action row -->
         <div class="sticky-row" role="region" aria-label="Race controls">
-          <div class="summary"><span id="summaryText">—</span></div>
-          <div class="readiness">
-            <span class="chip" id="chipDB">DB: —</span>
-            <span class="chip" id="chipDecoder">Decoder: —</span>
-            <span class="chip" id="chipEntrants">Entrants: —</span>
+          <div class="left-col">
+            <div class="summary"><span id="summaryText">—</span></div>
+            <hr class="sticky-sep" />
+            <div class="readiness">
+              <span class="chip" id="chipDB">DB: —</span>
+              <span class="chip" id="chipDecoder">Decoder: —</span>
+              <span class="chip" id="chipEntrants">Entrants: —</span>
+            </div>
           </div>
           <div class="actions">
-            <button type="button" class="btn btn--ghost" id="btnSaveConfig">Save Config</button>
-            <button type="button" class="btn btn--primary" id="btnStartRace">Start Race</button>
+            <button type="button" class="btn btn--primary btn--start-large" id="btnStartRace">Start Race</button>
           </div>
         </div>
       </section>

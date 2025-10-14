@@ -43,7 +43,7 @@
   gap: var(--gap);
   justify-content: center;   /* center on 1920 canvas */
   align-items: start;
-  padding-bottom: 96px;      /* leave room for sticky row */
+  padding-bottom: 64px;      /* leave room for sticky row */
 }
 
 /* Every direct section fills its grid area (no hard px width) */
@@ -123,11 +123,36 @@
   margin-bottom: 0;
 }
 
+/* Add extra vertical gap between the Duration row and the Soft end row
+   in the Timing & Scoring card (targeting specific IDs so other rows
+   are unaffected). */
+.race-setup #rowTimeValue {
+  margin-bottom: 16px; /* increased from default 8px */
+}
+
+/* Add extra spacing above the "Announce best laps" row in the
+   Rank announcements block. Uses :has() to target the .row that
+   contains the #bestLapSpeech checkbox so other rows are unaffected.
+   Note: :has() is a modern selector supported in recent browsers. */
+.race-setup .row:has(#bestLapSpeech) {
+  margin-top: 14px;
+}
+
 /* Align Laps / Duration label column */
 .race-setup .label-col {
   display: inline-block;
   width: 150px;
   color: var(--text-dim);
+}
+
+/* Slightly smaller label column in right-hand card so its inputs
+   align precisely with centre column inputs. Tweak if needed. */
+.race-setup .rs-right .label-col {
+  width: 200px; /* widened further to avoid label wrapping into input area */
+  display: flex;            /* lay out checkbox + small sub on one horizontal line */
+  align-items: center;      /* vertically center the checkbox and the small sub */
+  gap: 8px;                 /* space between checkbox and the small sub */
+  white-space: nowrap;      /* keep the label + small sub (e.g. 'at') on one line */
 }
 
 /* Inputs */
@@ -154,6 +179,38 @@
   flex: 1 1 240px;
 }
 
+/* No global shift: keep default alignment for middle/left columns */
+.race-setup .row > .input,
+.race-setup .row > select.input {
+  margin-left: 0;
+}
+
+/* Right-column: shift inputs right by 30px. For fluid inputs reduce
+   their width to avoid overlapping nearby text; fixed small inputs
+   (class .small) keep their natural width so dropdowns like the
+   White Flag select remain the same size as other small inputs. */
+.race-setup .rs-right .row > .input,
+.race-setup .rs-right .row > select.input {
+  margin-left: 30px;
+}
+/* For fluid inputs in the right column let them flex to fill remaining space
+   after the fixed-width label column. This prevents overlap regardless of
+   the label column width while keeping alignment consistent. */
+.race-setup .rs-right .row > select.input:not(.small),
+.race-setup .rs-right .row > .input:not(.small) {
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+}
+/* Small inputs/selects (e.g., the white-flag dropdown, numeric small inputs)
+   should keep a predictable width so they match each other. */
+.race-setup .rs-right .row > .input.small,
+.race-setup .rs-right .row > select.input.small {
+  margin-left: 30px;
+  width: 120px;
+  min-width: 90px;
+}
+
 /* Radios / checkboxes */
 .race-setup .radio,
 .race-setup .checkbox {
@@ -163,6 +220,19 @@
   font-size: 15px; /* bump by 1px to match entrants labels */
 }
 
+/* Right-column label/sub tweaks: prevent the small 'at' or 'every'
+   sub-labels from wrapping and ensure font sizing/color matches
+   the centre column countdown area. Scoped to .rs-right so other
+   pages remain unchanged. */
+.race-setup .rs-right .label-col .sub {
+  white-space: nowrap;
+}
+.race-setup .rs-right .sub,
+.race-setup .rs-right .checkbox {
+  font-size: 16px; /* match middle column control size */
+  color: var(--text-dim);
+}
+
 /* Match Entrants page: larger green checkboxes for operator controls */
 .race-setup .checkbox input[type="checkbox"] {
   width: 18px;
@@ -170,10 +240,11 @@
   accent-color: #40E280; /* green used in entrants left pane */
 }
 
-/* Disabled row greys without layout jump */
-.race-setup .row.is-disabled,
-.race-setup .row :disabled,
-.race-setup .field.is-disabled {
+/* Disabled row: only dim the data-entry controls (inputs). Keep
+   checkboxes and label text at full contrast to remain readable. */
+.race-setup .row.is-disabled .input,
+.race-setup .field.is-disabled .input,
+.race-setup .row :disabled {
   opacity: 0.55;
 }
 
@@ -225,11 +296,11 @@
   position: sticky;
   bottom: 0;
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto;
   gap: 12px;
   align-items: center;
   padding: 10px 12px;
-  margin-top: 18px;
+  margin-top: 0px;
   background: linear-gradient(180deg, rgba(0,0,0,0), rgba(9,14,19,0.95));
   border-top: 1px solid var(--panel-edge);
   box-shadow: 0 -2px 10px var(--panel-shadow);
@@ -246,6 +317,50 @@
   flex-wrap: wrap;
 }
 
+.race-setup .controls {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end; /* align chips to bottom of the large Start button */
+}
+
+.race-setup .actions {
+  display: flex;
+  align-items: center;
+}
+
+/* Big Start button: occupy the actions area, double height to be more prominent */
+.race-setup .btn--start-large {
+  height: 72px; /* twice the normal 36px */
+  padding: 12px 18px;
+  font-size: 22px; /* larger text to match bigger button */
+  /* Make the button noticeably wider. Use a fixed target but clamp to 90% of
+     available width on small screens to remain responsive. */
+  width: 420px; /* target wider width (approx double typical control) */
+  min-width: 240px;
+  max-width: 90vw;
+}
+
+/* New layout: left column contains summary + separator + chips; right column the big action */
+.race-setup .left-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.race-setup .sticky-sep {
+  border: none;
+  height: 1px;
+  background: var(--panel-edge);
+  margin: 6px 0;
+  width: 60%;           /* shorten the rule so it doesn't reach the right edge */
+  max-width: 420px;     /* avoid being too wide on large screens */
+  align-self: start;    /* keep it aligned to the left */
+}
+.race-setup .left-col .readiness {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
 .race-setup .chip {
   display: inline-flex;
   align-items: center;
@@ -255,6 +370,23 @@
   background: #101820;
   font-size: 12px;
   color: var(--text);
+}
+
+/* Readiness chip states: ok (green), warn (amber), err (red) */
+.race-setup .chip.ok {
+  background: linear-gradient(180deg, #2bbf73, #1fa35a);
+  border-color: #198842;
+  color: #05210a;
+}
+.race-setup .chip.warn {
+  background: linear-gradient(180deg, #ffd06b, #f3b044);
+  border-color: #e69f2f;
+  color: #2b1900;
+}
+.race-setup .chip.err {
+  background: linear-gradient(180deg, #ff6b6b, #e23a3a);
+  border-color: #c52929;
+  color: #2b0b0b;
 }
 
 /* -------- Focus states (accessibility) ------------------------------- */
@@ -312,4 +444,9 @@
 .race-setup .rs-card .group--rank > legend { 
   font-size: 18px;          /* a hair larger for the three key groups */
 }
+
+/* Right-column input alignment: small left nudge so entry fields
+   align exactly with the middle column inputs. Adjust the value
+   if fine-tuning is needed. */
+/* Right-column alignment is handled structurally via .label-col. */
 

@@ -87,26 +87,8 @@ UI_DIR = PROJECT_ROOT / "ui"
 MODES_PATH = (PROJECT_ROOT / "config" / "race_modes.yaml").resolve()
 #STATIC_DIR = UI_DIR if UI_DIR.exists() else Path(__file__).resolve().parent / "static"
 #app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
-
-# ---- Sound assets: user overrides then built-in defaults ----
-SOUNDS_ASSETS_DIR = PROJECT_ROOT / "assets" / "sounds"
-SOUNDS_CONFIG_DIR = PROJECT_ROOT / "config" / "sounds"
-SOUNDS_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
-SOUNDS_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/assets/sounds", StaticFiles(directory=SOUNDS_ASSETS_DIR, html=False), name="assets_sounds")
-app.mount("/config/sounds", StaticFiles(directory=SOUNDS_CONFIG_DIR, html=False), name="config_sounds")
-
 STATIC_DIR = Path(__file__).resolve().parent.parent / "ui"   # => project_root/ui
 app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
-
-# ---- Sound assets: user overrides then built-in defaults ----
-SOUNDS_ASSETS_DIR = PROJECT_ROOT / "assets" / "sounds"
-SOUNDS_CONFIG_DIR = PROJECT_ROOT / "config" / "sounds"
-SOUNDS_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
-SOUNDS_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/assets/sounds", StaticFiles(directory=SOUNDS_ASSETS_DIR, html=False), name="assets_sounds")
-app.mount("/config/sounds", StaticFiles(directory=SOUNDS_CONFIG_DIR, html=False), name="config_sounds")
-
 
 log.info("Serving UI from: %s", STATIC_DIR)  # sanity print at startup
 

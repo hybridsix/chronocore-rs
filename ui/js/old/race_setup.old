@@ -44,7 +44,11 @@
     startFromS: $('#startFromS'),
     endEnabled: $('#endEnabled'),
     endFromS: $('#endFromS'),
+  timeoutEnabled: $('#timeoutEnabled'),
     timeoutS: $('#timeoutS'),
+  rowStartCountdown: $('#rowStartCountdown'),
+  rowEndCountdown: $('#rowEndCountdown'),
+  rowTimeout: $('#rowTimeout'),
 
     // Announcements
     lapIndication: $('#lapIndication'),
@@ -52,11 +56,11 @@
     rankInterval: $('#rankInterval'),
     rankChangeSpeech: $('#rankChangeSpeech'),
     bestLapSpeech: $('#bestLapSpeech'),
+  rowRankAnnouncements: $('#rowRankAnnouncements'),
 
     // Misc
     entrantsCount: $('#entrantsCount'),
     decoderBypass: $('#decoderBypass'),
-    entrantsBypass: $('#entrantsBypass'),
 
     // Readiness + actions
     chipDB: $('#chipDB'),
@@ -69,6 +73,12 @@
     // Tests
     btnTestBeep: $('#btnTestBeep'),
     btnTestHorn: $('#btnTestHorn'),
+    beepSecondsEnabled: $('#beepSecondsEnabled'),
+    beepSecondsInterval: $('#beepSecondsInterval'),
+    rowBeepSeconds: $('#rowBeepSeconds'),
+    whiteFlagSound: $('#whiteFlagSound'),
+    whiteFlagMode: $('#whiteFlagMode'),
+    rowWhiteFlag: $('#rowWhiteFlag'),
   };
 
   let MODES = {};
@@ -91,19 +101,20 @@
     if (s === 0) return 'Unlimited';
     const m = Math.floor(s / 60);
     const ss = s % 60;
-    return `${m}m ${ss}s`;
+    // Show minutes and seconds but omit the trailing 's' label for seconds
+    return `${m}m ${ss}`;
   }
 
   function summarize(cfg) {
     const parts = [];
     if (cfg.limit?.type === 'time') {
-      parts.push(`Time ${secondsToHuman(cfg.limit.value_s)}`);
+      parts.push(`Event Time ${secondsToHuman(cfg.limit.value_s)}`);
       if (cfg.limit.value_s > 0 && cfg.limit.soft_end) parts.push('soft');
     } else if (cfg.limit?.type === 'laps') {
       parts.push(`${cfg.limit.value_laps} laps`);
     }
     parts.push(cfg.rank_method === 'best_lap' ? 'Rank: Best Lap' : 'Rank: Total Laps');
-    parts.push(`MinLap ${cfg.min_lap_s?.toFixed ? cfg.min_lap_s.toFixed(1) : cfg.min_lap_s}s`);
+    // MinLap removed from quick summary per UX request
     if (cfg.relay?.driver_change_interval_s) {
       parts.push(`Driver change ${Math.round(cfg.relay.driver_change_interval_s / 60)}m`);
     }
@@ -184,48 +195,6 @@
   return slug || 'custom-mode';
 }
 
-  function bindCustomSave() {
-    const doSave = async () => {
-      const label = (els.customLabel.value || '').trim();
-      if (!label) { alert('Provide a mode name.'); return; }
-      const id = slugifyLabel(label);
-      const cfg = formToConfig();
-      const mode = {
-        label,
-        limit: cfg.limit,
-        rank_method: cfg.rank_method,
-        min_lap_s: cfg.min_lap_s,
-        countdown: cfg.countdown,
-        announcements: cfg.announcements,
-        ...(cfg.relay ? { relay: cfg.relay } : {}),
-      };
-
-      // Overwrite confirm if it already exists
-      if (MODES[id] && !confirm(`Mode “${label}” exists. Overwrite?`)) return;
-
-      try {
-        const r = await fetch('/setup/race_modes/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, mode }),
-        });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        MODES[id] = mode;
-        paintModes(MODES);
-        els.modeSelect.value = id;
-        applyModeToForm(id);
-        alert('Mode saved.');
-      } catch (err) {
-        console.error(err);
-        alert('Could not save mode. Check backend route /setup/race_modes/save.');
-      }
-    };
-
-    els.btnSaveMode?.addEventListener('click', doSave);
-    els.customLabel?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); doSave(); }
-    });
-  }
 
 
   // ------------------------------------------------------------------------
@@ -276,6 +245,12 @@
     els.endFromS.value = base.countdown?.end_from_s ?? 10;
     els.timeoutS.value = base.countdown?.timeout_s ?? 0;
 
+  // Reflect countdown UI enabled/disabled state
+  updateCountdownUi(els);
+
+  // Reflect right-column controls
+  updateRightColumnUi(els);
+
     // Announcements
     els.lapIndication.value = base.announcements?.lap_indication ?? 'beep';
     els.rankEnabled.checked = !!base.announcements?.rank_enabled;
@@ -302,10 +277,48 @@
     els.rowLapsValue.classList.toggle('is-disabled', isTime);
 
     // Soft end applies only when time > 0
-    const t = (parseInt(els.limitValueS.value || '0', 10) || 0) * 60;
+    const t = parseInt(els.limitValueS.value || '0', 10);
     const softEnabled = isTime && t > 0;
     els.limitSoftEnd.disabled = !softEnabled;
     els.rowSoftEnd.classList.toggle('is-disabled', !softEnabled);
+  }
+
+
+  // Enable/disable countdown inputs and grey their rows when unchecked
+  function updateCountdownUi(els) {
+    if (!els) return;
+    // Disable the numeric inputs when their enabling checkbox is not checked
+    els.startFromS.disabled = !els.startEnabled.checked;
+    els.endFromS.disabled = !els.endEnabled.checked;
+    els.timeoutS.disabled = !els.timeoutEnabled.checked;
+
+    // Grey the rows to match other disabled rows styling
+    els.rowStartCountdown.classList.toggle('is-disabled', !els.startEnabled.checked);
+    els.rowEndCountdown.classList.toggle('is-disabled', !els.endEnabled.checked);
+    els.rowTimeout.classList.toggle('is-disabled', !els.timeoutEnabled.checked);
+  }
+
+
+  // Enable/disable right-column announcement/timing controls
+  function updateRightColumnUi(els) {
+    if (!els) return;
+    // Rank announcements: numeric interval
+    if (els.rowRankAnnouncements) {
+      els.rankInterval.disabled = !els.rankEnabled.checked;
+      els.rowRankAnnouncements.classList.toggle('is-disabled', !els.rankEnabled.checked);
+    }
+
+    // Countdown beep interval
+    if (els.rowBeepSeconds) {
+      els.beepSecondsInterval.disabled = !els.beepSecondsEnabled.checked;
+      els.rowBeepSeconds.classList.toggle('is-disabled', !els.beepSecondsEnabled.checked);
+    }
+
+    // White flag select
+    if (els.rowWhiteFlag) {
+      els.whiteFlagMode.disabled = !els.whiteFlagSound.checked;
+      els.rowWhiteFlag.classList.toggle('is-disabled', !els.whiteFlagSound.checked);
+    }
   }
 
 
@@ -320,7 +333,6 @@
       event_label: els.eventLabel?.value?.trim() || '',
       session_label: els.sessionLabel?.value?.trim() || '',
       decoder_bypass: !!els.decoderBypass?.checked,
-      entrants_bypass: !!els.entrantsBypass?.checked,
 
       mode_id: currentModeId, // informational
 
@@ -362,22 +374,6 @@
       cfg.countdown.timeout_s = 0;
     }
 
-    
-    // Sounds block (optional controls may be absent)
-    const beepLastOn = !!($('#beepOnLast')?.checked);
-    const beepLastVal = parseInt($('#beepOnLastValue')?.value || '0', 10) || 0;
-    const whiteModeSel = $('#whiteFlagMode')?.value || 'auto';
-    const whiteAtVal = parseInt($('#whiteFlagAt')?.value || '60', 10) || 60;
-
-    cfg.sounds = {
-      countdown_beep_last_s: beepLastOn ? beepLastVal : 0,
-      starting_horn: !!($('#startingHorn')?.checked),
-      white_flag: (whiteModeSel === 'time') ? { mode: 'time', at_s: whiteAtVal } :
-                 (whiteModeSel === 'off') ? { mode: 'off' } :
-                 { mode: 'auto' },
-      checkered_horn: !!($('#checkeredHorn')?.checked)
-    };
-
     return cfg;
   }
 
@@ -403,6 +399,8 @@
       }
 
       updateLimitUi(els);
+      updateCountdownUi(els);
+      updateRightColumnUi(els);
       formToConfig();
       paintSummary();
     });
@@ -410,6 +408,15 @@
     els.modeSelect?.addEventListener('change', (e) => {
       applyModeToForm(e.target.value);
     });
+    // Ensure countdown toggles update UI immediately
+    els.startEnabled?.addEventListener('change', () => updateCountdownUi(els));
+    els.endEnabled?.addEventListener('change', () => updateCountdownUi(els));
+    els.timeoutEnabled?.addEventListener('change', () => updateCountdownUi(els));
+  // Right-column toggles
+  els.rankEnabled?.addEventListener('change', () => updateRightColumnUi(els));
+  els.beepSecondsEnabled?.addEventListener('change', () => updateRightColumnUi(els));
+  els.whiteFlagSound?.addEventListener('change', () => updateRightColumnUi(els));
+    
   }
 
   // ------------------------------------------------------------------------
@@ -455,59 +462,17 @@
         alert('Could not save mode. Check /setup/race_modes/save on the backend.');
       }
     };
+    els.btnSaveMode?.addEventListener('click', doSave);
+    els.customLabel?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); doSave(); }
+    });
 
-  els.btnSaveMode?.addEventListener('click', doSave);
-  els.customLabel?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); doSave(); }
-  });
+  
 }
 
 
-  els.btnSaveMode?.addEventListener('click', doSave);
-  // Enter to save, like the Entrants form
-  els.customLabel?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); doSave(); }
-  });
 
 
-
-  
-  // ------------------------------------------------------------------------
-  // Audio playback with /config override fallback
-  // ------------------------------------------------------------------------
-  async function playSound(name, fallback='beep') {
-    const cacheBust = Date.now();
-    const urls = [
-      `/config/sounds/${name}?v=${cacheBust}`,
-      `/assets/sounds/${name}?v=${cacheBust}`
-    ];
-    for (const u of urls) {
-      try {
-        const a = new Audio(u);
-        await a.play();
-        return true;
-      } catch (e) {
-        // try next
-      }
-    }
-    // Fallback simple synth
-    try {
-      const actx = new (window.AudioContext || window.webkitAudioContext)();
-      const osc = actx.createOscillator();
-      const gain = actx.createGain();
-      if (fallback === 'horn') {
-        osc.type = 'sawtooth'; osc.frequency.value = 220; gain.gain.value = 0.08;
-        osc.connect(gain).connect(actx.destination); osc.start();
-        setTimeout(() => { osc.frequency.value = 180; }, 150);
-        setTimeout(() => { osc.stop(); actx.close(); }, 450);
-      } else {
-        osc.type = 'square'; osc.frequency.value = 880; gain.gain.value = 0.05;
-        osc.connect(gain).connect(actx.destination); osc.start();
-        setTimeout(() => { osc.stop(); actx.close(); }, 100);
-      }
-    } catch {}
-    return false;
-  }
 
   // ------------------------------------------------------------------------
   // Readiness probes (DB, decoder, entrants)
@@ -630,7 +595,19 @@
         setTimeout(() => { osc.stop(); actx.close(); }, 180);
       } catch {}
     });
-    els.btnTestHorn?.addEventListener('click', () => { playSound('start_horn.wav', 'horn'); });
+    els.btnTestHorn?.addEventListener('click', () => {
+      try {
+        const actx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = actx.createOscillator();
+        const gain = actx.createGain();
+        osc.type = 'sawtooth'; osc.frequency.value = 220;
+        gain.gain.value = 0.08;
+        osc.connect(gain).connect(actx.destination);
+        osc.start();
+        setTimeout(() => { osc.frequency.value = 180; }, 150);
+        setTimeout(() => { osc.stop(); actx.close(); }, 450);
+      } catch {}
+    });
   }
 
   // ------------------------------------------------------------------------

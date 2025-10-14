@@ -1,0 +1,148 @@
+modes:
+  endurance:
+    announcements:
+      best_lap_speech: true
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
+    countdown:
+      end_enabled: true
+      end_from_s: 10
+      start_enabled: true
+      start_from_s: 10
+      timeout_pad_s: 0
+    label: Endurance (75 min, relay)
+    limit:
+      soft_end: false
+      type: time
+      value_s: 4500
+    min_lap_s: 4.1
+    rank_method: total_laps
+    relay:
+      change_horn: true
+      driver_change_interval_s: 900
+    sounds:
+      checkered_horn: true
+      countdown_beep_last_s: 1
+      files:
+        checkered: checkered_flag.wav
+        end: end_horn.wav
+        lap_indication: lap_beep.wav
+        start: start_horn.wav
+        white_flag: white_flag.wav
+      starting_horn: true
+      volume:
+        beeps: 1.0
+        horns: 1.0
+        master: 1.0
+      white_flag:
+        mode: auto
+  practice:
+    announcements:
+      best_lap_speech: false
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
+    countdown:
+      end_enabled: false
+      end_from_s: 10
+      start_enabled: false
+      start_from_s: 10
+      timeout_pad_s: 0
+    label: Practice (Free Play)
+    limit:
+      soft_end: true
+      type: time
+      value_s: 0
+    min_lap_s: 4.1
+    rank_method: best_lap
+    sounds:
+      checkered_horn: false
+      countdown_beep_last_s: 0
+      files:
+        checkered: checkered_flag.wav
+        end: end_horn.wav
+        lap_indication: lap_beep.wav
+        start: start_horn.wav
+        white_flag: white_flag.wav
+      starting_horn: false
+      volume:
+        beeps: 1.0
+        horns: 1.0
+        master: 1.0
+      white_flag:
+        mode: 'off'
+  qualifying:
+    announcements:
+      best_lap_speech: false
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
+    countdown:
+      end_enabled: false
+      end_from_s: 10
+      start_enabled: false
+      start_from_s: 10
+      timeout_pad_s: 0
+    label: Qualifying (1 hr, soft)
+    limit:
+      soft_end: true
+      type: time
+      value_s: 3600
+    min_lap_s: 4.1
+    rank_method: best_lap
+    sounds:
+      checkered_horn: false
+      countdown_beep_last_s: 0
+      files:
+        checkered: checkered_flag.wav
+        end: end_horn.wav
+        lap_indication: lap_beep.wav
+        start: start_horn.wav
+        white_flag: white_flag.wav
+      starting_horn: false
+      volume:
+        beeps: 1.0
+        horns: 1.0
+        master: 1.0
+      white_flag:
+        mode: auto
+  sprint:
+    announcements:
+      best_lap_speech: false
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
+    countdown:
+      end_enabled: false
+      end_from_s: 10
+      start_enabled: true
+      start_from_s: 10
+      timeout_pad_s: 0
+    label: Sprint (15 min)
+    limit:
+      soft_end: false
+      type: time
+      value_s: 900
+    min_lap_s: 4.1
+    rank_method: total_laps
+    sounds:
+      checkered_horn: false
+      countdown_beep_last_s: 0
+      files:
+        checkered: checkered_flag.wav
+        end: end_horn.wav
+        lap_indication: lap_beep.wav
+        start: start_horn.wav
+        white_flag: white_flag.wav
+      starting_horn: false
+      volume:
+        beeps: 1.0
+        horns: 1.0
+        master: 1.0
+      white_flag:
+        mode: auto

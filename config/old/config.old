@@ -239,29 +239,3 @@ ui:
     sound_default_enabled: false      # must be toggled on the page once
     show_location_filters: true       # drop-down filters on diagnostics
     time_display: "local"             # "local" | "utc"
-
-
-# ---------------------------------------------------------------------
-# Global sound settings (Option A: fixed filenames; override by dropping
-# files with the same names into ./config/sounds/ on disk).
-# The app serves /config/sounds/<file> first, falling back to /assets/sounds/<file>.
-#
-# Filenames are NOT mode-specific. Keep these names stable so users can
-# replace them 1:1 without touching YAML or code.
-# Supported formats: .wav (recommended for precise timing), .mp3 (ok).
-# Stereo or mono both work.
-# ---------------------------------------------------------------------
-sounds:
-  volume:
-    master: 1.0   # 0.0–1.0, global multiplier
-    horns: 1.0    # 0.0–1.0, applied to horn-like cues
-    beeps: 1.0    # 0.0–1.0, applied to beeps/pips
-  files:
-    lap_indication: lap_beep.wav      # short pip when a lap reads (if enabled)
-    countdown:      countdown_beep.wav# optional "beep on last N seconds"
-    start:          start_horn.wav    # race start
-    end:            end_horn.wav      # race end (if enabled)
-    white_flag:     white_flag.wav    # white flag cue (auto/time/off per mode)
-    checkered:      checkered_flag.wav# checkered cue at finish (if enabled)
-    rank_change:    rank_change.wav   # rank-change blip (if enabled later)
-    best_lap:       best_lap.wav      # best-lap arpeggio (if enabled)
