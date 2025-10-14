@@ -463,11 +463,7 @@
 }
 
 
-  els.btnSaveMode?.addEventListener('click', doSave);
-  // Enter to save, like the Entrants form
-  els.customLabel?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); doSave(); }
-  });
+
 
 
 
@@ -651,8 +647,79 @@
     bindCustomSave();
     bindReadiness();
     bindActions();
+
+    // New: wire dynamic row enable/disable helpers
+    wireRowToggles();
   }
 
   if (document.readyState !== 'loading') boot();
   else document.addEventListener('DOMContentLoaded', boot);
+
+  // ------------------------------------------------------------
+  // Dim/disable a row in-place, without changing your HTML
+  // rowSel: the row container (e.g., '#rowStartCountdown')
+  // cbSel : the checkbox that controls the row (e.g., '#startEnabled')
+  // on    : boolean (true = enabled, false = disabled)
+  // ------------------------------------------------------------
+  function setRowEnabled(rowSel, cbSel, on) {
+    const row = document.querySelector(rowSel);
+    const cb  = cbSel ? document.querySelector(cbSel) : null;
+    if (!row) return;
+
+    // Visual dimming
+    row.classList.toggle('is-disabled', !on);
+
+    // Functional disabling of all form controls in the row except the toggle
+    row.querySelectorAll('input, select, textarea, button').forEach(el => {
+      if (cb && el === cb) return;           // keep the controlling checkbox clickable
+      el.disabled = !on;
+    });
+  }
+
+  // ------------------------------------------------------------
+  // Bind a checkbox to its row: checkbox checked = row enabled
+  // ------------------------------------------------------------
+  function bindToggleRow(cbSel, rowSel) {
+    const cb = document.querySelector(cbSel);
+    if (!cb) return;
+    const sync = () => setRowEnabled(rowSel, cbSel, cb.checked);
+    cb.addEventListener('change', sync);
+    // Initialize on load
+    sync();
+  }
+
+  // ------------------------------------------------------------
+  // Wire up existing rows (only if they exist in markup)
+  // Called from boot() after DOM is ready and base form painted
+  // ------------------------------------------------------------
+  function wireRowToggles() {
+    // Countdowns
+    bindToggleRow('#startEnabled',   '#rowStartCountdown');
+    bindToggleRow('#endEnabled',     '#rowEndCountdown');
+
+    // Timeout: prefer a checkbox if present; otherwise dim when value == 0
+    (function () {
+      const cb   = document.querySelector('#timeoutEnabled');
+      const row  = '#rowTimeout';
+      const pad  = document.querySelector('#timeoutS');
+
+      if (cb) {
+        bindToggleRow('#timeoutEnabled', row);
+      } else if (pad) {
+        const sync = () => {
+          const on = (parseInt(pad.value || '0', 10) || 0) > 0;
+          setRowEnabled(row, null, on);
+        };
+        pad.addEventListener('input', sync);
+        sync();
+      }
+    })();
+
+    // Rank announcements
+    bindToggleRow('#rankEnabled', '#rowRankAnnouncements');
+
+    // Timing sounds (right pane)
+    bindToggleRow('#beepSecondsEnabled', '#rowBeepSeconds');
+    bindToggleRow('#whiteFlagSound',     '#rowWhiteFlag');
+  }
 })();

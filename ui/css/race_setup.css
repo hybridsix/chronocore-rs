@@ -445,7 +445,55 @@
   font-size: 18px;          /* a hair larger for the three key groups */
 }
 
-/* Right-column input alignment: small left nudge so entry fields
-   align exactly with the middle column inputs. Adjust the value
-   if fine-tuning is needed. */
-/* Right-column alignment is handled structurally via .label-col. */
+/* --- Uniform "dimmed" state for any row we toggle via JS --- */
+.race-setup .is-disabled {
+  opacity: 0.60;                /* subtle dim; keeps labels readable */
+  filter: saturate(0.9) contrast(0.96);
+}
+
+/* When controls are disabled, make it obvious */
+.race-setup input:disabled,
+.race-setup select:disabled,
+.race-setup textarea:disabled,
+.race-setup button:disabled {
+  background: #1a2631;
+  border-color: #2a3b4b;
+  color: #8fa4b7;
+  cursor: not-allowed;
+}
+
+/* Stop dimming the whole row */
+.race-setup .is-disabled {
+  opacity: 1;
+  filter: none;
+}
+
+/* Dim only data-entry widgets inside disabled rows */
+.race-setup .is-disabled input:not([type="checkbox"]),
+.race-setup .is-disabled select,
+.race-setup .is-disabled textarea,
+.race-setup .is-disabled .input,
+.race-setup .is-disabled .unit,
+.race-setup .is-disabled .cfg-input,
+.race-setup .is-disabled .cfg-unit {
+  opacity: 0.55;
+  filter: saturate(0.9) contrast(0.96);
+}
+
+/* Keep the toggle checkbox/text crisp just in case */
+.race-setup .is-disabled .checkbox,
+.race-setup .is-disabled .checkbox * {
+  opacity: 1;
+  filter: none;
+}
+
+/* Disabled control look (leave this as-is if you already have it) */
+.race-setup input:disabled,
+.race-setup select:disabled,
+.race-setup textarea:disabled,
+.race-setup button:disabled {
+  background: #1a2631;
+  border-color: #2a3b4b;
+  color: #8fa4b7;
+  cursor: not-allowed;
+}
