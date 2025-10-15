@@ -5,14 +5,6 @@
   <title>CCRS — Race Control</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- =====================================================================
-       RACE CONTROL PAGE
-       ---------------------------------------------------------------------
-       Uses the same common header/footer as Diagnostics.
-       CSS chain mirrors Diagnostics: base.css → operator.css → race_control.css
-       JS  chain mirrors Diagnostics: base.js → race_control.js (page logic)
-  ===================================================================== -->
-
   <!-- Common operator CSS -->
   <link rel="stylesheet" href="/ui/css/base.css" />
   <link rel="stylesheet" href="/ui/css/operator.css" />
@@ -22,13 +14,13 @@
 
 <body class="race-control">
   <!-- ==============================================================
-       HEADER — identical structure to Diagnostics / Live Sensors
+       HEADER — standardized (same shell as other operator pages)
   ============================================================== -->
   <header class="app-header">
     <div class="brand">
-      <a class="brand-link" href="/ui/operator/index.html">
+      <a class="brand-link" href="/ui/operator/index.html" aria-label="Go to Home">
         <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="CCRS Logo" />
-        <div class="brand__wordmark">
+        <div class="brand__wordmark" aria-label="ChronoCore Race Software">
           <div class="wordmark__top">
             <span class="wordmark__big">CHRONO</span>
             <span class="wordmark__big">CORE</span>
@@ -36,11 +28,9 @@
           <div class="wordmark__bottom">RACE SOFTWARE</div>
         </div>
       </a>
-
       <div class="page-label">Race Control</div>
     </div>
 
-    <!-- Right-side cluster: standard app nav -->
     <div class="app-header__tools">
       <nav class="app-nav">
         <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
@@ -68,96 +58,107 @@
 
   <!-- ==============================================================
        MAIN CONTENT
-       --------------------------------------------------------------
-       Top toolbar contains start method + pre-race + start/abort.
-       Below is a two-pane layout: left = flag pad; right = live info.
+       Toolbar → two-column grid:
+       - Left column: Flags (spans both rows)
+       - Right column: Race clock (top) and Race data (bottom)
   ============================================================== -->
   <main class="rcWrap">
-    <!-- Top toolbar (shared visual with Diagnostics.toolBar) -->
+    <!-- Top toolbar -->
     <div class="toolBar">
       <div class="left">
+        <div class="toolTitle">Start settings</div>
+
         <!-- Start type -->
-        <label class="radio"><input type="radio" name="startMethod" id="startStanding" value="standing" checked><span>Standing</span></label>
-        <label class="radio"><input type="radio" name="startMethod" id="startRolling" value="rolling"><span>Rolling</span></label>
+        <label class="radio">
+          <input type="radio" name="startMethod" id="startStanding" value="standing" checked>
+          <span>Standing</span>
+        </label>
+        <label class="radio">
+          <input type="radio" name="startMethod" id="startRolling" value="rolling">
+          <span>Rolling</span>
+        </label>
 
-        <!-- Pre-race group -->
         <div class="sep">|</div>
-        <button id="btnStartParade" class="btn btn-primary">Parade</button>
-        <button id="btnStartValidation" class="btn btn-primary">Validation</button>
-        <button id="btnStopPrep" class="btn">Stop</button>
-        <label class="chk"><input id="beepOnRead" type="checkbox" checked><span>Beep on read</span></label>
 
-        <!-- Countdown / Start / Abort -->
+        <!-- Pre-race (unified) -->
+        <button id="btnPreRace" class="btn btn-primary">Pre-race</button>
+
         <div class="sep">|</div>
         <button id="btnCountdown10" class="btn">10s</button>
-        <button id="btnGoGreen" class="btn btn-success">Go Green</button>
-        <button id="btnAbort" class="btn btn-danger">Abort</button>
+        <button id="btnGoGreen"     class="btn btn-success">Go Green</button>
+        <button id="btnAbort"       class="btn btn-danger">Abort</button>
       </div>
 
       <div class="right">
-        <!-- Active flag indicator chip -->
-        <div class="banner" id="flagBanner">
-          Active flag: <span class="flag-chip" id="flagChip" data-flag="off">OFF</span>
-        </div>
+        <!-- Reserved for future quick toggles -->
       </div>
     </div>
 
-    <!-- Two-pane layout (reuses .pane styling like Diagnostics) -->
+    <!-- Two-column grid -->
     <div class="rcGrid">
-      <!-- Left: Flags (exclusive) -->
-        <div class="pane" id="paneFlags">
-          <div class="pane__head">Flags</div>
-          <div class="pane__body">
-            <div id="flagColumn">
-              <div class="flag-pad" id="flagPad">
-                <button class="flag flag--green"     data-flag="green">Green</button>
-                <button class="flag flag--yellow"    data-flag="yellow">Yellow</button>
-                <button class="flag flag--white"     data-flag="white">White</button>
-                <button class="flag flag--red hold"  data-flag="red" title="Hold to confirm">Red</button>
-                <button class="flag flag--checkered hold" data-flag="checkered" title="Hold to confirm">Checkered</button>
-                <button class="flag flag--blue"      data-flag="blue">Blue</button>
-              </div>
+      <!-- Left: Flags (span both rows on the left) -->
+      <section class="pane" id="paneFlags" aria-labelledby="flagsTitle">
+        <h2 class="pane__head" id="flagsTitle">Flags</h2>
+        <div class="pane__body">
+          <div id="flagColumn">
+            <!-- Half-height pre-race button (same width as column) -->
+            <div id="preFlagRow">
+              <button class="flag flag--pre" data-flag="pre" type="button">Pre-race</button>
+            </div>
+
+            <!-- Uniform single-column flag pad -->
+            <div class="flag-pad" id="flagPad" role="group" aria-label="Flag controls">
+              <button class="flag flag--green"     data-flag="green"     type="button">Green</button>
+              <button class="flag flag--yellow"    data-flag="yellow"    type="button">Yellow</button>
+              <button class="flag flag--red"       data-flag="red"       type="button">Red</button>
+              <button class="flag flag--blue"      data-flag="blue"      type="button">Blue</button>
+              <button class="flag flag--white"     data-flag="white"     type="button">White</button>
+              <button class="flag flag--checkered" data-flag="checkered" type="button">Checkered</button>
             </div>
           </div>
         </div>
+      </section>
 
+      <!-- Right (row 1): Race clock -->
+      <section class="pane" id="paneClock" aria-labelledby="clockTitle">
+        <h2 class="pane__head" id="clockTitle">Race clock</h2>
+        <div class="pane__body clockBody">
+          <div class="clockMeta">
+            <span class="toolbar-label">Mode</span>
+            <button id="btnClockMode" class="btn btn-primary btn--sm" type="button" title="Toggle elapsed/remaining">Remaining</button>
+          </div>
 
-      <!-- Right: Timers + Seen list + Lap feed -->
-      <div class="pane">
-        <div class="pane__head">Live</div>
+          <!-- Keep this ID so existing JS keeps working -->
+          <div id="clockDisplay" class="bigClock" aria-live="polite">00:00:00</div>
+        </div>
+      </section>
+
+      <!-- Right (row 2): Race data -->
+      <section class="pane" id="paneLive" aria-labelledby="liveTitle">
+        <h2 class="pane__head" id="liveTitle">Race data</h2>
         <div class="pane__body rcLiveBody">
-          <div class="timers">
-            <div class="timer">
-              <div class="timer__label">Elapsed</div>
-              <div class="timer__value" id="tElapsed">00:00</div>
+          <div id="panelSeen">
+            <div class="liveHead">
+              Seen (<span id="seenCount">0</span>/<span id="seenTotal">0</span>)
             </div>
-            <div class="timer">
-              <div class="timer__label">Remaining</div>
-              <div class="timer__value" id="tRemaining">15:00</div>
-            </div>
+            <ul id="seenList" class="liveList" aria-live="polite"></ul>
           </div>
 
-          <div class="liveSplit">
-            <div class="liveCol">
-              <div class="liveHead">Seen (<span id="seenCount">0</span>/<span id="seenTotal">0</span>)</div>
-              <ul id="seenList" class="liveList"></ul>
-            </div>
-            <div class="liveCol">
-              <div class="liveHead">Last lap feed</div>
-              <ul id="lapFeed" class="liveList"></ul>
-            </div>
+          <div id="panelFeed" class="hidden">
+            <div class="liveHead">Last lap feed</div>
+            <ul id="lapFeed" class="liveList" aria-live="polite"></ul>
           </div>
         </div>
-      </div>
+      </section>
     </div>
   </main>
 
   <!-- ==============================================================
-       FOOTER — standard operator footer; keep consistent with pages
+       FOOTER — standardized
   ============================================================== -->
   <footer class="app-footer">
     <div class="footer-left">
-      <div class="status-dot" id="netDot"></div>
+      <div class="status-dot" id="netDot" aria-hidden="true"></div>
       <div id="netMsg">Ready</div>
     </div>
     <div class="footer-center">
@@ -167,36 +168,36 @@
     <div class="footer-right"></div>
   </footer>
 
-  <!-- Common base helpers, then page JS -->
+  <!-- JS -->
   <script src="../js/base.js" defer></script>
   <script src="../js/race_control.js" defer></script>
 
-  <!-- Inline menu toggle (same as Diagnostics) -->
+  <!-- Inline menu toggle -->
   <script>
-  (function () {
-    const menu = document.getElementById('appsMenu');
-    if (!menu) return;
-    const btn   = menu.querySelector('.app-nav__btn');
-    const panel = menu.querySelector('.app-nav__panel');
-    function openMenu(on) { menu.dataset.open = on ? 'true' : 'false'; }
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openMenu(menu.dataset.open !== 'true');
-      if (menu.dataset.open === 'true') {
-        const first = panel.querySelector('a'); if (first) first.focus();
-      }
-    });
-    document.addEventListener('click', () => openMenu(false));
-    document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openMenu(false); });
-    panel.addEventListener('keydown', (e) => {
-      const items = Array.from(panel.querySelectorAll('a'));
-      const i = items.indexOf(document.activeElement);
-      if (e.key === 'ArrowDown') { e.preventDefault(); (items[i+1] || items[0]).focus(); }
-      else if (e.key === 'ArrowUp') { e.preventDefault(); (items[i-1] || items[items.length-1]).focus(); }
-      else if (e.key === 'Home') { e.preventDefault(); (items[0] || document.activeElement).focus(); }
-      else if (e.key === 'End')  { e.preventDefault(); (items[items.length-1] || document.activeElement).focus(); }
-    });
-  })();
+    (function () {
+      const menu  = document.getElementById('appsMenu');
+      if (!menu) return;
+      const btn   = menu.querySelector('.app-nav__btn');
+      const panel = menu.querySelector('.app-nav__panel');
+      function openMenu(on) { menu.dataset.open = on ? 'true' : 'false'; }
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        openMenu(menu.dataset.open !== 'true');
+        if (menu.dataset.open === 'true') {
+          const first = panel.querySelector('a'); if (first) first.focus();
+        }
+      });
+      document.addEventListener('click', () => openMenu(false));
+      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openMenu(false); });
+      panel.addEventListener('keydown', (e) => {
+        const items = Array.from(panel.querySelectorAll('a'));
+        const i = items.indexOf(document.activeElement);
+        if (e.key === 'ArrowDown') { e.preventDefault(); (items[i+1] || items[0]).focus(); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); (items[i-1] || items[items.length-1]).focus(); }
+        else if (e.key === 'Home')   { e.preventDefault(); (items[0] || document.activeElement).focus(); }
+        else if (e.key === 'End')    { e.preventDefault(); (items[items.length-1] || document.activeElement).focus(); }
+      });
+    })();
   </script>
 </body>
 </html>
