@@ -11,6 +11,12 @@
 #   - Event identity (name/date/location/branding) → event.yaml
 #   - Race mode definitions (limits, labels, min lap) → race_modes.yaml
 #   - Legacy/transition configs (historical) → config.yaml (deprecated)
+#
+# IMPORTANT:
+#   There must be exactly ONE top-level 'app:' mapping in this file.
+#   YAML merges last-write-wins: repeating 'app:' later would overwrite earlier
+#   sections (which caused 'app.engine' to disappear). Keep everything nested
+#   under this single 'app:' key.
 # =============================================================================
 
 app:
@@ -20,6 +26,7 @@ app:
   # The Operator/Spectator UIs use this policy to determine which engine host
   # to talk to. Devices may be allowed to override locally, but these are the
   # defaults system-wide.
+  #
   # Precedence (deterministic):
   #   1) If prefer_same_origin == true AND page is served by the engine (http/s),
   #      use same-origin (no host string).
@@ -30,6 +37,7 @@ app:
   #        - mode: localhost  → "127.0.0.1:8000"
   #        - mode: auto       → same-origin if available; else fixed_host if set;
   #                             else "127.0.0.1:8000"
+  #
   # Recommended:
   #   - Development: mode: localhost
   #   - Field kiosks/desktop: mode: fixed (and set fixed_host)
@@ -37,15 +45,16 @@ app:
   # ---------------------------------------------------------------------------
   client:
     engine:
-      mode: localhost            # one of: auto | localhost | fixed
-      fixed_host: "127.0.0.1:8000"  # required when mode: fixed (or auto fallback)
-      prefer_same_origin: false   # pages served by engine use same-origin
+      mode: localhost              # one of: auto | localhost | fixed
+      fixed_host: "127.0.0.1:8000" # required when mode: fixed (or auto fallback)
+      prefer_same_origin: false    # pages served by engine use same-origin
       allow_client_override: true  # allow Settings UI to save per-device override
 
   # ---------------------------------------------------------------------------
   # Engine defaults (runtime behavior)
   # ---------------------------------------------------------------------------
   engine:
+
     # Minimum lap sanity filter if a mode does not define min_lap_s explicitly.
     default_min_lap_s: 10
 
@@ -56,14 +65,17 @@ app:
       allow: true
       auto_create_name: "Unknown"
 
+    # -------------------------------------------------------------------------
     # Persistence / journaling. If enabled, the engine writes to SQLite so that
     # restarts do not lose history. Disable for ephemeral dev sessions.
+    # REQUIRED by RaceEngine at startup: 'persistence' must exist here.
+    # -------------------------------------------------------------------------
     persistence:
       enabled: true
-      sqlite_path: "backend/db/laps.sqlite"
-      journal_passes: true   # append raw pass events
-      snapshot_on_checkered: true  # write a snapshot when race ends
-      recreate_on_boot: false #clears the DB on restart of app. Don't forget to change back. 
+      sqlite_path: "backend/db/laps.sqlite"  # server uses this for readyz/db path
+      journal_passes: true                   # append raw pass events
+      snapshot_on_checkered: true            # write a snapshot when race ends
+      recreate_on_boot: false                # dev-only: clears DB on restart
       batch_ms: 200
       batch_max: 50
       fsync: true
@@ -73,6 +85,40 @@ app:
     scoring:
       break_ties_by_best_lap: true
       include_pit_time_in_total: true
+
+    # -------------------------------------------------------------------------
+    # DIAGNOSTICS & LIVE STREAM DEFAULTS
+    # These values are read by diagnostics pages and the server SSE endpoints.
+    # -------------------------------------------------------------------------
+    diagnostics:
+      # Master switch for diagnostics endpoints (stream + snapshot + meta).
+      enabled: true
+
+      # In-memory rolling buffer for late-join UI snapshots.
+      buffer_size: 500   # rows, per-process; small and cheap
+
+      # Transport for the live feed. SSE is perfect; WS later if you want bi-dir.
+      stream:
+        transport: "sse"   # "sse" | "ws"
+
+      # UI beep behavior defaults (browser still requires a user gesture to unmute).
+      beep:
+        # Beep rate is globally throttled by 'ingest.debounce_ms' (see below).
+        # This local cap prevents a 'microwave choir' during chatter bursts.
+        max_per_sec: 5
+
+    # -------------------------------------------------------------------------
+    # GLOBAL INGEST DEFAULTS
+    # Single source of truth for detection de-bounce across the whole system.
+    # The diagnostics page will read this to throttle its beep, and the
+    # RaceEngine uses it to de-dupe noisy loop hits.
+    # -------------------------------------------------------------------------
+    ingest:
+      debounce_ms: 250
+
+      # Future-proof: per-location overrides (rare; only if a loop is chattier).
+      # Keys are stable 'location_id's (see locations below). Omit for globals.
+      per_location_debounce_ms: { }
 
   # ---------------------------------------------------------------------------
   # Hardware integrations
@@ -84,10 +130,11 @@ app:
     decoders:
       # Preferred (I-Lap) serial reader defaults:
       ilap_serial:
-        port: "COM3"         # e.g., "/dev/ttyUSB0" on Linux
+        port: "COM3"        # e.g., "/dev/ttyUSB0" on Linux
         baudrate: 115200
-        init_7digit: true     # send '7-digit init' on connect
-        min_lap_s: 10         # local filter (extra safety on the reader thread)
+        init_7digit: true   # send '7-digit init' on connect
+        min_lap_s: 10       # local filter (extra safety on the reader thread)
+
       # Other example decoder (placeholder / future):
       ambrc_serial:
         port: "COM4"
@@ -104,71 +151,19 @@ app:
         # "rx-02": pit_out
 
   # ---------------------------------------------------------------------------
-  # UI defaults (non event-specific)
+  # TRACK TOPOLOGY DEFAULTS (labels only; site binds live in config.yaml)
   # ---------------------------------------------------------------------------
-  ui:
-    theme: "default-dark"
-    show_sim_pill: true
-    # Caution copy used consistently across pages
-    net_status_text:
-      ok: "OK"
-      connecting: "Connecting…"
-      disconnected: "Disconnected — retrying…"
-
-# =============================================================================
-# DIAGNOSTICS & LIVE STREAM DEFAULTS
-# (Place near other app/engine defaults.)
-# =============================================================================
-app:
-  engine:
-    diagnostics:
-      # Master switch for the diagnostics endpoints (stream + snapshot + meta).
-      enabled: true
-
-      # In-memory rolling buffer for late-join UI snapshots.
-      buffer_size: 500   # rows, per-process; small and cheap
-
-      # Transport for the live feed. SSE is perfect; WS later if you want bi-dir.
-      stream:
-        transport: "sse"   # "sse" | "ws"
-
-      # UI beep behavior defaults (browser still requires a user gesture to unmute).
-      beep:
-        # Beep rate is globally throttled by 'ingest.debounce_ms' (from config.yaml).
-        # This local cap prevents a 'microwave choir' during chatter bursts.
-        max_per_sec: 5
-
-# =============================================================================
-# GLOBAL INGEST DEFAULTS
-# =============================================================================
-app:
-  engine:
-    ingest:
-      # Single source of truth for detection de-bounce across the whole system.
-      # The diagnostics page will *read* this to throttle its beep, and the
-      # RaceEngine uses it to de-dupe noisy loop hits.
-      debounce_ms: 250
-
-      # Future-proof: per-location overrides (rare; only if a loop is chattier).
-      # Keys are stable 'location_id's (see locations below). Omit for globals.
-      per_location_debounce_ms: { }
-
-# =============================================================================
-# TRACK TOPOLOGY DEFAULTS (labels only; site binds in config.yaml)
-# =============================================================================
-app:
   track:
     locations:
       # Stable keys for logic (left) → human labels (right).
       SF:       "Start/Finish"
       PIT_IN:   "Pit In"
       PIT_OUT:  "Pit Out"
-      X1:       "Crossing X"    # spare slot to rename on site
+      X1:       "Crossing X"   # spare slot to rename on site
 
-# =============================================================================
-# FLAGS & MISSED-LAP DEFAULTS
-# =============================================================================
-app:
+  # ---------------------------------------------------------------------------
+  # FLAGS & MISSED-LAP DEFAULTS
+  # ---------------------------------------------------------------------------
   race:
     flags:
       # Which flag states disable auto inference / predictive helpers.
@@ -176,27 +171,25 @@ app:
       post_green_grace_ms: 3000
 
     missed_lap:
-      enabled: false          # start conservative; ops can enable on Setup
-      apply_mode: "propose"   # "propose" | "auto"
-      window_laps: 5          # rolling window for avg/stddev
-      sigma_k: 2.0            # threshold strictness (higher = fewer fills)
-      min_gap_ms: 8000        # absolute hard floor between any two laps
+      enabled: false           # start conservative; ops can enable on Setup
+      apply_mode: "propose"    # "propose" | "auto"
+      window_laps: 5           # rolling window for avg/stddev
+      sigma_k: 2.0             # threshold strictness (higher = fewer fills)
+      min_gap_ms: 8000         # absolute hard floor between any two laps
       max_consecutive_inferred: 1
-      mark_inferred: true     # tag inferred laps in exports/results
+      mark_inferred: true      # tag inferred laps in exports/results
 
+  # ---------------------------------------------------------------------------
+  # UI defaults (non event-specific)
+  # ---------------------------------------------------------------------------
+  ui:
+    theme: "default-dark"
+    show_sim_pill: true
 
-
-
-
-
-
-
-
-
-
-
-
-
+    # Caution copy used consistently across pages
+    net_status_text:
+      ok: "OK"
+      connecting: "Connecting…"
+      disconnected: "Disconnected — retrying…"
 
 # End of app.yaml
-
