@@ -1,19 +1,37 @@
 /* ==========================================================================
-   Race Setup — controller (v1.1)
-   - Single "Mode" select (built-ins from race_modes.yaml) + trailing "Custom"
-   - Limit = time | laps (time=0 => unlimited/free-play)
-   - Soft end default true for Qualifying; hidden when time==0
-   - Timeout padding defaults to 0
-   - "Save as Mode" posts to backend to update race_modes.yaml
-   - Header/nav behavior matches Diagnostics (handled inline in HTML)
+   Race Setup — controller (v1.2 merged)
+   --------------------------------------------------------------------------
+   What changed vs your v1.1:
+   • Keep your original form logic & UI behavior (modes, custom save, live
+     summary, readiness chips, audio tests).
+   • Replace ONLY the "Start Race" flow to use the new backend contract:
+       POST /race/setup  with  { race_id, entrants, session_config }
+     …then persist to localStorage and redirect to Race Control.
+   • Add small helpers to fetch entrants and to map your form config to the
+     backend's expected 'session_config' shape (adds the 'bypass' object).
+   • Deduplicate duplicate bindCustomSave definition (was present twice).
+
+   Contract (server.py):
+     /setup/race_modes           → { modes: {...} }
+     /setup/race_modes/save      ← { id, mode }
+     /admin/entrants             → [ { id, number, name, tag, enabled, ... } ]
+     /admin/entrants/enabled_count → { count }
+     /race/setup                 ← { race_id, entrants, session_config }
+
+   LocalStorage (for Race Control bootstrap or offline UI hints):
+     rc.session   ← JSON session_config
+     rc.race_id   ← number (epoch seconds)
+     rc.entrants  ← JSON entrants array
    ========================================================================== */
 
 (function () {
   'use strict';
 
+  // Shorthand DOM helpers
   const $  = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
+  // Cache handles to inputs (IDs match your markup)
   const els = {
     form: $('#raceForm'),
     eventLabel: $('#eventLabel'),
@@ -31,11 +49,11 @@
     rowTimeValue: $('#rowTimeValue'),
     rowSoftEnd: $('#rowSoftEnd'),
     rowLapsValue: $('#rowLapsValue'),
-    limitValueS: $('#limitValueS'),
+    limitValueS: $('#limitValueS'),       // MINUTES in UI, converted to seconds
     limitValueLaps: $('#limitValueLaps'),
     limitSoftEnd: $('#limitSoftEnd'),
 
-    // Rank + filter
+    // Rank + sanity
     rankMethod: $('#rankMethod'),
     minLapS: $('#minLapS'),
 
@@ -53,7 +71,7 @@
     rankChangeSpeech: $('#rankChangeSpeech'),
     bestLapSpeech: $('#bestLapSpeech'),
 
-    // Misc
+    // Misc toggles
     entrantsCount: $('#entrantsCount'),
     decoderBypass: $('#decoderBypass'),
     entrantsBypass: $('#entrantsBypass'),
@@ -71,14 +89,15 @@
     btnTestHorn: $('#btnTestHorn'),
   };
 
+  // State
   let MODES = {};
   let currentModeId = null;
-  let config = {};
+  let config = {};                 // live form snapshot for Summary
 
   const CUSTOM_ID = '__custom__';
-
   const clamp = (n, lo, hi) => Math.max(lo, Math.min(n, hi));
 
+  // Status chip helper
   function setChip(el, status, msg) {
     if (!el) return;
     el.classList.remove('ok', 'warn', 'err');
@@ -86,6 +105,7 @@
     el.textContent = msg;
   }
 
+  // Pretty duration for the Summary line
   function secondsToHuman(s) {
     if (!Number.isFinite(s) || s < 0) return '—';
     if (s === 0) return 'Unlimited';
@@ -94,6 +114,7 @@
     return `${m}m ${ss}s`;
   }
 
+  // Summary text in the right column
   function summarize(cfg) {
     const parts = [];
     if (cfg.limit?.type === 'time') {
@@ -110,15 +131,15 @@
     return parts.join(' • ');
   }
 
+  // Enable/disable entire "Custom mode" row
   function setCustomEnabled(on) {
-  // Grey whole row + disable its controls
-  els.customSave.classList.toggle('is-disabled', !on);
-  els.customLabel.disabled = !on;
-  els.btnSaveMode.disabled = !on;
-}
+    els.customSave?.classList.toggle('is-disabled', !on);
+    if (els.customLabel) els.customLabel.disabled = !on;
+    if (els.btnSaveMode) els.btnSaveMode.disabled = !on;
+  }
 
   // ------------------------------------------------------------------------
-  // Load built-in modes from backend; add trailing Custom option
+  // Modes: load from backend + paint options
   // ------------------------------------------------------------------------
   async function loadModes() {
     const endpoints = [
@@ -142,7 +163,7 @@
         limit: { type: 'time', value_s: 900, soft_end: false },
         rank_method: 'total_laps',
         min_lap_s: 4.1,
-        countdown: { start_enabled: true, start_from_s: 10, end_enabled: false, timeout_s: 0 },
+        countdown: { start_enabled: true, start_from_s: 10, end_enabled: false, end_from_s: 10, timeout_s: 0 },
         announcements: { lap_indication: 'beep', rank_enabled: false, rank_interval_laps: 0, rank_change_speech: false, best_lap_speech: false },
       },
       practice: {
@@ -150,7 +171,7 @@
         limit: { type: 'time', value_s: 0, soft_end: true },
         rank_method: 'best_lap',
         min_lap_s: 4.1,
-        countdown: { start_enabled: false, end_enabled: false, timeout_s: 0 },
+        countdown: { start_enabled: false, start_from_s: 10, end_enabled: false, end_from_s: 10, timeout_s: 0 },
         announcements: { lap_indication: 'beep', rank_enabled: false, rank_interval_laps: 0, rank_change_speech: false, best_lap_speech: false },
       },
     };
@@ -166,7 +187,7 @@
       opt.textContent = m.label || id;
       sel.appendChild(opt);
     });
-    // Add trailing 'Custom' option
+    // Trailing 'Custom…' option
     const optC = document.createElement('option');
     optC.value = CUSTOM_ID;
     optC.textContent = 'Custom…';
@@ -174,242 +195,14 @@
   }
 
   function slugifyLabel(label) {
-  const slug = (label || '')
-    .toLowerCase()
-    .normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
-    .trim()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, 40);
-  return slug || 'custom-mode';
-}
-
-  function bindCustomSave() {
-    const doSave = async () => {
-      const label = (els.customLabel.value || '').trim();
-      if (!label) { alert('Provide a mode name.'); return; }
-      const id = slugifyLabel(label);
-      const cfg = formToConfig();
-      const mode = {
-        label,
-        limit: cfg.limit,
-        rank_method: cfg.rank_method,
-        min_lap_s: cfg.min_lap_s,
-        countdown: cfg.countdown,
-        announcements: cfg.announcements,
-        ...(cfg.relay ? { relay: cfg.relay } : {}),
-      };
-
-      // Overwrite confirm if it already exists
-      if (MODES[id] && !confirm(`Mode “${label}” exists. Overwrite?`)) return;
-
-      try {
-        const r = await fetch('/setup/race_modes/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id, mode }),
-        });
-        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-        MODES[id] = mode;
-        paintModes(MODES);
-        els.modeSelect.value = id;
-        applyModeToForm(id);
-        alert('Mode saved.');
-      } catch (err) {
-        console.error(err);
-        alert('Could not save mode. Check backend route /setup/race_modes/save.');
-      }
-    };
-
-    els.btnSaveMode?.addEventListener('click', doSave);
-    els.customLabel?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); doSave(); }
-    });
-  }
-
-
-  // ------------------------------------------------------------------------
-  // Config <-> Form binding
-  // ------------------------------------------------------------------------
-  function applyModeToForm(modeId) {
-    const m = MODES[modeId];
-    currentModeId = modeId;
-
-    const isCustom = (modeId === CUSTOM_ID);
-    // Always visible; just toggle enabled state
-    setCustomEnabled(isCustom);
-    if (isCustom) {
-      els.customLabel.value = '';
-    }
-
-    // If Custom, start from a sensible baseline (Sprint) if available
-    const base = isCustom ? (MODES['sprint'] || Object.values(MODES)[0] || {}) : m || {};
-
-    // Limit
-    if (base.limit?.type === 'laps') {
-      els.optLaps.checked = true;
-      els.rowLapsValue.hidden = false;
-      els.rowTimeValue.hidden = true;
-      els.rowSoftEnd.hidden  = true;
-      els.limitValueLaps.value = base.limit.value_laps ?? 10;
-    } else {
-      // time (including time=0 for free play)
-      els.optTime.checked = true;
-      els.rowLapsValue.hidden = true;
-      els.rowTimeValue.hidden = false;
-      const val = base.limit?.value_s ?? 900;
-      els.limitValueS.value = Math.round(val / 60);
-      // Show soft_end only when time > 0, and default it per preset; otherwise hide
-      const showSoft = (val > 0);
-      els.rowSoftEnd.hidden = !showSoft;
-      els.limitSoftEnd.checked = !!base.limit?.soft_end && showSoft;
-    }
-
-    // Rank + filter
-    els.rankMethod.value = base.rank_method || 'total_laps';
-    els.minLapS.value = base.min_lap_s ?? 4.1;
-
-    // Countdowns (timeout default 0)
-    els.startEnabled.checked = !!base.countdown?.start_enabled;
-    els.startFromS.value = base.countdown?.start_from_s ?? 10;
-    els.endEnabled.checked = !!base.countdown?.end_enabled;
-    els.endFromS.value = base.countdown?.end_from_s ?? 10;
-    els.timeoutS.value = base.countdown?.timeout_s ?? 0;
-
-    // Announcements
-    els.lapIndication.value = base.announcements?.lap_indication ?? 'beep';
-    els.rankEnabled.checked = !!base.announcements?.rank_enabled;
-    els.rankInterval.value = base.announcements?.rank_interval_laps ?? 4;
-    els.rankChangeSpeech.checked = !!base.announcements?.rank_change_speech;
-    els.bestLapSpeech.checked = !!base.announcements?.best_lap_speech;
-
-    // Relay passthrough
-    config = formToConfig();
-    paintSummary();
-    updateLimitUi(els);
-  }
-
-
-  function updateLimitUi(els) {
-    const isTime = els.optTime.checked;
-
-    // Mutually exclusive entry fields
-    els.limitValueS.disabled = !isTime;
-    els.limitValueLaps.disabled = isTime;
-
-    // Grey entire rows accordingly
-    els.rowTimeValue.classList.toggle('is-disabled', !isTime);
-    els.rowLapsValue.classList.toggle('is-disabled', isTime);
-
-    // Soft end applies only when time > 0
-    const t = (parseInt(els.limitValueS.value || '0', 10) || 0) * 60;
-    const softEnabled = isTime && t > 0;
-    els.limitSoftEnd.disabled = !softEnabled;
-    els.rowSoftEnd.classList.toggle('is-disabled', !softEnabled);
-  }
-
-
-
-  function formToConfig() {
-    const isTime = els.optTime.checked;
-    const timeMin = clamp(parseInt(els.limitValueS.value, 10) || 0, 0, 6 * 60);
-    const timeVal = timeMin * 60;
-    const lapsVal = clamp(parseInt(els.limitValueLaps.value, 10) || 1, 1, 2000);
-
-    const cfg = {
-      event_label: els.eventLabel?.value?.trim() || '',
-      session_label: els.sessionLabel?.value?.trim() || '',
-      decoder_bypass: !!els.decoderBypass?.checked,
-      entrants_bypass: !!els.entrantsBypass?.checked,
-
-      mode_id: currentModeId, // informational
-
-      limit: isTime ? {
-        type: 'time',
-        value_s: timeVal,
-        soft_end: (timeVal > 0) ? !!els.limitSoftEnd.checked : true /* irrelevant at 0 */
-      } : {
-        type: 'laps',
-        value_laps: lapsVal
-      },
-
-      rank_method: els.rankMethod.value,
-      min_lap_s: parseFloat(els.minLapS.value) || 0,
-
-      countdown: {
-        start_enabled: !!els.startEnabled.checked,
-        start_from_s: Math.max(1, parseInt(els.startFromS.value, 10) || 10),
-        end_enabled: !!els.endEnabled.checked,
-        end_from_s: Math.max(1, parseInt(els.endFromS.value, 10) || 10),
-        timeout_s: Math.max(0, parseInt(els.timeoutS.value, 10) || 0),
-      },
-
-      announcements: {
-        lap_indication: els.lapIndication.value,
-        rank_enabled: !!els.rankEnabled.checked,
-        rank_interval_laps: Math.max(0, parseInt(els.rankInterval.value, 10) || 0),
-        rank_change_speech: !!els.rankChangeSpeech.checked,
-        best_lap_speech: !!els.bestLapSpeech.checked,
-      },
-
-      relay: MODES[currentModeId]?.relay || null,
-    };
-
-    // When time==0, hide soft-end concerns (treated as free play)
-    if (cfg.limit.type === 'time' && cfg.limit.value_s === 0) {
-      cfg.countdown.start_enabled = false;
-      cfg.countdown.end_enabled = false;
-      cfg.countdown.timeout_s = 0;
-    }
-
-    
-    // Sounds block (optional controls may be absent)
-    const beepLastOn = !!($('#beepOnLast')?.checked);
-    const beepLastVal = parseInt($('#beepOnLastValue')?.value || '0', 10) || 0;
-    const whiteModeSel = $('#whiteFlagMode')?.value || 'auto';
-    const whiteAtVal = parseInt($('#whiteFlagAt')?.value || '60', 10) || 60;
-
-    cfg.sounds = {
-      countdown_beep_last_s: beepLastOn ? beepLastVal : 0,
-      starting_horn: !!($('#startingHorn')?.checked),
-      white_flag: (whiteModeSel === 'time') ? { mode: 'time', at_s: whiteAtVal } :
-                 (whiteModeSel === 'off') ? { mode: 'off' } :
-                 { mode: 'auto' },
-      checkered_horn: !!($('#checkeredHorn')?.checked)
-    };
-
-    return cfg;
-  }
-
-  function paintSummary() {
-    if (!els.summaryText) return;
-    els.summaryText.textContent = summarize(config);
-  }
-
-  function bindLiveUpdates() {
-    els.form?.addEventListener('input', () => {
-
-      // Toggle visibility of time/laps rows
-      const isTime = els.optTime.checked;
-      els.rowTimeValue.hidden = !isTime;
-      els.rowLapsValue.hidden = isTime;
-
-      // Soft end shows only when time > 0
-      if (isTime) {
-        const timeVal = (parseInt(els.limitValueS.value || '0', 10) || 0) * 60;
-        els.rowSoftEnd.hidden = !(timeVal > 0);
-      } else {
-        els.rowSoftEnd.hidden = true;
-      }
-
-      updateLimitUi(els);
-      formToConfig();
-      paintSummary();
-    });
-
-    els.modeSelect?.addEventListener('change', (e) => {
-      applyModeToForm(e.target.value);
-    });
+    const slug = (label || '')
+      .toLowerCase()
+      .normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 40);
+    return slug || 'custom-mode';
   }
 
   // ------------------------------------------------------------------------
@@ -418,12 +211,12 @@
   function bindCustomSave() {
     const doSave = async () => {
       // Ignore if not in Custom mode (row is disabled)
-      if (els.btnSaveMode.disabled) return;
+      if (els.btnSaveMode?.disabled) return;
 
-      const label = (els.customLabel.value || '').trim();
+      const label = (els.customLabel?.value || '').trim();
       if (!label) { alert('Provide a mode name.'); return; }
 
-      const id = slugifyLabel(label);        // you already have this helper
+      const id = slugifyLabel(label);
       const cfg = formToConfig();
       const mode = {
         label,
@@ -456,20 +249,216 @@
       }
     };
 
-  els.btnSaveMode?.addEventListener('click', doSave);
-  els.customLabel?.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') { e.preventDefault(); doSave(); }
-  });
-}
+    els.btnSaveMode?.addEventListener('click', doSave);
+    els.customLabel?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); doSave(); }
+    });
+  }
 
-
-
-
-
-
-  
   // ------------------------------------------------------------------------
-  // Audio playback with /config override fallback
+  // Config <-> Form binding
+  // ------------------------------------------------------------------------
+  function applyModeToForm(modeId) {
+    const m = MODES[modeId];
+    currentModeId = modeId;
+
+    const isCustom = (modeId === CUSTOM_ID);
+    setCustomEnabled(isCustom);
+    if (isCustom && els.customLabel) els.customLabel.value = '';
+
+    // If Custom, start from a sensible baseline (Sprint) if available
+    const base = isCustom ? (MODES['sprint'] || Object.values(MODES)[0] || {}) : (m || {});
+
+    // Limit
+    if (base.limit?.type === 'laps') {
+      els.optLaps.checked = true;
+      els.rowLapsValue.hidden = false;
+      els.rowTimeValue.hidden = true;
+      els.rowSoftEnd.hidden  = true;
+      if (els.limitValueLaps) els.limitValueLaps.value = base.limit.value_laps ?? 10;
+    } else {
+      // time (including time=0 for free play)
+      els.optTime.checked = true;
+      els.rowLapsValue.hidden = true;
+      els.rowTimeValue.hidden = false;
+      const val = base.limit?.value_s ?? 900;
+      if (els.limitValueS) els.limitValueS.value = Math.round(val / 60); // UI in minutes
+      // Show soft_end only when time > 0
+      const showSoft = (val > 0);
+      els.rowSoftEnd.hidden = !showSoft;
+      if (els.limitSoftEnd) els.limitSoftEnd.checked = !!base.limit?.soft_end && showSoft;
+    }
+
+    // Rank + filter
+    if (els.rankMethod) els.rankMethod.value = base.rank_method || 'total_laps';
+    if (els.minLapS) els.minLapS.value = base.min_lap_s ?? 4.1;
+
+    // Countdowns (timeout default 0)
+    if (els.startEnabled) els.startEnabled.checked = !!base.countdown?.start_enabled;
+    if (els.startFromS)   els.startFromS.value     = base.countdown?.start_from_s ?? 10;
+    if (els.endEnabled)   els.endEnabled.checked   = !!base.countdown?.end_enabled;
+    if (els.endFromS)     els.endFromS.value       = base.countdown?.end_from_s ?? 10;
+    if (els.timeoutS)     els.timeoutS.value       = base.countdown?.timeout_s ?? 0;
+
+    // Announcements
+    if (els.lapIndication)     els.lapIndication.value      = base.announcements?.lap_indication ?? 'beep';
+    if (els.rankEnabled)       els.rankEnabled.checked      = !!base.announcements?.rank_enabled;
+    if (els.rankInterval)      els.rankInterval.value       = base.announcements?.rank_interval_laps ?? 4;
+    if (els.rankChangeSpeech)  els.rankChangeSpeech.checked = !!base.announcements?.rank_change_speech;
+    if (els.bestLapSpeech)     els.bestLapSpeech.checked    = !!base.announcements?.best_lap_speech;
+
+    // Keep a snapshot and repaint summary
+    config = formToConfig();
+    paintSummary();
+    updateLimitUi(els);
+  }
+
+  function updateLimitUi(els) {
+    const isTime = !!els.optTime?.checked;
+
+    // Mutually exclusive entry fields
+    if (els.limitValueS)     els.limitValueS.disabled     = !isTime;
+    if (els.limitValueLaps)  els.limitValueLaps.disabled  =  isTime;
+
+    // Grey entire rows accordingly
+    els.rowTimeValue?.classList.toggle('is-disabled', !isTime);
+    els.rowLapsValue?.classList.toggle('is-disabled',  isTime);
+
+    // Soft end applies only when time > 0
+    const minutes = parseInt(els.limitValueS?.value || '0', 10) || 0;
+    const t = minutes * 60;
+    const softEnabled = isTime && t > 0;
+    if (els.limitSoftEnd) els.limitSoftEnd.disabled = !softEnabled;
+    els.rowSoftEnd?.classList.toggle('is-disabled', !softEnabled);
+  }
+
+  // Build YOUR existing config shape from the form (kept for UI)
+  function formToConfig() {
+    const isTime = !!els.optTime?.checked;
+    const timeMin = clamp(parseInt(els.limitValueS?.value, 10) || 0, 0, 6 * 60);
+    const timeVal = timeMin * 60;
+    const lapsVal = clamp(parseInt(els.limitValueLaps?.value, 10) || 1, 1, 2000);
+
+    const cfg = {
+      event_label: els.eventLabel?.value?.trim() || '',
+      session_label: els.sessionLabel?.value?.trim() || '',
+
+      // These two are UI toggles; we'll map them into the backend's 'bypass' block:
+      decoder_bypass: !!els.decoderBypass?.checked,
+      entrants_bypass: !!els.entrantsBypass?.checked,
+
+      mode_id: currentModeId, // informational for UI
+
+      limit: isTime ? {
+        type: 'time',
+        value_s: timeVal,
+        soft_end: (timeVal > 0) ? !!els.limitSoftEnd?.checked : true /* irrelevant at 0 */
+      } : {
+        type: 'laps',
+        value_laps: lapsVal
+      },
+
+      rank_method: els.rankMethod?.value || 'total_laps',
+      min_lap_s: parseFloat(els.minLapS?.value) || 0,
+
+      countdown: {
+        start_enabled: !!els.startEnabled?.checked,
+        start_from_s: Math.max(1, parseInt(els.startFromS?.value, 10) || 10),
+        end_enabled: !!els.endEnabled?.checked,
+        end_from_s: Math.max(1, parseInt(els.endFromS?.value, 10) || 10),
+        timeout_s: Math.max(0, parseInt(els.timeoutS?.value, 10) || 0),
+      },
+
+      announcements: {
+        lap_indication: els.lapIndication?.value || 'beep',
+        rank_enabled: !!els.rankEnabled?.checked,
+        rank_interval_laps: Math.max(0, parseInt(els.rankInterval?.value, 10) || 0),
+        rank_change_speech: !!els.rankChangeSpeech?.checked,
+        best_lap_speech: !!els.bestLapSpeech?.checked,
+      },
+
+      relay: MODES[currentModeId]?.relay || null,
+    };
+
+    // When time==0, hide soft-end concerns (treated as free play)
+    if (cfg.limit.type === 'time' && cfg.limit.value_s === 0) {
+      cfg.countdown.start_enabled = false;
+      cfg.countdown.end_enabled = false;
+      cfg.countdown.timeout_s = 0;
+    }
+
+    // Sounds block (optional controls may be absent in your markup)
+    const beepLastOn  = !!($('#beepOnLast')?.checked);
+    const beepLastVal = parseInt($('#beepOnLastValue')?.value || '0', 10) || 0;
+    const whiteModeSel = $('#whiteFlagMode')?.value || 'auto';
+    const whiteAtVal   = parseInt($('#whiteFlagAt')?.value || '60', 10) || 60;
+
+    cfg.sounds = {
+      countdown_beep_last_s: beepLastOn ? beepLastVal : 0,
+      starting_horn: !!($('#startingHorn')?.checked),
+      white_flag: (whiteModeSel === 'time') ? { mode: 'time', at_s: whiteAtVal } :
+                 (whiteModeSel === 'off')  ? { mode: 'off' } :
+                                             { mode: 'auto' },
+      checkered_horn: !!($('#checkeredHorn')?.checked)
+    };
+
+    return cfg;
+  }
+
+  // Convert the UI cfg into the backend's expected 'session_config' shape
+  function toSessionConfig(cfg) {
+    return {
+      event_label:   cfg.event_label,
+      session_label: cfg.session_label,
+      mode_id:       cfg.mode_id || 'sprint',
+      limit:         cfg.limit,
+      rank_method:   cfg.rank_method,
+      min_lap_s:     cfg.min_lap_s,
+      countdown:     cfg.countdown,
+      announcements: cfg.announcements,
+      sounds:        cfg.sounds,
+      bypass: {
+        decoder:  !!cfg.decoder_bypass,
+        entrants: !!cfg.entrants_bypass,
+      },
+      ...(cfg.relay ? { relay: cfg.relay } : {}),
+    };
+  }
+
+  // Summary chip
+  function paintSummary() {
+    if (!els.summaryText) return;
+    els.summaryText.textContent = summarize(config);
+  }
+
+  // Live form updates → recompute config + summary
+  function bindLiveUpdates() {
+    els.form?.addEventListener('input', () => {
+      // Toggle visibility of time/laps rows
+      const isTime = !!els.optTime?.checked;
+      if (els.rowTimeValue) els.rowTimeValue.hidden = !isTime;
+      if (els.rowLapsValue) els.rowLapsValue.hidden = isTime;
+
+      // Soft end shows only when time > 0
+      if (isTime) {
+        const timeVal = (parseInt(els.limitValueS?.value || '0', 10) || 0) * 60;
+        if (els.rowSoftEnd) els.rowSoftEnd.hidden = !(timeVal > 0);
+      } else if (els.rowSoftEnd) {
+        els.rowSoftEnd.hidden = true;
+      }
+
+      updateLimitUi(els);
+      config = formToConfig();
+      paintSummary();
+    });
+
+    els.modeSelect?.addEventListener('change', (e) => {
+      applyModeToForm(e.target.value);
+    });
+  }
+
+  // ------------------------------------------------------------------------
+  // Audio helpers
   // ------------------------------------------------------------------------
   async function playSound(name, fallback='beep') {
     const cacheBust = Date.now();
@@ -482,11 +471,9 @@
         const a = new Audio(u);
         await a.play();
         return true;
-      } catch (e) {
-        // try next
-      }
+      } catch (e) { /* try next */ }
     }
-    // Fallback simple synth
+    // Tiny synth fallback
     try {
       const actx = new (window.AudioContext || window.webkitAudioContext)();
       const osc = actx.createOscillator();
@@ -558,6 +545,7 @@
   // Save / Start
   // ------------------------------------------------------------------------
   async function saveConfig() {
+    // Legacy endpoint retained for your workflow; no-op for new flow.
     const cfg = formToConfig();
     try {
       const r = await fetch('/race/config', {
@@ -573,47 +561,65 @@
     }
   }
 
+  // NEW: fetch current entrants for the session
+  async function fetchEntrants() {
+    const res = await fetch('/admin/entrants', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Failed to fetch entrants (${res.status})`);
+    return await res.json();
+  }
+
+  // NEW: authoritative start that posts the combined payload to /race/setup
   async function startRace() {
     const cfg = formToConfig();
-    const decoderOk = els.decoderBypass?.checked || els.chipDecoder?.classList.contains('ok');
+
+    // Guardrails (same UX you had)
+    const decoderOk  = els.decoderBypass?.checked || els.chipDecoder?.classList.contains('ok');
     const entrantsOk = els.chipEntrants?.classList.contains('ok') || els.chipEntrants?.classList.contains('warn');
     if (!decoderOk || !entrantsOk) {
       alert('Not ready: need entrants and (decoder or bypass).');
       return;
     }
+
     try {
-      const r1 = await fetch('/race/config', {
+      // Build pieces
+      const entrants = await fetchEntrants();                 // authoritative roster
+      const session_config = toSessionConfig(cfg);            // normalized schema
+      const race_id = Math.floor(Date.now() / 1000);          // stable-enough id
+
+      // Cache for Race Control bootstrap
+      localStorage.setItem('rc.session', JSON.stringify(session_config));
+      localStorage.setItem('rc.race_id', String(race_id));
+      localStorage.setItem('rc.entrants', JSON.stringify(entrants));
+
+      // Post to the new unified endpoint
+      const payload = { race_id, entrants, session_config };
+      const r = await fetch('/race/setup', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(cfg),
+        body: JSON.stringify(payload),
       });
-      if (!r1.ok) throw new Error(`Save config failed: HTTP ${r1.status}`);
-
-      let ok = false;
-      try { const rStart = await fetch('/race/start', { method: 'POST' }); ok = rStart.ok; } catch {}
-      if (!ok) {
-        const rFlag = await fetch('/engine/flag', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ flag: 'green' }),
-        });
-        ok = rFlag.ok;
+      if (!r.ok) {
+        const txt = await r.text().catch(() => '');
+        throw new Error(`Setup failed (${r.status}): ${txt}`);
       }
-      if (!ok) throw new Error('Start endpoint not available');
 
+      // Lock form and go
       $$('input, select, button', els.form).forEach(el => el.disabled = true);
-      alert('Race started.');
+      window.location.assign(`/ui/operator/race_control.html?session=${encodeURIComponent(race_id)}`);
     } catch (err) {
       console.error(err);
-      alert('Could not start the race. Check backend.');
+      alert('Could not start the race. Check backend and console.');
     }
   }
 
   function bindActions() {
     els.btnSaveConfig?.addEventListener('click', saveConfig);
-    els.btnStartRace?.addEventListener('click', startRace);
+    els.btnStartRace?.addEventListener('click', (e) => {
+      e.preventDefault();
+      startRace();
+    });
 
-    // small audio tests
+    // Audio test buttons
     els.btnTestBeep?.addEventListener('click', () => {
       try {
         const actx = new (window.AudioContext || window.webkitAudioContext)();
@@ -636,11 +642,12 @@
     MODES = await loadModes();
     paintModes(MODES);
 
-    setCustomEnabled(els.modeSelect.value === CUSTOM_ID);
+    setCustomEnabled(els.modeSelect?.value === CUSTOM_ID);
+
     // Default to Sprint if present; else first mode; else Custom
     let defaultId = 'sprint';
     if (!MODES[defaultId]) defaultId = Object.keys(MODES)[0] || CUSTOM_ID;
-    els.modeSelect.value = defaultId;
+    if (els.modeSelect) els.modeSelect.value = defaultId;
     applyModeToForm(defaultId);
 
     bindLiveUpdates();
@@ -656,10 +663,7 @@
   else document.addEventListener('DOMContentLoaded', boot);
 
   // ------------------------------------------------------------
-  // Dim/disable a row in-place, without changing your HTML
-  // rowSel: the row container (e.g., '#rowStartCountdown')
-  // cbSel : the checkbox that controls the row (e.g., '#startEnabled')
-  // on    : boolean (true = enabled, false = disabled)
+  // Utility: dim/disable a row in-place, without changing HTML
   // ------------------------------------------------------------
   function setRowEnabled(rowSel, cbSel, on) {
     const row = document.querySelector(rowSel);
@@ -676,9 +680,7 @@
     });
   }
 
-  // ------------------------------------------------------------
   // Bind a checkbox to its row: checkbox checked = row enabled
-  // ------------------------------------------------------------
   function bindToggleRow(cbSel, rowSel) {
     const cb = document.querySelector(cbSel);
     if (!cb) return;
@@ -688,10 +690,7 @@
     sync();
   }
 
-  // ------------------------------------------------------------
   // Wire up existing rows (only if they exist in markup)
-  // Called from boot() after DOM is ready and base form painted
-  // ------------------------------------------------------------
   function wireRowToggles() {
     // Countdowns
     bindToggleRow('#startEnabled',   '#rowStartCountdown');

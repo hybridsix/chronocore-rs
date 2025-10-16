@@ -1,21 +1,46 @@
-/* =====================================================================
-   RACE CONTROL — page-level styles
-   ---------------------------------------------------------------------
-   This file sticks to layout and visuals inside <main>. Common header/
-   footer/brand/nav styles come from base.css and operator.css.
-   ===================================================================== */
+/* ======================================================================
+   RACE CONTROL — cleaned + organized (multiline formatting)
+   Keeps existing visuals; removes duplicates; clarifies cascade.
+   ====================================================================== */
 
-/* Global CSS variables */
+/* ========== 1) GLOBAL TOKENS ========== */
 :root {
   --toolbarH: 56px;
+
+  /* Flags */
   --flag-col-w: 200px;
   --flag-btn-h: 88px;
   --flag-btn-fz: 20px;
   --flag-gap: 8px;
-  --flag-pane-pad: 8px;
-  --flag-pane-extra: 10px;
+
+  /* Panes / palette */
+  --panel: #0f1a24;
+  --panel-edge: #213243;
+  --panel-shadow: rgba(0, 0, 0, .35);
+  --title-bar-top: #15627A;
+  --title-bar-bot: #104C60;
+  --title-bar-edge: #2a475e;
+  --title-text: #e8f2fb;
+
+  /* Text */
+  --text: #e6edf3;
+  --text-dim: #c0cad3;
+  --text-muted: #99a7b4;
+
+  /* Clock */
   --big-clock-size: 56px;
   --clock-font: "SF Mono", "Roboto Mono", Consolas, "Liberation Mono", Menlo, monospace;
+
+  /* Buttons (teal group) */
+  --teal-1: #15627A;
+  --teal-2: #104C60;
+  --teal-edge: #2b4a63;
+}
+
+/* ========== 2) PAGE LAYOUT ========== */
+body.race-control {
+  min-width: 1920px;
+  min-height: 1080px;
 }
 
 .rcWrap {
@@ -23,49 +48,36 @@
   grid-template-rows: var(--toolbarH) 1fr;
   gap: 10px;
   padding: 12px 16px;
-  width: 1920px;   /* consolidated from later section */
-  margin: 0 auto;  /* center main content; header/footer full-width */
-  box-sizing: border-box; /* include padding in fixed width to avoid scrollbars */
+  width: 1920px;
+  margin: 0 auto;
+  box-sizing: border-box;
 }
 
-/* rcGrid */
 .rcGrid {
   display: grid;
-  grid-template-columns: var(--flag-col-w) 1fr;  /* left column = your var */
-  grid-template-rows: auto 1fr;                  /* top row (clock), bottom (data) */
-  gap: 12px;
+  grid-template-columns: var(--flag-col-w) 1fr;
+  grid-template-rows: auto 1fr;
+  column-gap: 16px;
+  row-gap: 12px;
   min-height: 0;
-  column-gap: 16px;   /* add this */
-  row-gap: 12px;      /* keeps clock/data spacing tidy */
 }
 
- 
-
-/* Reuse the Diagnostics toolbar look */
-.toolBar {
-    display: flex;
-    align-items: center;
-    gap: 10px 12px;
-    padding: 10px 12px;
-    margin: 8px 0 14px;
-    min-height: 48px;           /* ensures full-height background */
-    background: var(--panel);
-    border: 1px solid var(--panel-edge);
-    border-radius: 12px;
-    box-shadow: 0 0 0 1px #0c1116, 0 8px 24px rgba(0,0,0,0.35);
-    position: relative;
-    z-index: 1;
+#paneFlags {
+  grid-column: 1;
+  grid-row: 1 / span 2;
 }
-.toolBar .left,
-.toolBar .right {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;         /* allow wrapping on narrow widths */
-  gap: 10px 12px;          /* consistent with toolbar gap */
-}
-.toolBar .sep { opacity: .35; padding: 0 4px; user-select: none; }
 
-/* Pane look & feel (match Diagnostics .pane) */
+#paneClock {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+#paneLive {
+  grid-column: 2;
+  grid-row: 2;
+}
+
+/* ========== 3) PANE & TOOLBAR ========== */
 .pane {
   background: #0c1318;
   border: 1px solid #0b0f13;
@@ -75,17 +87,82 @@
   grid-template-rows: auto 1fr;
   min-height: 0;
 }
-.pane__head {
-  font-size: 16px; 
-  padding: 6px 10px;      /* slightly tighter bar */
-  font-weight: 700;
-  background: #0f171d;
-  border-bottom: 1px solid #0e151b;
-}
-.pane__body { padding: 12px; overflow: auto; }
 
-/* Buttons / inputs */
-.btn { /* inherit base/operator buttons if they exist; otherwise fall back */
+.pane__head {
+  margin: 6px 8px 10px;
+  padding: 8px 12px;
+  color: var(--title-text);
+  font-weight: 700;
+  background: linear-gradient(180deg, var(--title-bar-top), var(--title-bar-bot));
+  border: 1px solid var(--title-bar-edge);
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+  font-size: 16px;
+}
+
+.pane__body {
+  padding: 12px;
+  overflow: auto;
+}
+
+/* hide headers for these panes */
+.race-control #paneFlags .pane__head,
+.race-control #paneClock .pane__head,
+.race-control #paneLive .pane__head {
+  display: none;
+}
+
+.race-control #paneFlags,
+.race-control #paneClock,
+.race-control #paneLive {
+  grid-template-rows: 1fr;
+}
+
+.toolBar {
+  display: flex;
+  align-items: center;
+  gap: 10px 12px;
+  padding: 10px 12px;
+  margin: 8px 0 14px;
+  min-height: 48px;
+  background: var(--panel);
+  border: 1px solid var(--panel-edge);
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px #0c1116, 0 8px 24px var(--panel-shadow);
+  position: relative;
+  z-index: 1;
+}
+
+.toolBar .left,
+.toolBar .right {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+}
+
+.toolBar .sep {
+  opacity: .35;
+  padding: 0 4px;
+  user-select: none;
+}
+
+.toolTitle {
+  color: #e8f2fb;
+  font-weight: 700;
+  padding: 6px 10px;
+  background: linear-gradient(180deg, #15627A, #104C60);
+  border: 1px solid #2a475e;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+  margin-right: 10px;
+  white-space: nowrap;
+  font-size: 14px;
+  line-height: 1;
+}
+
+/* ========== 4) BUTTONS/INPUTS ========== */
+.btn {
   display: inline-flex;
   align-items: center;
   gap: 8px;
@@ -96,44 +173,327 @@
   color: var(--text);
   cursor: pointer;
 }
-.btn-primary { background: linear-gradient(180deg,#15627A,#104C60); border-color:#2b4a63; }
-.btn-success { background: linear-gradient(180deg,#1f7a4d,#165a39); border-color:#2c5f47; }
-.btn-danger  { background: linear-gradient(180deg,#8b3434,#672525); border-color:#6d3a3a; }
-.radio, .checkbox { display: inline-flex; align-items: center; gap: 6px; }
 
-/* Flag hold overlay (used across variants) */
-.flag.hold { position: relative; overflow: hidden; }
-.flag.hold[data-hold="arming"]::after {
-  content: "HOLD…";
-  position: absolute; inset: 0;
-  background: rgba(0,0,0,.25);
-  display: grid; place-items: center;
-  font-weight: 900;
+.btn-primary {
+  background: linear-gradient(180deg, var(--teal-1), var(--teal-2));
+  border-color: var(--teal-edge);
+  color: #e6f7ff;
 }
 
-/* Timers + live lists */
+.btn-success {
+  background: linear-gradient(180deg, #1f7a4d, #165a39);
+  border-color: #2c5f47;
+}
+
+.btn-danger {
+  background: linear-gradient(180deg, #8b3434, #672525);
+  border-color: #6d3a3a;
+}
+
+.btn--sm {
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+}
+
+.radio,
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.toolBar .btn,
+.toolBar .pill,
+.toolBar .radio {
+  margin-top: 0;
+  margin-bottom: 0;
+}
+
+.toolBar * {
+  line-height: 1;
+}
+
+/* ========== 5) FLAGS COLUMN ========== */
+#paneFlags {
+  width: 100%;
+}
+
+#paneFlags .pane__body {
+  display: grid;
+  grid-template-columns: 1fr;
+  padding: 8px;
+  gap: var(--flag-gap);
+}
+
+/* pre-race half-height row */
+#preFlagRow {
+  width: 100%;
+  min-width: 0;
+  height: calc(var(--flag-btn-h) / 2);
+  margin-bottom: calc(var(--flag-gap) * 3);
+  display: grid;
+}
+
+#preFlagRow .flag {
+  font-size: calc(var(--flag-btn-fz) * 0.9);
+}
+
+#flagPad.flag-pad {
+  display: grid;
+  grid-template-columns: 1fr;
+  grid-auto-rows: var(--flag-btn-h);
+  row-gap: var(--flag-gap);
+}
+
+#flagPad .flag,
+#preFlagRow .flag {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border-radius: 8px;
+  font-weight: 800;
+  display: grid;
+  place-items: center;
+  line-height: 1.1;
+  letter-spacing: .02em;
+  color: #fff;
+  border: 1px solid #2a3b4b;
+  cursor: pointer;
+}
+
+#flagPad .flag {
+  font-size: var(--flag-btn-fz);
+}
+
+#flagPad .flag:hover,
+#preFlagRow .flag:hover {
+  filter: brightness(1.06);
+}
+
+#flagPad .flag:active,
+#preFlagRow .flag:active {
+  transform: translateY(1px);
+}
+
+/* default pre-race tone (darker slate) */
+#preFlagRow .flag--pre {
+  background: #26323c;
+  border-color: #1d2931;
+  color: #e6edf3;
+}
+
+.flag--black,
+.flag--sc,
+.flag--vsc {
+  display: none !important;
+}
+
+#flagPad .flag--green {
+  background: #1fb15b;
+  border-color: #1a8c4a;
+}
+
+#flagPad .flag--yellow {
+  background: #e0b11f;
+  border-color: #b38d19;
+  color: #1a1a1a;
+}
+
+#flagPad .flag--red {
+  background: #d04747;
+  border-color: #a33a3a;
+}
+
+#flagPad .flag--blue {
+  background: #3a78e0;
+  border-color: #2f63bb;
+}
+
+#flagPad .flag--white {
+  background: #f0f3f7;
+  border-color: #cfd9e4;
+  color: #151a20;
+}
+
+#flagPad .flag--checkered {
+  position: relative;
+  color: #fff;
+  border-color: #4a5664;
+  background: repeating-linear-gradient(45deg, #000 0 16px, #fff 16px 32px);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, .8), 0 0 2px rgba(0, 0, 0, .6);
+}
+
+#flagPad .flag--checkered::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, .25);
+  border-radius: 8px;
+  pointer-events: none;
+}
+
+/* active state + pulse (final authority) */
+@keyframes flagPulse {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  50% {
+    transform: scale(1.03);
+    filter: brightness(1.12);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}
+
+#paneFlags #flagPad .flag.is-active,
+#paneFlags #preFlagRow .flag.is-active {
+  outline: 2px solid rgba(255, 255, 255, .18);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .12);
+}
+
+#paneFlags #flagPad .flag.is-active:not(.flag--green),
+#paneFlags #preFlagRow .flag.is-active {
+  animation: flagPulse 1.1s ease-in-out infinite;
+}
+
+#paneFlags #flagPad .flag--green.is-active {
+  animation: none;
+  filter: brightness(1.18) saturate(1.08);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, .12), 0 0 16px rgba(80, 220, 120, .38);
+}
+
+/* ========== 6) CLOCK ROW ========== */
+#paneClock .pane__body {
+  overflow: hidden;
+}
+
+#paneClock .clockBody {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+}
+
+/* left cluster: actions */
+.clockActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* deliberate wide gap after Pre-Race → Start Race */
+#btnStartPrep {
+  margin-right: 32px;
+}
+
+/* right cluster: Mode + big clock */
+.clockDisplay {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+#paneClock .clockMeta {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 140px;
+  width: 160px;
+}
+
+#paneClock .toolbar-label {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
+/* clock typography (authoritative) */
+.bigClock,
+.clock {
+  font-family: var(--clock-font);
+  font-variant-numeric: tabular-nums lining-nums;
+  -webkit-font-feature-settings: "tnum" 1, "lnum" 1;
+  font-feature-settings: "tnum" 1, "lnum" 1;
+  letter-spacing: .03em;
+}
+
+.bigClock {
+  font-size: clamp(48px, 6.5vw, var(--big-clock-size, 80px));
+  font-weight: 900;
+  line-height: 1;
+  color: #e6f3ff;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, .45);
+  min-width: 8ch;
+  text-align: right;
+}
+
+#btnClockMode {
+  min-width: 12ch;
+}
+
+/* ========== 7) LIVE LISTS / TIMERS ========== */
 .timers {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
   margin-bottom: 12px;
 }
-.timer { background: rgba(255,255,255,0.02); border: 1px solid #10202b; border-radius: 8px; padding: 10px; }
-.timer__label { color: var(--text-dim); margin-bottom: 6px; }
-.timer__value { font-size: 28px; font-weight: 900; }
 
-.liveSplit { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; min-height: 0; }
-.liveHead  { font-weight: 700; margin-bottom: 6px; }
-.liveList  { list-style: none; margin: 0; padding: 0; border: 1px solid #0e151b; border-radius: 8px; min-height: 120px; }
-.liveList li { padding: 6px 8px; border-bottom: 1px solid #0e151b; color: var(--muted); }
-.liveList li:last-child { border-bottom: 0; }
+.timer {
+  background: rgba(255, 255, 255, .02);
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  padding: 10px;
+}
 
-/* ===========================================================
-  TEXT: Use the defined muted token for list items
-  ----------------------------------------------------------- */
-.liveList li { color: var(--text-muted); }
+.timer__label {
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
 
-/* Flag chip in toolbar */
+.timer__value {
+  font-size: 28px;
+  font-weight: 900;
+}
+
+.liveSplit {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  min-height: 0;
+}
+
+.liveHead {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.liveList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--panel-edge);
+  border-radius: 8px;
+  min-height: 120px;
+}
+
+.liveList li {
+  padding: 6px 8px;
+  border-bottom: 1px solid #0e151b;
+  color: var(--text-muted);
+}
+
+.liveList li:last-child {
+  border-bottom: 0;
+}
+
+/* ========== 8) MISC ========== */
 .flag-chip {
   display: inline-block;
   padding: 4px 8px;
@@ -142,377 +502,124 @@
   background: #2b3b4b;
   border: 1px solid #3b4d61;
 }
-.flag-chip[data-flag="green"] { background: #1c7a3a; border-color:#2a7a4b; }
-.flag-chip[data-flag="yellow"]{ background: #a4861e; border-color:#b79a2a; }
-.flag-chip[data-flag="white"] { background: #bfc6cf; color:#111; border-color:#d1d7de; }
-.flag-chip[data-flag="red"]   { background: #9a2e2e; border-color:#b23b3b; }
-.flag-chip[data-flag="blue"]  { background: #2c5fb7; border-color:#3c6fcc; }
 
-/* Note below the column */
-#flagInfo { min-width: 0; color: var(--text-muted); }
-#flagInfo .hint { margin-top: 2px; }
-
-
-
-/* ================================================================
-   Race Control: adopt Race Setup palette + title-bar look
-   (scoped to .race-control so we don't affect other pages)
-   ================================================================ */
-.race-control {
-  --bg: #0b131b;
-  --panel: #0f1a24;
-  --panel-edge: #213243;
-  --panel-shadow: rgba(0, 0, 0, 0.35);
-  --text: #e6edf3;
-  --text-dim: #c0cad3;
-  --text-muted: #99a7b4;
-  --title-bar-top: #15627A;
-  --title-bar-bot: #104C60;
-  --title-bar-edge: #2a475e;
-  --title-text: #e8f2fb;
-
-  /* consolidated teal accents used by buttons */
-  --teal-1: #15627A;
-  --teal-2: #104C60;
-  --teal-edge: #2b4a63;
-
-  /* inset title bar tuning */
-  --pane-head-inset-x: 8px;
-  --pane-head-inset-y: 6px;
-  --pane-head-radius:  8px;
+.flag-chip[data-flag="green"] {
+  background: #1c7a3a;
+  border-color: #2a7a4b;
 }
 
-/* Match Race Setup card/pane visuals */
+.flag-chip[data-flag="yellow"] {
+  background: #a4861e;
+  border-color: #b79a2a;
+}
+
+.flag-chip[data-flag="white"] {
+  background: #bfc6cf;
+  color: #111;
+  border-color: #d1d7de;
+}
+
+.flag-chip[data-flag="red"] {
+  background: #9a2e2e;
+  border-color: #b23b3b;
+}
+
+.flag-chip[data-flag="blue"] {
+  background: #2c5fb7;
+  border-color: #3c6fcc;
+}
+
+#flagInfo {
+  min-width: 0;
+  color: var(--text-muted);
+}
+
+#flagInfo .hint {
+  margin-top: 2px;
+}
+
+.hidden {
+  display: none !important;
+}
+
+/* ======================================================================
+   Race Control — match Race Setup palette & panel treatment
+   ====================================================================== */
+
+body.race-control {
+  /* palette (mirrors .race-setup) */
+  --bg:             #0b131b;
+  --panel:          #0f1a24;
+  --panel-edge:     #213243;
+  --panel-shadow:   rgba(0, 0, 0, 0.35);
+  --text:           #e6edf3;
+  --text-dim:       #c0cad3;
+  --text-muted:     #99a7b4;
+  --title-bar-top:  #15627A;
+  --title-bar-bot:  #104C60;
+  --title-bar-edge: #2a475e;
+  --title-text:     #e8f2fb;
+
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Page wrap (if you have .wrap on RC as well) */
+.race-control main.wrap {
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* Pane shells */
 .race-control .pane {
   background: var(--panel);
   border: 1px solid var(--panel-edge);
   border-radius: 12px;
-  box-shadow: 0 0 0 1px #0c1116, inset 0 0 0 1px #0a0f14;
+  box-shadow: 0 2px 8px var(--panel-shadow);
 }
 
+/* Pane titles use the same teal gradient cap */
 .race-control .pane__head {
-  /* inset the bar inside the pane’s border */
-  margin: var(--pane-head-inset-y) var(--pane-head-inset-x) 10px;
+  margin: 0 0 10px;
   padding: 8px 12px;
-
-  color: var(--title-text);
+  font-size: 16px;
   font-weight: 700;
-
+  line-height: 1.2;
+  letter-spacing: .02em;
+  color: var(--title-text);
   background: linear-gradient(180deg, var(--title-bar-top), var(--title-bar-bot));
   border: 1px solid var(--title-bar-edge);
-  border-radius: var(--pane-head-radius);
+  border-radius: 2px;
   box-shadow: inset 0 1px 0 rgba(255,255,255,.08);
 }
 
-.race-control .pane__head::before { content: none !important; }
-
-/* ======================================================================
-   Race Control — unify look with Race Setup + lock to 1920×1080
-   ====================================================================== */
-
-/* -------- Fixed canvas (1920×1080) ---------------------------------- */
-body.race-control {
-  min-width: 1920px;
-  min-height: 1080px;
-}
-
- 
-
-/* -------- Hide pane headers for Flags / Clock / Live --------------- */
-.race-control #paneFlags .pane__head,
-.race-control #paneClock .pane__head,
-.race-control #paneLive  .pane__head { display: none; }
-
-.race-control #paneFlags,
-.race-control #paneClock,
-.race-control #paneLive  { grid-template-rows: 1fr; }
-
-/* -------- Left Flags column (compact + uniform) --------------------- */
-
-/* Flags pane fits its grid column; grid column-gap provides separation */
-#paneFlags {
-  width: 100%;
-}
-
-#paneFlags .pane__body {
-  display: grid;
-  grid-template-columns: 1fr;   /* stack (column only) */
-  padding: 8px;
-  gap: var(--flag-gap);
-}
-
-#flagColumn {
-  /* previously: width/min-width locked to var(--flag-col-w) */
-  width: 100%;
-  min-width: 0;
-}
-
-/* Flag pad grid: one column of equal-height buttons */
-#flagPad.flag-pad { display: grid; grid-template-columns: 1fr; grid-auto-rows: var(--flag-btn-h); row-gap: var(--flag-gap); }
-
-/* Shared flag base for pad and pre-race */
-#flagPad .flag,
-#preFlagRow .flag {
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border-radius: 8px;
-  font-weight: 800;
-  display: grid; place-items: center;
-  line-height: 1.1;
-  letter-spacing: .02em;
-  color: #fff;
-  border: 1px solid #2a3b4b; /* allow variants to override border-color */
-  cursor: pointer;
-}
-
-/* Size variants */
-#flagPad .flag { font-size: var(--flag-btn-fz); }
-
-/* Keep existing colors; remove SC/VSC/Black styles if present */
-.flag--black { display: none !important; }
-.flag--sc    { display: none !important; }
-.flag--vsc   { display: none !important; }
-
-/* Optional: brighten on hover without resize jitter */
-#flagPad .flag:hover, #preFlagRow .flag:hover { filter: brightness(1.06); }
-#flagPad .flag:active, #preFlagRow .flag:active { transform: translateY(1px); }
-
-/* -------- Live pane minor tweaks (align with Race Setup tone) ------- */
-.timers .timer {
-  background: rgba(255,255,255,0.02);
+/* Clock strip / toolbars feel like Setup cards */
+.race-control .clockRow,
+.race-control #paneClock .pane__body,
+.race-control .toolBar {
+  background: var(--panel);
   border: 1px solid var(--panel-edge);
-  border-radius: 8px;
+  border-radius: 10px;
+  box-shadow: 0 2px 8px var(--panel-shadow);
 }
 
-.liveList {
+/* Flags panel body */
+.race-control #paneFlags .pane__body {
+  background: #0e1821; /* slightly darker than panel for depth */
   border: 1px solid var(--panel-edge);
-  border-radius: 8px;
+  border-radius: 10px;
 }
 
-/* -------- Buttons (fallback if not inherited from operator.css) ----- */
-.btn-primary { background: linear-gradient(180deg, var(--teal-1), var(--teal-2)); border-color: var(--teal-edge); color: #e6f7ff; }
-.btn-success { background: linear-gradient(180deg, #1f7a4d, #165a39); border-color:#2c5f47; }
-.btn-danger  { background: linear-gradient(180deg, #8b3434, #672525); border-color:#6d3a3a; }
-
-/* ===== Toolbar mini title (matches your teal title bars, just compact) */
-.toolTitle{
-  color:#e8f2fb;
-  font-weight:700;
-  padding:6px 10px;
-  background:linear-gradient(180deg,#15627A,#104C60);
-  border:1px solid #2a475e;
-  border-radius:8px;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.08);
-  margin-right:10px;   /* space before the Standing/Rolling radios */
-  white-space:nowrap;
-  font-size:14px;
-  line-height:1;
+/* Live feed / lists */
+.race-control #paneLive .pane__body,
+.race-control #paneData .pane__body {
+  background: #0e1821;
+  border: 1px solid var(--panel-edge);
+  border-radius: 10px;
 }
 
-/* ===== If you kept the old flag chip, hide the whole banner (redundant now) */
-#flagBanner{ display:none; }
-
-/* Canonical flagPulse animation (used by active flag glow) */
-@keyframes flagPulse {
-  0%   { transform: scale(1);    filter: brightness(1); }
-  50%  { transform: scale(1.03); filter: brightness(1.12); }
-  100% { transform: scale(1);    filter: brightness(1); }
+/* Chips, small labels */
+.race-control .toolbar-label,
+.race-control .chip {
+  color: var(--text-muted);
 }
-/* ---------- Pre-race half-height row ---------- */
-/* The pre row sits above the grid and matches width */
-#preFlagRow {
-  width: 100%;
-  min-width: 0;
-  height: calc(var(--flag-btn-h) / 2);
-  margin-bottom: calc(var(--flag-gap) * 3);
-  display: grid;
-}
-#preFlagRow .flag { font-size: calc(var(--flag-btn-fz) * 0.9); /* slightly smaller to fit half-height */ }
-
-/* ===========================================================
-   TONE: Pre-race default is a darker slate, not teal
-   ----------------------------------------------------------- */
-#preFlagRow .flag--pre {
-  background: #26323c;     /* darker grey-slate */
-  border-color: #1d2931;
-  color: #e6edf3;
-}
-#preFlagRow .flag--pre:hover { filter: brightness(1.05); }
-
-/* ---------- Brighter base colors ---------- */
-#flagPad .flag--green     { background: #1fb15b; border-color: #1a8c4a; }
-#flagPad .flag--yellow    { background: #e0b11f; border-color: #b38d19; color: #1a1a1a; }
-#flagPad .flag--red       { background: #d04747; border-color: #a33a3a; }
-#flagPad .flag--blue      { background: #3a78e0; border-color: #2f63bb; }
-#flagPad .flag--white     { background: #f0f3f7; border-color: #cfd9e4; color: #151a20; }
-
-/* Checkered with larger checks + dark overlay for readability */
-#flagPad .flag--checkered {
-  position: relative;
-  color: #ffffff;
-  border-color: #4a5664;
-  background:
-    repeating-linear-gradient(45deg, #000 0 16px, #fff 16px 32px);
-}
-#flagPad .flag--checkered::after {
-  content: "";
-  position: absolute; inset: 0;
-  background: rgba(0,0,0,.25); /* darken for text contrast */
-  border-radius: 8px;
-  pointer-events: none;
-}
-#flagPad .flag--checkered {
-  text-shadow:
-    0 1px 2px rgba(0,0,0,.8),
-    0 0 2px rgba(0,0,0,.6);
-}
-
- 
-
-#flagPad .flag.is-active,
-#preFlagRow .flag.is-active {
-  outline: 2px solid rgba(255,255,255,.18);
-  box-shadow: 0 0 0 2px rgba(255,255,255,.12);
-}
-
-/* Non-green flags pulse + glow; include pre-race */
-#flagPad .flag.is-active:not(.flag--green),
-#preFlagRow .flag.is-active { animation: flagPulse 1.1s ease-in-out infinite; }
-
-/* Per-flag glow color */
-#flagPad .flag--yellow.is-active { box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 0 16px rgba(255,227,120,.55); }
-#flagPad .flag--red.is-active    { box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 0 16px rgba(255,120,120,.55); }
-#flagPad .flag--blue.is-active   { box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 0 16px rgba(120,170,255,.55); }
-#flagPad .flag--white.is-active  { box-shadow: 0 0 0 2px rgba(30,40,50,.6),     0 0 16px rgba(255,255,255,.45); }
-#flagPad .flag--checkered.is-active { box-shadow: 0 0 0 2px rgba(255,255,255,.20), 0 0 18px rgba(220,220,220,.55); }
-
-/* ===========================================================
-   FIX: Reliable flag active animation + glow (final authority)
-   ----------------------------------------------------------- */
-#paneFlags #flagPad .flag.is-active,
-#paneFlags #preFlagRow .flag.is-active {
-  outline: 2px solid rgba(255,255,255,.18);
-  box-shadow: 0 0 0 2px rgba(255,255,255,.12);
-}
-
-/* Non-green: pulse */
-#paneFlags #flagPad .flag.is-active:not(.flag--green),
-#paneFlags #preFlagRow .flag.is-active {
-  animation: flagPulse 1.1s ease-in-out infinite;
-}
-
-/* Green: no pulse, just brighter */
-#paneFlags #flagPad .flag--green.is-active {
-  animation: none;
-  filter: brightness(1.18) saturate(1.08);
-  box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 0 16px rgba(80,220,120,.38);
-}
-
-/* swap panels */
-.hidden { display: none !important; }
-
- 
-
-/* Big race clock pane */
-#paneClock .clockBody {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;   /* keep cluster near the clock on the right */
-  gap: 12px;
-  padding: 8px 12px;
-}
-
-/* Clock pane never needs scrollbars; avoid visual jitter */
-#paneClock .pane__body { overflow: hidden; }
-
-#paneClock .clockMeta {
-  display: flex;
-  flex-direction: column;   /* stack label over the button */
-  align-items: flex-start;  /* left-align within the cluster */
-  text-align: left;
-  gap: 4px;
-  min-width: 140px;         /* avoid shifting when text toggles */
-  width: 160px;             /* lock cluster width so clock doesn't shift */
-}
-
-/* Large, high-contrast clock; tabular numerals for stable width */
-.bigClock {
-  font-family: var(--clock-font);
-  font-size: var(--big-clock-size);
-  font-weight: 900;
-  font-variant-numeric: tabular-nums lining-nums;
-  -webkit-font-feature-settings: "tnum" 1, "lnum" 1;
-  font-feature-settings: "tnum" 1, "lnum" 1;
-  letter-spacing: .03em;
-  line-height: 1;
-  color: #e6f3ff;
-  text-shadow: 0 2px 10px rgba(0,0,0,.45);
-  font-size: clamp(48px, 6.5vw, var(--big-clock-size, 80px));
-  min-width: 8ch;           /* stabilize width for mm:ss / h:mm:ss */
-  text-align: right;        /* keep anchored visually to the right */
-}
-
-/* Prevent vertical margin “gaps” from children */
-.toolBar .btn,
-.toolBar .pill,
-.toolBar .radio { margin-top: 0; margin-bottom: 0; }
-.toolBar * { line-height: 1; }
-
-
-/* Make Flags span both rows on the left; Clock/Data occupy right rows */
-#paneFlags { grid-column: 1; grid-row: 1 / span 2; }
-#paneClock { grid-column: 2; grid-row: 1; }
-#paneLive  { grid-column: 2; grid-row: 2; }
-
-/* Ensure left column block matches the var (defined earlier in Flags layout section) */
-/* Make the right/top pane arrange content as [CLOCK][CONTROLS] on the right */
-#paneClock .clockBody {
-  display: flex;
-  justify-content: flex-end;  /* keep both to the right; cluster sits left of clock */
-  align-items: center;
-  gap: 12px;
-}
-
-/* Order them: bigClock first, controls second (to its right) */
-#paneClock .clockMeta { order: 1; }
-.bigClock { order: 2; }
-
-
-/* Slightly tighten control pills to fit comfortably beside the clock */
-#paneClock .clockMeta .pill { padding: 3px 8px; font-size: 12px; }
-
-/* Small primary button look (reuse site button tone) */
-.btn--sm { padding: 4px 10px; font-size: 12px; border-radius: 6px; }
-
-/* Stabilize clock mode toggle width to prevent horizontal jitter */
-#btnClockMode { min-width: 12ch; }
-
-/* Make the mode label compact and dimmed */
-#paneClock .toolbar-label { color: var(--text-muted); font-size: 12px; line-height: 1; }
-
-/* Clock row layout: [actions]  [mode]  [bigClock] */
-#paneClock .clockBody {
-  display: grid;
-  grid-template-columns: auto auto 1fr;
-  align-items: center;
-  gap: 12px;
-}
-
-/* Actions sit on the left of the clock row */
-.clockActions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* Make sure the big clock hugs the right edge and doesn’t get squished */
-.bigClock {
-  text-align: right;
-  min-width: 8ch;
-}
-
-/* Keep your existing .btn--sm and .clockMeta styles; no duplicates */
-
-
-

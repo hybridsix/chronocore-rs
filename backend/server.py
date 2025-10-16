@@ -27,14 +27,16 @@ import datetime
 import json
 import logging
 import time
+import random
 import sqlite3
 from collections import deque
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
 import yaml
+from enum import Enum
 
 import aiosqlite
-from fastapi import FastAPI, HTTPException, Request, Response, status
+from fastapi import FastAPI, HTTPException, Request, Response, status, Body
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -43,7 +45,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 ## Our Race engine data, config, and db settings##
 from .race_engine import ENGINE  
 from .db_schema import ensure_schema, tag_conflicts
-from .config_loader import get_db_path
+from .config_loader import get_db_path, get_scanner_cfg
 
 
 log = logging.getLogger("uvicorn.error")
@@ -72,10 +74,44 @@ def publish_tag(tag: str) -> float:
             pass
     return ts
 
+# ------------------------------------------------------------
+# ---- Race Setup → Race Control session contracts -----------
+# ------------------------------------------------------------
+
+class EntrantSetup(BaseModel):
+    """Minimal entrant shape required by /race/setup."""
+    id: int                    # required; no Optional
+    name: str
+    number: Optional[str | int] = None
+    tag: Optional[str] = None
+    enabled: bool = True
+    status: Optional[str] = None  # normalized to UPPER later
+
+class SessionConfigIn(BaseModel):
+    event_label: str
+    session_label: str
+    mode_id: str
+    limit: Dict[str, Any]
+    rank_method: str
+    min_lap_s: float
+    countdown: Dict[str, Any]
+    announcements: Dict[str, Any]
+    sounds: Dict[str, Any]
+    bypass: Dict[str, Any]
+
+class SetupReq(BaseModel):
+    race_id: int
+    entrants: List[EntrantSetup] = []
+    session_config: SessionConfigIn
+
+# IMPORTANT for Pydantic v2: resolve forward refs once models exist
+#SetupReq.model_rebuild()
+
 # -----------------------------------------------------------------------------
 # Session handoff (Race Setup → Race Control)
 # -----------------------------------------------------------------------------
 _CURRENT_SESSION: Dict[str, Any] = {}         # last saved session_config from /race/setup
+_CURRENT_RACE_ID: int | None = None
 _CURRENT_ENTRANTS_ENGINE: List[Dict[str, Any]] = []  # last entrants mapped to ENGINE.load()
 
 def _get(d: Dict[str, Any], path: str, default=None):
@@ -126,6 +162,53 @@ def _derive_for_control(cfg: Dict[str, Any]) -> Dict[str, Any]:
             "horn":  _sound_url_from_config("start",      "start_horn.wav"),
             "white": _sound_url_from_config("white_flag", "white_flag.wav"),
         }
+    }
+
+
+# -----------------------------------------------------------------------------
+# Race control in-memory state (scaffold)
+# -----------------------------------------------------------------------------
+class Phase(str, Enum):
+    PRE = "pre"
+    COUNTDOWN = "countdown"
+    GREEN = "green"
+    WHITE = "white"
+    CHECKERED = "checkered"
+
+# In-memory race state (kept in sync with UI + engine when possible)
+_RACE_STATE = {
+    "race_id": None,
+    "phase": Phase.PRE.value,       # pre|countdown|green|white|checkered
+    "flag": "PRE",                  # PRE|GREEN|YELLOW|RED|WHITE|CHECKERED
+    "start_at": None,               # epoch seconds when GREEN actually began
+    "countdown_from_s": 0,          # from session_config (0 = none)
+    "limit": {"type": "time", "value_s": 0},  # default until /race/setup seeds it
+    "created_at": time.time(),
+}
+
+def _now() -> float:
+    return time.time()
+
+def _elapsed_s() -> float:
+    if _RACE_STATE["start_at"] is None:
+        return 0.0
+    return max(0.0, _now() - float(_RACE_STATE["start_at"]))
+
+def _remaining_s() -> float:
+    lim = _RACE_STATE["limit"]
+    if not lim or lim.get("type") != "time":
+        return float("inf")
+    v = int(lim.get("value_s") or 0)
+    if v <= 0:
+        return float("inf")
+    return v - _elapsed_s()
+
+def _state_clock_block() -> dict:
+    rem = _remaining_s()
+    return {
+        "elapsed_s": int(_elapsed_s()),
+        "remaining_s": (None if rem == float("inf") else int(rem)),
+        "now": _now(),
     }
 
 
@@ -269,57 +352,119 @@ def save_race_mode(payload: ModeUpsert):
 
 
 @app.post("/race/setup")
-async def race_setup(req: SetupReq):
+async def race_setup(
+    req: SetupReq = Body(
+        ...,
+        example={
+            "race_id": 1,
+            "entrants": [
+                {"id": 101, "name": "Driver A", "number": "1", "tag": None, "enabled": True, "status": "ACTIVE"}
+            ],
+            "session_config": {
+                "event_label": "Maker Faire Orlando",
+                "session_label": "Heat 1",
+                "mode_id": "sprint",
+                "limit": {"type": "time", "value_s": 900, "soft_end": False},
+                "rank_method": "total_laps",
+                "min_lap_s": 4.1,
+                "countdown": {
+                    "start_enabled": True,
+                    "start_from_s": 10,
+                    "end_enabled": False,
+                    "end_from_s": 10,
+                    "timeout_s": 0
+                },
+                "announcements": {
+                    "lap_indication": "beep",
+                    "rank_enabled": False,
+                    "rank_interval_laps": 0,
+                    "rank_change_speech": False,
+                    "best_lap_speech": False
+                },
+                "sounds": {
+                    "countdown_beep_last_s": 0,
+                    "starting_horn": False,
+                    "white_flag": {"mode": "auto"},
+                    "checkered_horn": False
+                },
+                "bypass": {"decoder": True, "entrants": False}
+            }
+        }
+    )
+):
     """
     Race Setup submits one authoritative session_config + entrants roster.
     We store session_config, map entrants to ENGINE format, and call ENGINE.load().
     """
-    global _CURRENT_SESSION, _CURRENT_ENTRANTS_ENGINE, _CURRENT_RACE_ID
-    _CURRENT_SESSION = req.session_config.model_dump()
-    _CURRENT_RACE_ID = int(req.race_id)
+    try:
+        # Cache session and race id
+        global _CURRENT_SESSION, _CURRENT_ENTRANTS_ENGINE, _CURRENT_RACE_ID, _RACE_STATE
+        _CURRENT_SESSION = req.session_config.model_dump() if hasattr(req.session_config, "model_dump") else dict(req.session_config)
+        _CURRENT_RACE_ID = int(req.race_id)
 
-    # Map entrants using validated EntrantIn → engine expects entrant_id/car_number/status/etc.
-    entrants_engine: List[Dict[str, Any]] = []
-    for e in (req.entrants or []):
-        if e.id is None:
-            raise HTTPException(status_code=400, detail="entrant id is required")
-        entrants_engine.append({
-            "entrant_id": int(e.id),
-            "name": e.name,
-            "car_number": (str(e.number).strip() if e.number is not None else None),
-            "tag": (_normalize_tag(e.tag)),
-            "enabled": bool(e.enabled),
-            "status": (e.status or "ACTIVE").upper(),
+        # Prime live state
+        _RACE_STATE["race_id"] = _CURRENT_RACE_ID
+        _RACE_STATE["phase"] = Phase.PRE.value
+        _RACE_STATE["flag"] = "PRE"
+        _RACE_STATE["start_at"] = None
+
+        # countdown_from_s only if enabled
+        cd = (_CURRENT_SESSION.get("countdown") or {})
+        _RACE_STATE["countdown_from_s"] = int(cd.get("start_from_s") or 0) if cd.get("start_enabled") else 0
+
+        # limit carries through for control UI
+        _RACE_STATE["limit"] = (_CURRENT_SESSION.get("limit") or {"type": "time", "value_s": 0})
+
+        # Map entrants → engine shape
+        entrants_engine: List[Dict[str, Any]] = []
+        for e in (req.entrants or []):
+            # support EntrantIn model *or* plain dicts
+            get = (lambda k: getattr(e, k, None)) if not isinstance(e, dict) else e.get
+            eid = get("id")
+            if eid is None:
+                raise HTTPException(status_code=400, detail="entrant id is required")
+            entrants_engine.append({
+                "entrant_id": e.id,  # guaranteed int
+                "name": e.name,
+                "car_number": (str(e.number).strip() if e.number is not None else None),
+                "tag": _normalize_tag(e.tag),
+                "enabled": bool(e.enabled),
+                "status": (e.status or "ACTIVE").upper(),
+            })
+
+        _CURRENT_ENTRANTS_ENGINE = entrants_engine[:]  # keep for reset
+
+        # Pick race_type from mode id
+        race_type = str(_CURRENT_SESSION.get("mode_id", "sprint"))
+
+        # Call engine with its real signature
+        snap = ENGINE.load(
+            race_id=_CURRENT_RACE_ID,
+            entrants=entrants_engine,
+            race_type=race_type,
+        )
+
+        # Derived shape for Race Control (if you have this helper)
+        derived = _derive_for_control(_CURRENT_SESSION) if "_derive_for_control" in globals() else {}
+
+        return JSONResponse({
+            "ok": True,
+            "session_id": _CURRENT_RACE_ID,
+            "snapshot": snap,
+            "derived": derived,
         })
 
-    _CURRENT_ENTRANTS_ENGINE = entrants_engine[:]  # keep for reset
+    except HTTPException:
+        # let explicit 4xx bubble as-is
+        raise
+    except TypeError as te:
+        # Very helpful when ENGINE.load signature mismatches
+        log.exception("ENGINE.load TypeError")
+        raise HTTPException(status_code=500, detail=f"ENGINE.load TypeError: {te}")
+    except Exception as ex:
+        log.exception("race_setup failed")
+        raise HTTPException(status_code=500, detail=f"race_setup failed: {type(ex).__name__}: {ex}")
 
-    # Use the Setup-selected mode as race_type (e.g., "sprint", "endurance", ...)
-    race_type = _CURRENT_SESSION.get("mode_id", "sprint")
-
-    # Call the real engine signature: (race_id, entrants, race_type)
-    snap = ENGINE.load(race_id=_CURRENT_RACE_ID, entrants=entrants_engine,
-                       race_type=str(_CURRENT_SESSION.get("mode_id", "sprint")))
-    
-    return JSONResponse({
-        "ok": True,
-        "session_id": req.race_id,
-        "snapshot": snap,
-        "derived": _derive_for_control(_CURRENT_SESSION),
-    })
-
-@app.get("/race/session")
-async def race_session():
-    """
-    Race Control calls this on load. It gets the exact session_config the operator set,
-    plus a derived block with normalized numbers and sound URLs.
-    """
-    if not _CURRENT_SESSION:
-        raise HTTPException(status_code=404, detail="no active session")
-    return {
-        "session_config": _CURRENT_SESSION,
-        "derived": _derive_for_control(_CURRENT_SESSION),
-    }
 
 
 
@@ -468,6 +613,7 @@ async def engine_entrant_assign_tag(payload: Dict[str, Any]):
 
 # ------------------------------------------------------------
 # Endpoints — flag / state / reset (lightweight, engine-aware)
+# Race Control Endpoints
 # ------------------------------------------------------------
 class FlagReq(BaseModel):
     flag: str
@@ -475,44 +621,172 @@ class FlagReq(BaseModel):
 @app.post("/engine/flag")
 async def engine_set_flag(req: FlagReq):
     """
-    Set the live flag. Calls ENGINE.set_flag(...) if available; otherwise 501.
+    Set the live flag. Calls ENGINE.set_flag(...) if available; otherwise updates local state.
+    Also keeps local _RACE_STATE in sync for UI.
     """
-    if not hasattr(ENGINE, "set_flag"):
-        raise HTTPException(status_code=501, detail="engine does not implement set_flag")
-    try:
-        snap = ENGINE.set_flag(req.flag)
-    except ValueError as ve:
-        raise HTTPException(status_code=400, detail=str(ve))
-    return JSONResponse(snap if snap is not None else {"ok": True, "flag": req.flag})
+    upper = str(req.flag).upper()
+
+    # Try engine first (your original behavior)
+    if hasattr(ENGINE, "set_flag"):
+        try:
+            snap = ENGINE.set_flag(upper)
+        except ValueError as ve:
+            raise HTTPException(status_code=400, detail=str(ve))
+        # fall through to local sync even if engine handled it
+    elif upper not in {"PRE","GREEN","YELLOW","RED","WHITE","CHECKERED"}:
+        raise HTTPException(status_code=400, detail="invalid flag value")
+
+    # Local sync for UI consistency
+    _RACE_STATE["flag"] = upper
+    if upper == "WHITE":
+        _RACE_STATE["phase"] = Phase.WHITE.value
+    elif upper == "CHECKERED":
+        _RACE_STATE["phase"] = Phase.CHECKERED.value
+    elif upper == "GREEN":
+        # If GREEN is asserted manually, assume race running
+        if _RACE_STATE["start_at"] is None:
+            _RACE_STATE["start_at"] = _now()
+        _RACE_STATE["phase"] = Phase.GREEN.value
+    elif upper == "PRE":
+        _RACE_STATE["phase"] = Phase.PRE.value
+
+    # Prefer engine snapshot if it exists, else return a normalized payload
+    if hasattr(ENGINE, "snapshot"):
+        try:
+            snap = ENGINE.snapshot()
+            # augment with local clock/phase for UI convenience
+            if isinstance(snap, dict):
+                snap.setdefault("phase", _RACE_STATE["phase"])
+                snap.setdefault("flag", _RACE_STATE["flag"])
+                snap.setdefault("clock", _state_clock_block())
+            return JSONResponse(snap)
+        except Exception:
+            pass
+
+    return JSONResponse({"ok": True, "flag": _RACE_STATE["flag"], "phase": _RACE_STATE["phase"], "clock": _state_clock_block()})
+
+# ------------------------- State: engine snapshot + local --------------------
 
 @app.get("/race/state")
 async def race_state():
     """
-    Return a live snapshot. Calls ENGINE.snapshot() if available; else a stub.
+    Return a live snapshot. If ENGINE.snapshot() exists, use it and augment
+    with phase/flag/clock; else return local scaffold so UI always has data.
     """
     if hasattr(ENGINE, "snapshot"):
-        snap = ENGINE.snapshot()
-        return JSONResponse(snap)
-    return JSONResponse({"ok": True, "engine": "no-snapshot"})
+        try:
+            snap = ENGINE.snapshot()
+            if isinstance(snap, dict):
+                snap.setdefault("phase", _RACE_STATE["phase"])
+                snap.setdefault("flag", _RACE_STATE["flag"])
+                snap.setdefault("limit", _RACE_STATE["limit"])
+                snap.setdefault("countdown_from_s", _RACE_STATE["countdown_from_s"])
+                snap.setdefault("clock", _state_clock_block())
+            return JSONResponse(snap)
+        except Exception:
+            # fall back to local
+            pass
+
+    return JSONResponse({
+        "ok": True,
+        "race_id": _RACE_STATE["race_id"],
+        "phase": _RACE_STATE["phase"],
+        "flag": _RACE_STATE["flag"],
+        "limit": _RACE_STATE["limit"],
+        "countdown_from_s": _RACE_STATE["countdown_from_s"],
+        "clock": _state_clock_block(),
+        "engine": "no-snapshot",
+    })
+
+# --------------------------- Start / End / Abort -----------------------------
+
+@app.post("/race/control/start_prep")
+def race_start_prep():
+    """
+    Operator clicked 'Pre-Race Start'.
+    If countdown_from_s>0, enter COUNTDOWN (UI shows negative clock to 0).
+    """
+    if _RACE_STATE["race_id"] is None:
+        raise HTTPException(status_code=409, detail="No race loaded (call /race/setup first)")
+    _RACE_STATE["phase"] = Phase.COUNTDOWN.value if int(_RACE_STATE.get("countdown_from_s") or 0) > 0 else Phase.PRE.value
+    _RACE_STATE["flag"] = "PRE"
+    return {"ok": True, "phase": _RACE_STATE["phase"]}
+
+@app.post("/race/control/start_race")
+def race_start_race():
+    """
+    Operator clicked 'Start Race' → GREEN; start clock at now.
+    """
+    if _RACE_STATE["race_id"] is None:
+        raise HTTPException(status_code=409, detail="No race loaded (call /race/setup first)")
+    _RACE_STATE["phase"] = Phase.GREEN.value
+    _RACE_STATE["flag"] = "GREEN"
+    _RACE_STATE["start_at"] = _now()
+    # If engine wants to be told we're green:
+    if hasattr(ENGINE, "set_flag"):
+        try:
+            ENGINE.set_flag("GREEN")
+        except Exception:
+            pass
+    return {"ok": True, "phase": _RACE_STATE["phase"], "start_at": _RACE_STATE["start_at"]}
+
+@app.post("/race/control/end_race")
+def race_end_race():
+    """
+    Operator clicked 'End Race' → CHECKERED; freeze clock.
+    """
+    if _RACE_STATE["race_id"] is None:
+        raise HTTPException(status_code=409, detail="No race loaded (call /race/setup first)")
+    _RACE_STATE["phase"] = Phase.CHECKERED.value
+    _RACE_STATE["flag"] = "CHECKERED"
+    if hasattr(ENGINE, "set_flag"):
+        try:
+            ENGINE.set_flag("CHECKERED")
+        except Exception:
+            pass
+    return {"ok": True, "phase": _RACE_STATE["phase"]}
+
+@app.post("/race/control/abort_reset")
+def race_abort_reset():
+    """
+    Abort & reset to PRE (keep roster intact, clear timing).
+    """
+    _RACE_STATE["phase"] = Phase.PRE.value
+    _RACE_STATE["flag"] = "PRE"
+    _RACE_STATE["start_at"] = None
+    # If your engine has an explicit reset:
+    reset_fn = getattr(ENGINE, "reset_session", None)
+    if callable(reset_fn):
+        try:
+            reset_fn()
+        except Exception:
+            pass
+    return {"ok": True, "phase": _RACE_STATE["phase"]}
+
+# ---------------------- Backward-compatible reset route ----------------------
 
 @app.post("/race/reset_session")
 async def reset_session():
     """
-    Abort & reset:
-      - go straight to PRE
-      - clear live seen/lap data
-      - keep roster intact
-    Prefer an engine-native reset if present; else re-load prior roster.
+    Your original reset route:
+      - Prefer engine-native reset if present
+      - Else re-load prior roster
+      - Always sync local state back to PRE
     """
-    # Try engine-native reset if implemented
+    global _CURRENT_ENTRANTS_ENGINE, _CURRENT_RACE_ID, _CURRENT_SESSION
+
+    # Local state reset
+    _RACE_STATE["phase"] = Phase.PRE.value
+    _RACE_STATE["flag"] = "PRE"
+    _RACE_STATE["start_at"] = None
+
+    # Engine-native reset if available
     reset_fn = getattr(ENGINE, "reset_session", None)
     if callable(reset_fn):
         snap = reset_fn()
         return JSONResponse({"ok": True, "snapshot": snap})
 
-    # Fallback: re-load with the cached roster + mode + race_id
-    global _CURRENT_ENTRANTS_ENGINE, _CURRENT_RACE_ID, _CURRENT_SESSION
-
+    # Fallback: re-load with cached roster + mode + race_id
     race_type = (_CURRENT_SESSION.get("mode_id", "sprint") if _CURRENT_SESSION else "sprint")
     snap = ENGINE.load(
         race_id=int(_CURRENT_RACE_ID or 0),
@@ -520,29 +794,20 @@ async def reset_session():
         race_type=str(race_type),
     )
 
-    # Best-effort return to PRE
+    # Best-effort set PRE in engine
     set_flag = getattr(ENGINE, "set_flag", None)
     if callable(set_flag):
         try:
-            set_flag("pre")
+            set_flag("PRE")
         except Exception:
             pass
 
     return JSONResponse({"ok": True, "snapshot": snap})
 
 
-
-
-
 # ------------------------------------------------------------
 # Admin Entrants (authoritative DB read/write)
 # ------------------------------------------------------------
-
-from typing import Optional, Dict, Any
-from pydantic import BaseModel, Field, ValidationError, field_validator
-from fastapi import HTTPException
-import aiosqlite
-import sqlite3
 
 # If not already imported somewhere above:
 # from backend.db_schema import tag_conflicts  # adjust import path if needed
@@ -616,25 +881,6 @@ def _norm_tag(value: Optional[str]) -> Optional[str]:
         return None
     s = str(value).strip()
     return s or None
-
-# ---- Race Setup → Race Control session contracts ----------------------------
-
-class SessionConfigIn(BaseModel):
-    event_label: str
-    session_label: str
-    mode_id: str
-    limit: Dict[str, Any]
-    rank_method: str
-    min_lap_s: float
-    countdown: Dict[str, Any]
-    announcements: Dict[str, Any]
-    sounds: Dict[str, Any]
-    bypass: Dict[str, Any]
-
-class SetupReq(BaseModel):
-    race_id: int
-    entrants: List[EntrantIn] = []          # <- strong typing: id must be present/valid
-    session_config: SessionConfigIn
 
 
 @app.get("/admin/entrants")
@@ -945,7 +1191,6 @@ async def start_scanner():
     Otherwise, if scanner.source=='mock', run a tiny in-process tag generator
     so the UI has something to chew on.
     """
-    from .config_loader import get_scanner_cfg
     scan_cfg = get_scanner_cfg() or {}
     source = str(scan_cfg.get("source", "mock")).lower()
 
@@ -963,7 +1208,6 @@ async def start_scanner():
     if source == "mock":
         log.info("Starting in-process MOCK tag generator.")
         async def _mock_task(stop_evt: asyncio.Event):
-            import random, time
             tags = ["1234567", "2345678", "3456789", "4567890"]
             while not stop_evt.is_set():
                 tag = random.choice(tags)

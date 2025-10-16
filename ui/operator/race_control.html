@@ -125,21 +125,20 @@
         <div class="pane__body clockBody">
           <!-- NEW: actions live in the same row as the clock -->
           <div class="clockActions" role="group" aria-label="Race actions">
-            <button id="btnStartRace" class="btn btn-success">Start race</button>
-            <button id="btnEndRace"   class="btn">End race</button>
-            <button id="btnAbort"     class="btn btn-danger">Abort &amp; reset</button>
+            <button id="btnStartPrep"  class="btn">Pre-Race Start</button>
+            <button id="btnStartRace"  class="btn btn-success">Start race</button>
+            <button id="btnEndRace"    class="btn">End race</button>
+            <button id="btnAbortReset" class="btn btn-danger">Abort &amp; reset</button>
           </div>
 
-          <div class="clockMeta">
-            <span class="toolbar-label">Mode</span>
-            <button id="btnClockMode"
-                    class="btn btn-primary btn--sm"
-                    type="button"
-                    title="Toggle elapsed/remaining">Remaining</button>
+          <div class="clockDisplay">
+            <div class="clockMeta">
+              <span class="toolbar-label">Mode</span>
+              <button id="btnClockMode" class="btn btn-primary btn--sm" type="button"
+                      title="Toggle elapsed/remaining">Remaining</button>
+            </div>
+            <div id="raceClock" class="bigClock" aria-live="polite">00:00:00</div>
           </div>
-
-          <div id="clockDisplay" class="bigClock" aria-live="polite">00:00:00</div>
-        </div>
       </section>
 
       <!-- Right (row 2): Race data -->
