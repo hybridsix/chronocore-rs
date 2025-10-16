@@ -128,6 +128,11 @@
 .liveList li { padding: 6px 8px; border-bottom: 1px solid #0e151b; color: var(--muted); }
 .liveList li:last-child { border-bottom: 0; }
 
+/* ===========================================================
+  TEXT: Use the defined muted token for list items
+  ----------------------------------------------------------- */
+.liveList li { color: var(--text-muted); }
+
 /* Flag chip in toolbar */
 .flag-chip {
   display: inline-block;
@@ -325,6 +330,16 @@ body.race-control {
 }
 #preFlagRow .flag { font-size: calc(var(--flag-btn-fz) * 0.9); /* slightly smaller to fit half-height */ }
 
+/* ===========================================================
+   TONE: Pre-race default is a darker slate, not teal
+   ----------------------------------------------------------- */
+#preFlagRow .flag--pre {
+  background: #26323c;     /* darker grey-slate */
+  border-color: #1d2931;
+  color: #e6edf3;
+}
+#preFlagRow .flag--pre:hover { filter: brightness(1.05); }
+
 /* ---------- Brighter base colors ---------- */
 #flagPad .flag--green     { background: #1fb15b; border-color: #1a8c4a; }
 #flagPad .flag--yellow    { background: #e0b11f; border-color: #b38d19; color: #1a1a1a; }
@@ -371,6 +386,28 @@ body.race-control {
 #flagPad .flag--blue.is-active   { box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 0 16px rgba(120,170,255,.55); }
 #flagPad .flag--white.is-active  { box-shadow: 0 0 0 2px rgba(30,40,50,.6),     0 0 16px rgba(255,255,255,.45); }
 #flagPad .flag--checkered.is-active { box-shadow: 0 0 0 2px rgba(255,255,255,.20), 0 0 18px rgba(220,220,220,.55); }
+
+/* ===========================================================
+   FIX: Reliable flag active animation + glow (final authority)
+   ----------------------------------------------------------- */
+#paneFlags #flagPad .flag.is-active,
+#paneFlags #preFlagRow .flag.is-active {
+  outline: 2px solid rgba(255,255,255,.18);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.12);
+}
+
+/* Non-green: pulse */
+#paneFlags #flagPad .flag.is-active:not(.flag--green),
+#paneFlags #preFlagRow .flag.is-active {
+  animation: flagPulse 1.1s ease-in-out infinite;
+}
+
+/* Green: no pulse, just brighter */
+#paneFlags #flagPad .flag--green.is-active {
+  animation: none;
+  filter: brightness(1.18) saturate(1.08);
+  box-shadow: 0 0 0 2px rgba(255,255,255,.12), 0 0 16px rgba(80,220,120,.38);
+}
 
 /* swap panels */
 .hidden { display: none !important; }
@@ -453,5 +490,29 @@ body.race-control {
 
 /* Make the mode label compact and dimmed */
 #paneClock .toolbar-label { color: var(--text-muted); font-size: 12px; line-height: 1; }
+
+/* Clock row layout: [actions]  [mode]  [bigClock] */
+#paneClock .clockBody {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+
+/* Actions sit on the left of the clock row */
+.clockActions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Make sure the big clock hugs the right edge and doesn’t get squished */
+.bigClock {
+  text-align: right;
+  min-width: 8ch;
+}
+
+/* Keep your existing .btn--sm and .clockMeta styles; no duplicates */
+
 
 

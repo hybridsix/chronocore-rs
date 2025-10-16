@@ -123,12 +123,21 @@
       <section class="pane" id="paneClock" aria-labelledby="clockTitle">
         <h2 class="pane__head" id="clockTitle">Race clock</h2>
         <div class="pane__body clockBody">
-          <div class="clockMeta">
-            <span class="toolbar-label">Mode</span>
-            <button id="btnClockMode" class="btn btn-primary btn--sm" type="button" title="Toggle elapsed/remaining">Remaining</button>
+          <!-- NEW: actions live in the same row as the clock -->
+          <div class="clockActions" role="group" aria-label="Race actions">
+            <button id="btnStartRace" class="btn btn-success">Start race</button>
+            <button id="btnEndRace"   class="btn">End race</button>
+            <button id="btnAbort"     class="btn btn-danger">Abort &amp; reset</button>
           </div>
 
-          <!-- Keep this ID so existing JS keeps working -->
+          <div class="clockMeta">
+            <span class="toolbar-label">Mode</span>
+            <button id="btnClockMode"
+                    class="btn btn-primary btn--sm"
+                    type="button"
+                    title="Toggle elapsed/remaining">Remaining</button>
+          </div>
+
           <div id="clockDisplay" class="bigClock" aria-live="polite">00:00:00</div>
         </div>
       </section>
