@@ -45,7 +45,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 ## Our Race engine data, config, and db settings##
 from .race_engine import ENGINE  
 from .db_schema import ensure_schema, tag_conflicts
-from .config_loader import get_db_path, get_scanner_cfg
+from .config_loader import get_db_path, get_scanner_cfg, CONFIG
 
 
 log = logging.getLogger("uvicorn.error")
@@ -73,6 +73,66 @@ def publish_tag(tag: str) -> float:
         except Exception:
             pass
     return ts
+
+# ------------------------------------------------------------
+# Tag ingestion helper - For Mock/Test Scanners
+# ------------------------------------------------------------
+
+async def _ingest_tag_to_engine(tag: str, source: str = "SF") -> dict:
+    """
+    Look up entrant by tag and forward a pass to the engine.
+    Returns a small dict describing what happened (for logging/testing).
+    """
+    tag = _normalize_tag(tag)
+    if not tag:
+        return {"ok": False, "reason": "empty_tag"}
+
+    # 1) Resolve tag -> entrant_id (enabled only)
+    entrant_id: Optional[int] = None
+    async with aiosqlite.connect(DB_PATH) as db:
+        row = await _fetch_one(
+            db,
+            "SELECT entrant_id FROM entrants WHERE enabled=1 AND tag=?",
+            (tag,),
+        )
+        if row:
+            entrant_id = int(row[0])
+
+    # 2) Unknown tag policy
+    unknown_ok = bool(CONFIG.get("app", {})
+                           .get("engine", {})
+                           .get("unknown_tags", {})
+                           .get("allow", False))
+
+    if entrant_id is None and not unknown_ok:
+        # Nothing to do; diagnostics will still show the scan
+        return {"ok": True, "resolved": False, "reason": "unknown_tag_blocked"}
+
+    # 3) Forward to the engine (best-effort; support a few method shapes)
+    ts = time.time()
+    try:
+        if hasattr(ENGINE, "ingest_pass"):
+            # Preferred: dict-shaped pass event
+            ENGINE.ingest_pass({
+                "entrant_id": entrant_id,
+                "tag": tag,
+                "source": source,
+                "seen_at": ts,
+            })
+        elif hasattr(ENGINE, "pass_event"):
+            # Alt shape used in some builds
+            ENGINE.pass_event(entrant_id, ts, source, tag)
+        elif hasattr(ENGINE, "on_tag"):
+            # Very old builds that resolve tag inside the engine
+            ENGINE.on_tag(tag=tag, seen_at=ts, source=source)
+        else:
+            return {"ok": False, "reason": "engine_no_ingest_api"}
+    except Exception as ex:
+        log.error("[ingest] engine forward failed: %s: %s", type(ex).__name__, ex)
+        return {"ok": False, "reason": f"engine_error:{type(ex).__name__}"}
+
+    return {"ok": True, "resolved": entrant_id is not None, "entrant_id": entrant_id}
+
 
 # ------------------------------------------------------------
 # ---- Race Setup → Race Control session contracts -----------
@@ -556,6 +616,7 @@ async def engine_load(payload: Dict[str, Any]):
 
 
 
+### normalized /tag assignment endpoint
 @app.post("/engine/entrant/assign_tag")
 async def engine_entrant_assign_tag(payload: Dict[str, Any]):
     """
@@ -610,6 +671,22 @@ async def engine_entrant_assign_tag(payload: Dict[str, Any]):
                     (tag, entrant_id))
 
     return JSONResponse(snap or {"ok": True})
+
+
+
+@app.post("/engine/pass")
+async def engine_pass(payload: Dict[str, Any]):
+    """
+    Normalized pass ingest endpoint.
+    Accepts: { "tag": "1234567", "source": "SF" }
+    """
+    tag = _normalize_tag(payload.get("tag"))
+    source = str(payload.get("source") or "SF")
+    if not tag:
+        raise HTTPException(status_code=400, detail="missing tag")
+    result = await _ingest_tag_to_engine(tag, source=source)
+    return JSONResponse(result if result else {"ok": True})
+
 
 # ------------------------------------------------------------
 # Endpoints — flag / state / reset (lightweight, engine-aware)
@@ -1175,10 +1252,14 @@ async def ilap_stream(request: Request):
 
 # External publishers via CURL
 @app.post("/ilap/inject")
-async def ilap_inject(tag: str):
-    """Convenience endpoint so external processes can push tags."""
-    ts = publish_tag(tag)
-    return {"ok": True, "seen_at": ts}
+async def ilap_inject(tag: str, source: str = "SF"):
+    """
+    Convenience endpoint so external processes can push tags.
+    Publishes to diagnostics AND forwards to the engine.
+    """
+    ts = publish_tag(tag)  # keeps diagnostics/peek in sync
+    result = await _ingest_tag_to_engine(tag, source=source)
+    return {"ok": True, "seen_at": ts, "ingest": result}
 #
 
 # ------------------------------------------------------------

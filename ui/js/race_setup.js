@@ -561,13 +561,23 @@
     }
   }
 
-  // NEW: fetch current entrants for the session
-  async function fetchEntrants() {
-    const res = await fetch('/admin/entrants', { cache: 'no-store' });
-    if (!res.ok) throw new Error(`Failed to fetch entrants (${res.status})`);
-    return await res.json();
-  }
+// Returns ENABLED entrants mapped to the minimal shape Race Setup needs.
+async function fetchEnabledEntrants() {
+  const res = await fetch('/admin/entrants', { cache: 'no-store' });
+  if (!res.ok) throw new Error(`Failed to fetch entrants (${res.status})`);
+  const all = await res.json();
 
+  return all
+    .filter(e => !!e.enabled)  // only enabled entrants
+    .map(e => ({
+      id: e.id,                                // REQUIRED, non-null
+      name: e.name,
+      number: e.number,                        // leave as-is; server stringifies
+      tag: (e.tag != null ? String(e.tag).trim() : null),
+      enabled: true,                           // we filtered already
+      status: ((e.status || 'ACTIVE') + '').toUpperCase(),
+    }));
+}
   // NEW: authoritative start that posts the combined payload to /race/setup
   async function startRace() {
     const cfg = formToConfig();
@@ -582,7 +592,7 @@
 
     try {
       // Build pieces
-      const entrants = await fetchEntrants();                 // authoritative roster
+      const entrants = await fetchEnabledEntrants();                 // authoritative roster
       const session_config = toSessionConfig(cfg);            // normalized schema
       const race_id = Math.floor(Date.now() / 1000);          // stable-enough id
 
