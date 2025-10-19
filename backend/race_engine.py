@@ -236,13 +236,25 @@ class RaceEngine:
 
             # install entrants
             for e in entrants or []:
+                # --- validate/coerce entrant_id ---------------------------------
+                raw_id = e.get("entrant_id", None)
+                if raw_id is None:
+                    raise ValueError("entrant is missing required key 'entrant_id'")
+                try:
+                    entrant_id = int(raw_id)
+                except (TypeError, ValueError):
+                    raise ValueError(f"invalid entrant_id: {raw_id!r}")
+                # ----------------------------------------------------------------
+
                 ent = Entrant(
-                    entrant_id=int(e.get("entrant_id")),
+                    entrant_id=entrant_id,
                     enabled=bool(e.get("enabled", True)),
-                    status=str(e.get("status","ACTIVE")).upper() if str(e.get("status","ACTIVE")).upper() in ALLOWED_STATUS else "ACTIVE",
+                    status=(str(e.get("status", "ACTIVE")).upper()
+                            if str(e.get("status", "ACTIVE")).upper() in ALLOWED_STATUS
+                            else "ACTIVE"),
                     tag=(str(e.get("tag")).strip() if e.get("tag") else None),
                     car_number=(str(e.get("car_number")).strip() if e.get("car_number") else None),
-                    name=str(e.get("name") or f"Entrant {e.get('entrant_id')}")
+                    name=str(e.get("name") or f"Entrant {entrant_id}"),
                 )
                 self.entrants[ent.entrant_id] = ent
                 if ent.enabled and ent.tag:

@@ -623,3 +623,97 @@ body.race-control {
 .race-control .chip {
   color: var(--text-muted);
 }
+
+/* ---- Race Control: Last Lap Feed styling ---- */
+#panelFeed {
+  --feed-gap: 8px;
+  --feed-pad: 10px;
+  --feed-row-bg: var(--pane-bg, #121418);
+  --feed-row-border: rgba(255,255,255,0.06);
+  --feed-accent: var(--brand-accent, #7fd);
+  --feed-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+/* make list look like a neat ticker */
+#lapFeed {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: var(--feed-gap);
+}
+
+/* each row is a soft card with grid columns */
+#lapFeed .liveRow {
+  display: grid;
+  grid-template-columns: 72px 1fr repeat(3, minmax(92px, 120px));
+  align-items: center;
+  gap: 12px;
+  padding: var(--feed-pad);
+  background: var(--feed-row-bg);
+  border: 1px solid var(--feed-row-border);
+  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.18);
+}
+
+/* cells */
+#lapFeed .liveCell {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Number pill */
+#lapFeed .liveNum {
+  justify-self: start;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  color: #0ad5c1;
+  background: rgba(10, 213, 193, 0.1);
+  border: 1px solid rgba(10, 213, 193, 0.35);
+  padding: 4px 8px;
+  border-radius: 999px;
+}
+
+/* Name trims nicely and can grow */
+#lapFeed .liveName {
+  font-weight: 600;
+  color: #e8eef7;
+  min-width: 120px;
+}
+
+/* lap/time buckets use monospace and right-align */
+#lapFeed .liveLaps,
+#lapFeed .liveLast,
+#lapFeed .liveBest {
+  font-family: var(--feed-mono);
+  justify-self: end;
+  color: #cfd7e3;
+}
+
+/* emphasize best */
+#lapFeed .liveBest {
+  color: var(--feed-accent);
+  font-weight: 600;
+}
+
+/* small screens: collapse last/best into two columns */
+@media (max-width: 900px) {
+  #lapFeed .liveRow {
+    grid-template-columns: 64px 1fr 90px 90px;
+  }
+  #lapFeed .liveLaps { display: none; }
+}
+
+/* extra-small: stack rows comfortably */
+@media (max-width: 640px) {
+  #lapFeed .liveRow {
+    grid-template-columns: 56px 1fr;
+    row-gap: 6px;
+  }
+  #lapFeed .liveLaps,
+  #lapFeed .liveLast,
+  #lapFeed .liveBest {
+    justify-self: start;
+  }
+}

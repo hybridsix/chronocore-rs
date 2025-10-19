@@ -49,6 +49,8 @@ from .config_loader import get_db_path, get_scanner_cfg
 
 
 log = logging.getLogger("uvicorn.error")
+log = logging.getLogger("race")
+log = logging.getLogger("ccrs")
 
 # ------------------------------------------------------------
 # FastAPI app bootstrap
@@ -73,6 +75,14 @@ def publish_tag(tag: str) -> float:
         except Exception:
             pass
     return ts
+
+# Single place to forward a pass into the engine.
+def _send_pass_to_engine(tag: str, source: str = "SF") -> dict:
+    tag = str(tag)
+    if hasattr(ENGINE, "ingest_pass"):
+        return ENGINE.ingest_pass(tag=tag, source=source)
+    # last-resort no-op shape so callers don't explode
+    return {"ok": True, "forwarded": False, "reason": "engine has no ingest method"}
 
 # ------------------------------------------------------------
 # ---- Race Setup → Race Control session contracts -----------
@@ -113,6 +123,8 @@ class SetupReq(BaseModel):
 _CURRENT_SESSION: Dict[str, Any] = {}         # last saved session_config from /race/setup
 _CURRENT_RACE_ID: int | None = None
 _CURRENT_ENTRANTS_ENGINE: List[Dict[str, Any]] = []  # last entrants mapped to ENGINE.load()
+_LAST_ENGINE_LOAD: dict | None = None
+_COUNTDOWN_TASK: asyncio.Task | None = None
 
 def _get(d: Dict[str, Any], path: str, default=None):
     cur = d
@@ -164,6 +176,22 @@ def _derive_for_control(cfg: Dict[str, Any]) -> Dict[str, Any]:
         }
     }
 
+async def _auto_go_green(after_s: int) -> None:
+    try:
+        log.info(f"[COUNTDOWN] Sleeping {after_s}s before GREEN…")
+        await asyncio.sleep(max(0, int(after_s)))
+        _RACE_STATE["phase"]    = Phase.GREEN.value
+        _RACE_STATE["flag"]     = "GREEN"
+        _RACE_STATE["start_at"] = time.time()
+        _engine_begin_green()  # tell engine we're green
+        if hasattr(ENGINE, "set_flag"):
+            try: ENGINE.set_flag("GREEN")
+            except Exception: pass
+        log.info(f"[COUNTDOWN] -> GREEN; start_at={_RACE_STATE['start_at']:.3f}")
+    except asyncio.CancelledError:
+        log.info("[COUNTDOWN] cancelled (end/abort)")
+        return
+
 
 # -----------------------------------------------------------------------------
 # Race control in-memory state (scaffold)
@@ -204,12 +232,46 @@ def _remaining_s() -> float:
     return v - _elapsed_s()
 
 def _state_clock_block() -> dict:
-    rem = _remaining_s()
+    """
+    Compute the clock payload for the UI.
+
+    Rules:
+      - COUNTDOWN: show T-minus via negative clock_ms and expose countdown_remaining_s.
+      - GREEN:     show positive elapsed clock_ms since start_at.
+      - CHECKERED: freeze the clock at the moment we ended (frozen_at - start_at).
+      - Else:      clock_ms is None.
+    """
+    now      = time.time()
+    phase    = _RACE_STATE.get("phase")
+    start_at = _RACE_STATE.get("start_at")
+    frozen   = _RACE_STATE.get("frozen_at")
+    anchor   = _RACE_STATE.get("countdown_anchor_s")  # set when start_race enters COUNTDOWN
+
+    clock_ms: int | None = None
+    countdown_remaining_s: int | None = None
+
+    if phase == Phase.COUNTDOWN.value and anchor:
+        # Remaining whole seconds until auto-GREEN
+        rem = int(round(anchor - now))
+        countdown_remaining_s = max(0, rem)
+        # Negative ms => UI renders as T-minus
+        clock_ms = -countdown_remaining_s * 1000
+
+    elif phase == Phase.GREEN.value and start_at:
+        clock_ms = int((now - start_at) * 1000)
+
+    elif phase == Phase.CHECKERED.value and start_at and frozen:
+        # Freeze at exact elapsed when End was pressed
+        clock_ms = int((frozen - start_at) * 1000)
+
+    # Build the block your UI expects
     return {
-        "elapsed_s": int(_elapsed_s()),
-        "remaining_s": (None if rem == float("inf") else int(rem)),
-        "now": _now(),
+        "start_at": start_at,
+        "phase": phase,
+        "clock_ms": clock_ms,
+        "countdown_remaining_s": countdown_remaining_s,
     }
+
 
 
 # ------------------------------------------------------------
@@ -258,30 +320,6 @@ log.info("Serving UI from: %s", STATIC_DIR)  # sanity print at startup
 DB_PATH = get_db_path()
 ensure_schema(DB_PATH, recreate=False, include_passes=True)
 
-# ------------------------------------------------------------
-# Minimal "Engine" adapter used by these endpoints
-# ------------------------------------------------------------
-#class _Engine:
-#    """
-#    Very small in-memory session mirror the operator UI interacts with.
-#    Your real runtime engine can replace this; keep method names the same.
-#    """
-#   def __init__(self) -> None:
-#        self._entrants: Dict[int, Dict[str, Any]] = {}
-##
-#    def load(self, entrants: List[Dict[str, Any]]) -> Dict[str, Any]:
-#        # Store by id for constant-time lookups
-#        self._entrants = {e["id"]: e for e in entrants}
-#        return {"ok": True, "entrants": list(self._entrants.keys())}
-
-#    def assign_tag(self, entrant_id: int, tag: Optional[str]) -> Dict[str, Any]:
-#        if entrant_id not in self._entrants:
-#            # We deliberately raise to let the API return 412 Precondition Failed
-#            raise KeyError("entrant not in active session")
-#        self._entrants[entrant_id]["tag"] = tag
-#        return {"ok": True, "entrant_id": entrant_id, "tag": tag}
-#
-#ENGINE = _Engine()
 
 # ------------------------------------------------------------
 # Helpers
@@ -306,6 +344,238 @@ def _normalize_tag(raw: Any) -> Optional[str]:
         return None
     s = str(raw).strip()
     return s or None
+
+# Resolve an entrant_id to its tag from the live engine roster (if present)
+def _tag_for_entrant_id(eid: int | None) -> str | None:
+    try:
+        if eid is None:
+            return None
+        # RaceEngine exposes .entrants dict of Entrant objects
+        ent = getattr(ENGINE, "entrants", {}).get(int(eid))
+        tag = getattr(ent, "tag", None) if ent else None
+        if tag:
+            return str(tag).strip()
+    except Exception:
+        pass
+    return None
+
+
+# Resolve a tag to an entrant's name/number from the live engine roster (if present)
+def _entrant_for_tag(tag: str) -> Optional[dict]:
+    """
+    Best-effort resolve of a tag to an entrant using the live ENGINE roster.
+    Returns a tiny {name:number} dict the Diagnostics UI understands,
+    or None if we can't resolve.
+    """
+    try:
+        t = (tag or "").strip()
+        if not t:
+            return None
+        # RaceEngine keeps a dict `entrants` of Entrant objects keyed by entrant_id
+        ents = getattr(ENGINE, "entrants", {}) or {}
+        for ent_id, ent in ents.items():
+            ent_tag = getattr(ent, "tag", None)
+            if ent_tag and str(ent_tag).strip() == t:
+                name = getattr(ent, "name", None)
+                number = getattr(ent, "car_number", None)
+                return {"name": str(name) if name is not None else f"Entrant {ent_id}",
+                        "number": (str(number) if number is not None else None)}
+    except Exception:
+        pass
+    return None
+
+async def resolve_tag_to_entrant(tag: str) -> dict | None:
+    """
+    Resolve a transponder tag to an ENABLED entrant from the authoritative DB.
+    No engine fallback. Returns {id, number, name} or None.
+    """
+    t = (str(tag).strip() if tag is not None else "")
+    if not t:
+        return None
+
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT entrant_id AS id, number, name FROM entrants WHERE enabled=1 AND tag=?",
+            (t,),
+        )
+        row = await cur.fetchone()
+        await cur.close()
+
+    if row:
+        return {
+            "id": int(row["id"]),
+            "number": (str(row["number"]) if row["number"] is not None else None),
+            "name": row["name"],
+        }
+    return None
+
+def _allowed_flags_for_phase(ph: str) -> set[str]:
+    p = (ph or "pre").lower()
+    if p in ("pre", "countdown"):
+        return {"pre"}
+    if p == "green":
+        return {"yellow", "red", "blue", "white", "checkered"}
+    if p == "white":
+        return {"yellow", "red", "checkered", "blue"}
+    # checkered or unknown → disallow pad flags
+    return set()
+
+def _cancel_task(t: asyncio.Task | None) -> None:
+    """Cancel a task if it's still running; ignore if already finished."""
+    if t and not t.done():
+        t.cancel()
+
+def _engine_begin_green() -> None:
+    """
+    Tell the engine we're GREEN using whatever hook it exposes.
+    All calls are best-effort and safely guarded.
+    """
+    for attr, args in [
+        ("start_race", ()),
+        ("begin_race", ()),
+        ("go_green", ()),
+        ("set_running", (True,)),   # some engines use a plain boolean
+        ("set_flag", ("GREEN",)),   # last resort (you already do this elsewhere)
+    ]:
+        fn = getattr(ENGINE, attr, None)
+        if callable(fn):
+            try:
+                fn(*args)
+                return
+            except Exception:
+                # Try the next option if this one raises
+                pass
+
+
+# ------------------------------------------------------------
+# Debugging Endpoints
+# ------------------------------------------------------------
+
+# --- DEBUG: quick resolver probe (remove later if you want) ------------------
+@app.get("/debug/resolve_tag/{tag}")
+async def debug_resolve_tag(tag: str):
+    """
+    Returns {"number": "...", "name": "..."} for an ENABLED entrant with this tag,
+    or {} if unknown. This lets us prove the DB lookup works independently of UI.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute(
+            "SELECT number, name FROM entrants WHERE enabled=1 AND tag=? LIMIT 1",
+            (str(tag).strip(),)
+        )
+        row = await cur.fetchone()
+        await cur.close()
+
+    if not row:
+        return {}
+    return {"number": (row["number"] or None), "name": row["name"]}
+
+# --- TEMP DEBUG: hit /debug/resolve?tag=1234567 to see DB mapping ---
+@app.get("/debug/resolve")
+async def debug_resolve(tag: str):
+    """
+    Quick sanity check: does this tag resolve to an ENABLED entrant?
+    Returns {id, number, name} or {} if not found.
+    """
+    try:
+        ent = await resolve_tag_to_entrant(str(tag).strip())
+        return (ent or {})
+    except Exception as ex:
+        raise HTTPException(status_code=500, detail=f"resolve failed: {type(ex).__name__}: {ex}")
+
+
+# --- DEBUG: peek into the engine so we know what it thinks is loaded ----------
+@app.get("/__debug/engine")
+def debug_engine():
+    """
+    Minimal visibility into the engine:
+      - how many entrants are loaded (+ a few sample mappings id→tag)
+      - current flag/phase we last synced into the engine (if exposed)
+    """
+    try:
+        ents = getattr(ENGINE, "entrants", {}) or {}
+        # Sample first few entrants as {id, name, number, tag}
+        sample = []
+        for eid, ent in list(ents.items())[:5]:
+            sample.append({
+                "id": int(eid),
+                "name": getattr(ent, "name", None),
+                "number": getattr(ent, "car_number", None),
+                "tag": getattr(ent, "tag", None),
+                "enabled": getattr(ent, "enabled", None),
+            })
+        # Some engines expose .flag or .state; both are optional
+        flag = getattr(ENGINE, "flag", None)
+        state = getattr(ENGINE, "state", None)
+        return {
+            "entrants_count": len(ents),
+            "entrants_sample": sample,
+            "engine_flag": flag,
+            "engine_state": state,
+        }
+    except Exception as ex:
+        return {"error": f"{type(ex).__name__}: {ex}"}
+
+@app.get("/__debug/state")
+def debug_state():
+    info = {
+        "has_snapshot": hasattr(ENGINE, "snapshot"),
+        "entrants_in_engine": len(getattr(ENGINE, "entrants", {})) if hasattr(ENGINE, "entrants") else None,
+    }
+    if info["has_snapshot"]:
+        try:
+            snap = ENGINE.snapshot()
+            info["snapshot_type"] = type(snap).__name__
+            info["snapshot_keys"] = list(snap.keys()) if isinstance(snap, dict) else None
+            info["snapshot"] = snap
+        except Exception as ex:
+            info["snapshot_error"] = f"{type(ex).__name__}: {ex}"
+    return info
+
+@app.get("/__debug/roster")
+def debug_roster():
+    """
+    Show the engine's in-memory entrant map (id, name, tag, enabled/status if available).
+    This is read-only and safe to call anytime.
+    """
+    ents = getattr(ENGINE, "entrants", {}) or {}
+    out = []
+    for eid, ent in ents.items():
+        try:
+            out.append({
+                "id": int(getattr(ent, "entrant_id", eid)),
+                "name": getattr(ent, "name", None),
+                "number": getattr(ent, "car_number", None),
+                "tag": getattr(ent, "tag", None),
+                "enabled": getattr(ent, "enabled", None),
+                "status": getattr(ent, "status", None),
+            })
+        except Exception:
+            out.append({"id": eid, "repr": repr(ent)})
+    return {
+        "count": len(ents),
+        "entrants": out,
+    }
+
+@app.get("/__debug/setup_cache")
+def debug_setup_cache():
+    """
+    Dump the last session_config and the entrants we mapped for ENGINE.load().
+    Lets us see if the frontend posted the right roster and if we filtered to enabled-only.
+    """
+    from fastapi.responses import JSONResponse
+    return JSONResponse({
+        "race_id": _CURRENT_RACE_ID,
+        "entrants_count": len(_CURRENT_ENTRANTS_ENGINE or []),
+        "entrants_sample": (_CURRENT_ENTRANTS_ENGINE or [])[:5],
+        "session_config": _CURRENT_SESSION or {},
+    })
+
+@app.get("/__debug/last_engine_load")
+def debug_last_engine_load():
+    return _LAST_ENGINE_LOAD or {"note": "no ENGINE.load call recorded yet"}
 
 # ------------------------------------------------------------
 # Race Modes YAML (for UI consumption)
@@ -438,11 +708,38 @@ async def race_setup(
         race_type = str(_CURRENT_SESSION.get("mode_id", "sprint"))
 
         # Call engine with its real signature
+        #snap = ENGINE.load(
+        #    race_id=_CURRENT_RACE_ID,
+        #    entrants=entrants_engine,
+        #    race_type=race_type,
+        #)
+
+# --- instrumentation: record exactly what we send to the engine ---
+        global _LAST_ENGINE_LOAD
+        _LAST_ENGINE_LOAD = {
+            "race_id": _CURRENT_RACE_ID,
+            "race_type": race_type,
+            "entrants_len": len(entrants_engine),
+            "entrants_sample": entrants_engine[:4],  # first few only
+        }
+
         snap = ENGINE.load(
             race_id=_CURRENT_RACE_ID,
             entrants=entrants_engine,
             race_type=race_type,
         )
+
+        # Capture a minimal echo of what the engine returned (don’t spam huge payloads)
+        try:
+            if isinstance(snap, dict):
+                _LAST_ENGINE_LOAD["engine_return_keys"] = sorted(list(snap.keys()))[:12]
+                _LAST_ENGINE_LOAD["engine_flag"] = snap.get("flag")
+                _LAST_ENGINE_LOAD["engine_race_id"] = snap.get("race_id")
+        except Exception:
+            pass
+
+
+
 
         # Derived shape for Race Control (if you have this helper)
         derived = _derive_for_control(_CURRENT_SESSION) if "_derive_for_control" in globals() else {}
@@ -491,7 +788,6 @@ async def entrants_enabled_count():
 def decoders_status_stub():
     # Replace with real decoder detection when available.
     return {"online": 0}
-
 
 # ------------------------------------------------------------
 # Endpoints
@@ -625,6 +921,14 @@ async def engine_set_flag(req: FlagReq):
     Also keeps local _RACE_STATE in sync for UI.
     """
     upper = str(req.flag).upper()
+    # backend gate: only allow flags valid for the current phase
+    allowed = _allowed_flags_for_phase(_RACE_STATE.get("phase", Phase.PRE.value))
+    if upper.lower() not in allowed:
+        # still allow PRE always (so operators can recover)
+        if upper != "PRE":
+            raise HTTPException(status_code=409, detail=f"flag '{upper}' not allowed in phase '{_RACE_STATE.get('phase')}'")
+
+    upper = str(req.flag).upper()
 
     # Try engine first (your original behavior)
     if hasattr(ENGINE, "set_flag"):
@@ -670,23 +974,34 @@ async def engine_set_flag(req: FlagReq):
 @app.get("/race/state")
 async def race_state():
     """
-    Return a live snapshot. If ENGINE.snapshot() exists, use it and augment
-    with phase/flag/clock; else return local scaffold so UI always has data.
+    Return a live snapshot. If ENGINE.snapshot() exists, use it and then
+    OVERWRITE phase/flag/limit/countdown/clock with authoritative local state.
     """
     if hasattr(ENGINE, "snapshot"):
         try:
-            snap = ENGINE.snapshot()
+            snap = ENGINE.snapshot() or {}
             if isinstance(snap, dict):
-                snap.setdefault("phase", _RACE_STATE["phase"])
-                snap.setdefault("flag", _RACE_STATE["flag"])
-                snap.setdefault("limit", _RACE_STATE["limit"])
-                snap.setdefault("countdown_from_s", _RACE_STATE["countdown_from_s"])
-                snap.setdefault("clock", _state_clock_block())
+                # Authoritative overlays from our race state
+                snap["phase"] = _RACE_STATE["phase"]
+                snap["flag"]  = _RACE_STATE["flag"]
+                snap["limit"] = _RACE_STATE["limit"]
+                snap["countdown_from_s"] = _RACE_STATE["countdown_from_s"]
+
+                # Clock comes from our helper; mirror to top-level for legacy UI
+                clock_block = _state_clock_block()
+                snap["clock"] = clock_block
+                snap["clock_ms"] = clock_block.get("clock_ms")
+                snap["countdown_remaining_s"] = clock_block.get("countdown_remaining_s")
+
+                # Optional (helps some UIs): declare running only when GREEN
+                snap["running"] = (_RACE_STATE["phase"] == Phase.GREEN.value)
+
             return JSONResponse(snap)
         except Exception:
-            # fall back to local
-            pass
+            pass  # fall through
 
+    # Local scaffold (no engine snapshot)
+    clock_block = _state_clock_block()
     return JSONResponse({
         "ok": True,
         "race_id": _RACE_STATE["race_id"],
@@ -694,9 +1009,13 @@ async def race_state():
         "flag": _RACE_STATE["flag"],
         "limit": _RACE_STATE["limit"],
         "countdown_from_s": _RACE_STATE["countdown_from_s"],
-        "clock": _state_clock_block(),
+        "clock": clock_block,
+        "clock_ms": clock_block.get("clock_ms"),
+        "countdown_remaining_s": clock_block.get("countdown_remaining_s"),
         "engine": "no-snapshot",
     })
+
+
 
 # --------------------------- Start / End / Abort -----------------------------
 
@@ -704,41 +1023,70 @@ async def race_state():
 def race_start_prep():
     """
     Operator clicked 'Pre-Race Start'.
-    If countdown_from_s>0, enter COUNTDOWN (UI shows negative clock to 0).
+    Put the session into PRE, no countdown, no clock, no engine flagging.
     """
     if _RACE_STATE["race_id"] is None:
         raise HTTPException(status_code=409, detail="No race loaded (call /race/setup first)")
-    _RACE_STATE["phase"] = Phase.COUNTDOWN.value if int(_RACE_STATE.get("countdown_from_s") or 0) > 0 else Phase.PRE.value
-    _RACE_STATE["flag"] = "PRE"
+
+    _RACE_STATE["phase"]    = Phase.PRE.value
+    _RACE_STATE["flag"]     = "PRE"
+    _RACE_STATE["start_at"] = None   # ensure clock is parked
+
+    # Do NOT set countdown here. Countdown is only entered by /race/control/start_race.
+    # Also do NOT notify the engine; the UI isn’t racing yet.
+
     return {"ok": True, "phase": _RACE_STATE["phase"]}
 
+
+
+# --- START RACE (must be async and unique) -----------------------------------
 @app.post("/race/control/start_race")
-def race_start_race():
-    """
-    Operator clicked 'Start Race' → GREEN; start clock at now.
-    """
+async def race_start_race():
     if _RACE_STATE["race_id"] is None:
         raise HTTPException(status_code=409, detail="No race loaded (call /race/setup first)")
-    _RACE_STATE["phase"] = Phase.GREEN.value
-    _RACE_STATE["flag"] = "GREEN"
-    _RACE_STATE["start_at"] = _now()
-    # If engine wants to be told we're green:
+
+    global _COUNTDOWN_TASK
+    cd = int(_RACE_STATE.get("countdown_from_s") or 0)
+
+    if cd > 0:
+        _RACE_STATE["phase"] = Phase.COUNTDOWN.value
+        _RACE_STATE["flag"]  = "PRE"
+
+        # >>> REQUIRED for the UI to show T-minus and for /race/state to tick
+        _RACE_STATE["countdown_anchor_s"] = time.time() + cd
+
+        _cancel_task(_COUNTDOWN_TASK)
+        log.info(f"[START] COUNTDOWN armed for {cd}s; anchor={_RACE_STATE['countdown_anchor_s']:.3f}")
+        _COUNTDOWN_TASK = asyncio.create_task(_auto_go_green(cd))
+        return {"ok": True, "phase": _RACE_STATE["phase"], "countdown_from_s": cd}
+
+    # Immediate GREEN path
+    _RACE_STATE["phase"]    = Phase.GREEN.value
+    _RACE_STATE["flag"]     = "GREEN"
+    _RACE_STATE["start_at"] = time.time()
+    _engine_begin_green()  # tell engine we're green
     if hasattr(ENGINE, "set_flag"):
-        try:
-            ENGINE.set_flag("GREEN")
-        except Exception:
-            pass
+        try: ENGINE.set_flag("GREEN")
+        except Exception: pass
+    log.info(f"[START] GREEN immediately; start_at={_RACE_STATE['start_at']:.3f}")
     return {"ok": True, "phase": _RACE_STATE["phase"], "start_at": _RACE_STATE["start_at"]}
+
+
+
 
 @app.post("/race/control/end_race")
 def race_end_race():
-    """
-    Operator clicked 'End Race' → CHECKERED; freeze clock.
-    """
+    global _COUNTDOWN_TASK
+    _cancel_task(_COUNTDOWN_TASK)
+
+    # Operator clicked 'End Race' → CHECKERED; freeze clock.
     if _RACE_STATE["race_id"] is None:
         raise HTTPException(status_code=409, detail="No race loaded (call /race/setup first)")
-    _RACE_STATE["phase"] = Phase.CHECKERED.value
-    _RACE_STATE["flag"] = "CHECKERED"
+
+    _RACE_STATE["phase"]     = Phase.CHECKERED.value
+    _RACE_STATE["flag"]      = "CHECKERED"
+    _RACE_STATE["frozen_at"] = time.time()   # <— add this line
+
     if hasattr(ENGINE, "set_flag"):
         try:
             ENGINE.set_flag("CHECKERED")
@@ -746,8 +1094,11 @@ def race_end_race():
             pass
     return {"ok": True, "phase": _RACE_STATE["phase"]}
 
+
 @app.post("/race/control/abort_reset")
 def race_abort_reset():
+    global _COUNTDOWN_TASK
+    _cancel_task(_COUNTDOWN_TASK)
     """
     Abort & reset to PRE (keep roster intact, clear timing).
     """
@@ -1141,8 +1492,8 @@ async def delete_entrant(request: Request):
 # Polling endpoint (UI fallback)
 # ------------------------------------------------------------
 
-@app.get("/ilap/peek")
-async def ilap_peek():
+@app.get("/sensors/peek")
+async def sensors_peek():
     """Return the last observed tag. UI de-duplicates via seen_at."""
     return JSONResponse(last_tag)
 
@@ -1151,8 +1502,8 @@ async def ilap_peek():
 # SSE endpoint (preferred by UI)
 # ------------------------------------------------------------
 
-@app.get("/ilap/stream")
-async def ilap_stream(request: Request):
+@app.get("/sensors/stream")
+async def sensors_stream(request: Request):
     """Send exactly one tag event and then end (UI opens per-scan)."""
     q: asyncio.Queue[str] = asyncio.Queue()
     _listeners.append(q)
@@ -1173,13 +1524,130 @@ async def ilap_stream(request: Request):
     # Note: the UI preflights this; returning stream only if used
     return StreamingResponse(gen(), media_type="text/event-stream")
 
+
+
 # External publishers via CURL
-@app.post("/ilap/inject")
-async def ilap_inject(tag: str):
-    """Convenience endpoint so external processes can push tags."""
-    ts = publish_tag(tag)
-    return {"ok": True, "seen_at": ts}
-#
+# ------------------------------------------------
+# Ingest tag into engine + publish to simple bus
+# -------------------------------------------------
+
+@app.post("/engine/pass")
+async def engine_pass(payload: Dict[str, Any]):
+    """
+    Ingest a single pass into the engine and publish to Diagnostics.
+
+    Accepted fields:
+      - tag: string (preferred)
+      - entrant_id: int (optional; if provided and tag missing, we resolve tag)
+      - source: "track" | "pit_in" | "pit_out" (default "track")
+      - device_id: optional device identifier (for pit routing)
+    """
+    tag = (payload.get("tag") or None)
+    entrant_id = payload.get("entrant_id")
+    source = str(payload.get("source") or "track").lower()
+    device_id = payload.get("device_id")
+
+    # If tag missing but entrant_id present, try to resolve the entrant's tag.
+    if not tag and entrant_id is not None:
+        tag = _tag_for_entrant_id(entrant_id)
+
+    if not tag:
+        raise HTTPException(status_code=400, detail="missing 'tag' and unable to resolve from 'entrant_id'")
+
+    tag = str(tag).strip()
+
+    # 1) Keep the simple bus alive for peek/stream consumers
+    publish_tag(tag)
+
+    # 2) Forward into the engine so laps/logic actually happen
+    try:
+        snap = ENGINE.ingest_pass(tag=tag, source=source, device_id=device_id)
+    except Exception as ex:
+        raise HTTPException(status_code=500, detail=f"ingest failed: {type(ex).__name__}: {ex}")
+
+    # 3) Emit a Diagnostics row, labeled if we can resolve the tag to an ENABLED entrant
+    try:
+        ent = await resolve_tag_to_entrant(tag)  # uses the DB
+        await diag_publish({
+            "tag_id": tag,
+            "entrant": ({"name": ent["name"], "number": ent["number"]} if ent else None),
+            "source": ("Start/Finish" if source in ("sf", "track") else source),
+            "rssi": -60 - random.randint(0, 15),
+            "time": None,
+        })
+    except Exception:
+        # Never let diagnostics issues break ingest
+        pass
+
+    return JSONResponse(snap)
+
+
+
+# ===============================
+# Neutral sensor ingest endpoint
+# ===============================
+
+
+class SensorPassIn(BaseModel):
+    tag: str
+    source: Optional[str] = "track"    # e.g. "track", "pit_in", "pit_out"
+    device_id: Optional[str] = None    # optional: hardware id
+
+# --- Sensors inject: single pass from any decoder/bridge ---------------------
+@app.post("/sensors/inject")
+async def sensors_inject(payload: dict):
+    """
+    Neutral sensor ingest (dev/test): accepts {"tag": "...", "source": "..."}.
+    Returns a diagnostic object telling us if the engine actually counted it.
+    """
+    tag = str(payload.get("tag") or "").strip()
+    source = str(payload.get("source") or "ui").strip()
+
+    if not tag:
+        raise HTTPException(status_code=400, detail="Missing 'tag'")
+
+    # Derive a best-effort "running" signal from the engine, if available
+    def _engine_running() -> Optional[bool]:
+        for attr in ("is_running", "running", "is_green", "is_active"):
+            v = getattr(ENGINE, attr, None)
+            if isinstance(v, bool):
+                return v
+            if callable(v):
+                try:
+                    r = v()
+                    if isinstance(r, bool):
+                        return r
+                except Exception:
+                    pass
+        return None
+
+    # Call ingest; many engines return True/False or raise on reject
+    accepted: Optional[bool] = None
+    err: Optional[str] = None
+    try:
+        ingest = getattr(ENGINE, "ingest_pass", None)
+        if callable(ingest):
+            accepted = bool(ingest(tag=tag, source=source))
+        else:
+            err = "ENGINE.ingest_pass not found"
+    except Exception as ex:
+        err = f"{type(ex).__name__}: {ex}"
+
+    # Log for server console
+    log.info(f"[INJECT] tag={tag} phase={_RACE_STATE.get('phase')} "
+             f"accepted={accepted} running={_engine_running()} err={err or '-'}")
+
+    # Return a diagnostic payload so we can see what happened from PowerShell too
+    return {
+        "ok": err is None,
+        "accepted": accepted,
+        "phase": _RACE_STATE.get("phase"),
+        "flag": _RACE_STATE.get("flag"),
+        "engine_running": _engine_running(),
+        "race_id": _RACE_STATE.get("race_id"),
+        "error": err,
+    }
+
 
 # ------------------------------------------------------------
 # --- Embedded scanner startup: publish via HTTP to our own FastAPI ---
@@ -1187,43 +1655,76 @@ async def ilap_inject(tag: str):
 @app.on_event("startup")
 async def start_scanner():
     """
-    If ScannerService is available, use it.
-    Otherwise, if scanner.source=='mock', run a tiny in-process tag generator
-    so the UI has something to chew on.
+    Try to start the real ScannerService (serial/udp). If not available or
+    if scanner.source == 'mock', run an in-process generator that:
+      • publishes tags to the simple bus (peek/stream),
+      • forwards them into the engine (_send_pass_to_engine),
+      • emits Diagnostics events with entrant names when tags are known.
     """
+    import asyncio, random  # local imports to avoid surprises during import time
+
     scan_cfg = get_scanner_cfg() or {}
     source = str(scan_cfg.get("source", "mock")).lower()
 
-    try:
-        if source != "mock":
-            # Try to run the real scanner for serial/udp modes
-            from backend.lap_logger import ScannerService
-            # ... build cfg as before (your working version) ...
-            # (omit here for brevity; keep the version we just fixed)
-            return
-    except Exception:
-        log.exception("ScannerService import failed; falling back if mock is requested.")
+    # Attempt the real scanner for non-mock sources
+    if source != "mock":
+        try:
+            from backend.lap_logger import ScannerService, load_config as ll_load
 
-    # Fallback: lightweight mock when ScannerService isn't available
+            # Build a config object the lap_logger expects (your existing file path logic)
+            cfg_path = "./config/config.yaml"
+            cfg = ll_load(cfg_path)
+
+            # Force HTTP publishing into this server so we see /sensors/inject if needed
+            cfg.publisher.mode = "http"
+            # Set any commonly used fields; harmless if some don’t exist
+            try:
+                cfg.publisher.http.base_url = "http://127.0.0.1:8000"
+                cfg.publisher.http.timeout_ms = 500
+            except Exception:
+                pass
+
+            app.state.stop_evt = asyncio.Event()
+            app.state.task = asyncio.create_task(ScannerService(cfg).run(app.state.stop_evt))
+            log.info("ScannerService started (source=%s).", source)
+            return
+        except Exception:
+            log.exception("ScannerService not available; falling back if mock is requested.")
+
+    # Fallback: lightweight mock generator
     if source == "mock":
         log.info("Starting in-process MOCK tag generator.")
         async def _mock_task(stop_evt: asyncio.Event):
             tags = ["1234567", "2345678", "3456789", "4567890"]
             while not stop_evt.is_set():
                 tag = random.choice(tags)
-                publish_tag(tag)  # reuse your bus → /ilap/peek & /ilap/stream see this
-                # Optional: also feed diagnostics
+
+                # Publish for /sensors/peek and /sensors/stream consumers
+                publish_tag(tag)
+
+                # Ingest using the new, neutral shape (no ilap-isms)
                 try:
+                    # Direct call into the engine so laps/logic actually happen
+                    snap = ENGINE.ingest_pass(tag=str(tag), source="track")
+                except Exception:
+                    log.exception("Mock ingest failed for tag %s", tag)
+                    snap = None
+
+                # Diagnostics row, resolved from DB if possible
+                try:
+                    ent = await resolve_tag_to_entrant(tag)  # you added this earlier
                     await diag_publish({
-                        "tag_id": tag,
-                        "entrant": {"name": f"Unknown {tag}", "number": None},
+                        "tag_id": str(tag),
+                        "entrant": ({"name": ent["name"], "number": ent["number"]} if ent else None),
                         "source": "Start/Finish",
                         "rssi": -60 - random.randint(0, 15),
                         "time": None,
                     })
                 except Exception:
                     pass
+
                 await asyncio.sleep(1.5)
+
 
         app.state.stop_evt = asyncio.Event()
         app.state.task = asyncio.create_task(_mock_task(app.state.stop_evt))
