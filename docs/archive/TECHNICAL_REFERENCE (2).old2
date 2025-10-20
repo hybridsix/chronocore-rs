@@ -169,7 +169,7 @@ ChronoCore exposes a set of REST endpoints via FastAPI. Below is a detailed refe
 | Endpoint          | Method | Params / Body                                  | Response                                            | Notes                                                                 |
 |-------------------|--------|------------------------------------------------|-----------------------------------------------------|-----------------------------------------------------------------------|
 | `/race/state`     | GET    | None                                           | `{ race_id, race_type, flag, running, clock_ms, ... }` | Returns the authoritative snapshot of current race state.            |
-|                   |        |                                                | `standings: [ { entrant_id, tag, car_number, ... } ]`| UIs poll this at ~3 Hz for live updates.                              |
+|                   |        |                                                | `standings: [ { entrant_id, tag, number, ... } ]`| UIs poll this at ~3 Hz for live updates.                              |
 |                   |        |                                                | `last_update_utc, features`                         |                                                                       |
 | `/engine/flag`    | POST   | `{ "flag": "pre" | "green" | "yellow" ... }` | `{ "ok": true }`                                     | Sets the current race flag. `green` starts the clock; `checkered` freezes it. `blue` is informational only. |
 | `/engine/pass`    | POST   | `{ tag, ts_ns?, source, device_id? }`          | `{ ok, entrant_id, lap_added, lap_time_s, reason }` | Ingests a timing pass. Adds a lap if Δt ≥ min_lap_s (default ~5.0s).  |

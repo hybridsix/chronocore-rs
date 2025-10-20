@@ -368,7 +368,7 @@ def _note_seen(tag: str) -> None:
 def _state_seen_block() -> dict:
     """
     Build a UI-friendly 'seen' block:
-      rows: [{entrant_id, tag, car_number, name, enabled, reads}]
+      rows: [{entrant_id, tag, number, name, enabled, reads}]
       count/total: numbers for the (seen/total) badge
     Uses entrants already cached in _RACE_STATE by /race/setup.
     """
@@ -380,7 +380,7 @@ def _state_seen_block() -> dict:
             rows.append({
                 "entrant_id": eid,
                 "tag": e.get("tag"),
-                "car_number": e.get("car_number"),
+                "number": e.get("number"),
                 "name": e.get("name"),
                 "enabled": bool(e.get("enabled", True)),
                 "reads": int(_SEEN_COUNTS.get(eid, 0)),
@@ -389,7 +389,7 @@ def _state_seen_block() -> dict:
         rows.sort(key=lambda r: (
             0 if r["enabled"] else 1,
             -r["reads"],
-            str(r.get("car_number") or "")
+            str(r.get("number") or "")
         ))
     except Exception:
         pass
@@ -503,7 +503,7 @@ def _entrant_for_tag(tag: str) -> Optional[dict]:
             ent_tag = getattr(ent, "tag", None)
             if ent_tag and str(ent_tag).strip() == t:
                 name = getattr(ent, "name", None)
-                number = getattr(ent, "car_number", None)
+                number = getattr(ent, "number", None)
                 return {"name": str(name) if name is not None else f"Entrant {ent_id}",
                         "number": (str(number) if number is not None else None)}
     except Exception:
@@ -632,7 +632,7 @@ def debug_engine():
             sample.append({
                 "id": int(eid),
                 "name": getattr(ent, "name", None),
-                "number": getattr(ent, "car_number", None),
+                "number": getattr(ent, "number", None),
                 "tag": getattr(ent, "tag", None),
                 "enabled": getattr(ent, "enabled", None),
             })
@@ -677,7 +677,7 @@ def debug_roster():
             out.append({
                 "id": int(getattr(ent, "entrant_id", eid)),
                 "name": getattr(ent, "name", None),
-                "number": getattr(ent, "car_number", None),
+                "number": getattr(ent, "number", None),
                 "tag": getattr(ent, "tag", None),
                 "enabled": getattr(ent, "enabled", None),
                 "status": getattr(ent, "status", None),
@@ -826,7 +826,7 @@ async def race_setup(
             entrants_engine.append({
                 "entrant_id": e.id,  # guaranteed int
                 "name": e.name,
-                "car_number": (str(e.number).strip() if e.number is not None else None),
+                "number": (str(e.number).strip() if e.number is not None else None),
                 "tag": _normalize_tag(e.tag),
                 "enabled": bool(e.enabled),
                 "status": (e.status or "ACTIVE").upper(),
@@ -969,13 +969,13 @@ async def engine_load(payload: Dict[str, Any]):
         except Exception:
             raise HTTPException(status_code=400, detail=f"invalid entrant id at index {idx}: {item.get('id')!r}")
 
-    # Map to the engine's expected shape: entrant_id / car_number / status
+    # Map to the engine's expected shape: entrant_id / number / status
     entrants_engine: List[Dict[str, Any]] = []
     for item in entrants_ui:
         entrants_engine.append({
             "entrant_id": item["id"],
             "name": item.get("name"),
-            "car_number": (str(item.get("number")).strip()
+            "number": (str(item.get("number")).strip()
                            if item.get("number") is not None else None),
             "tag": _normalize_tag(item.get("tag")),
             "enabled": bool(item.get("enabled", True)),

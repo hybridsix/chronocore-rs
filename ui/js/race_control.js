@@ -85,7 +85,7 @@ function renderSeen(state) {
     if (!!b.enabled !== !!a.enabled) return (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0);
     const rb = Number(b.reads||0), ra = Number(a.reads||0);
     if (rb !== ra) return rb - ra;
-    return String(a.car_number||'').localeCompare(String(b.car_number||''));
+    return String(a.number||'').localeCompare(String(b.number||''));
   });
 
   const frag = document.createDocumentFragment();
@@ -94,7 +94,7 @@ function renderSeen(state) {
     li.className = 'seenRow';
 
     const cTag   = seenCell('tag',   r.tag ?? '—');
-    const cNum   = seenCell('num',   r.car_number ? `#${r.car_number}` : '—');
+    const cNum   = seenCell('num',   r.number ? `#${r.number}` : '—');
     const cName  = seenCell('name',  r.name ?? '');
     const cReads = seenCell('reads', String(r.reads ?? 0), 'text-align:right;');
 
@@ -222,7 +222,7 @@ function renderSeen(state) {
 
     const num  = document.createElement('div');
     num.className = 'liveCell liveNum';
-    num.textContent = row.car_number ? `#${row.car_number}` : (row.entrant_id ?? '');
+    num.textContent = row.number ? `#${row.number}` : (row.entrant_id ?? '');
 
     const name = document.createElement('div');
     name.className = 'liveCell liveName';
@@ -262,7 +262,7 @@ function renderSeen(state) {
     if (!feedActive) return;
 
     for (const row of st.standings) {
-      const id = row.entrant_id ?? row.tag ?? row.car_number ?? row.name;
+      const id = row.entrant_id ?? row.tag ?? row.number ?? row.name;
       if (id == null) continue;
       const prev = lastLapCounts.get(id) ?? 0;
       const cur  = Number(row.laps || 0);

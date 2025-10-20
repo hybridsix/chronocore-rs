@@ -1,0 +1,5 @@
+- [x] inventory all repo touchpoints for the car number rename
+- [x] update backend engine/server/api to emit and accept `number`
+- [x] update frontend assets (JS/HTML) to consume `number`
+- [x] update docs/examples to reference `number`
+- [ ] verify formatting/build concerns (lint/tests if available)

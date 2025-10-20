@@ -72,7 +72,7 @@ Data flow summary:
 - Load a simple race (example payload used in README):
 
 ```json
-{"race_id":1,"race_type":"sprint","entrants":[{"entrant_id":1,"enabled":true,"status":"ACTIVE","tag":"3000123","car_number":"101","name":"Team A"}]}
+{"race_id":1,"race_type":"sprint","entrants":[{"entrant_id":1,"enabled":true,"status":"ACTIVE","tag":"3000123","number":"101","name":"Team A"}]}
 ```
 
 - Assign a tag idempotently (normalize whitespace -> NULL clears tag):

@@ -17,16 +17,16 @@ ALLOWED_STATUS = {"ACTIVE","DISABLED","DNF","DQ"}
 
 # ----------------------------- Data structs -----------------------------
 class Entrant:
-    __slots__ = ("entrant_id","enabled","status","tag","car_number","name",
+    __slots__ = ("entrant_id","enabled","status","tag","number","name",
                  "laps","last_s","best_s","pace_buf","pit_open_at_ms",
                  "pit_count","last_pit_s","_last_hit_ms")
     def __init__(self, entrant_id:int, enabled:bool=True, status:str="ACTIVE",
-                 tag:Optional[str]=None, car_number:Optional[str]=None, name:str=""):
+                 tag:Optional[str]=None, number:Optional[str]=None, name:str=""):
         self.entrant_id = int(entrant_id)
         self.enabled    = bool(enabled)
         self.status     = status if status in ALLOWED_STATUS else "ACTIVE"
         self.tag        = (tag or None)
-        self.car_number = car_number or None
+        self.number     = number or None
         self.name       = name or f"Entrant {entrant_id}"
 
         self.laps: int  = 0
@@ -56,7 +56,7 @@ class Entrant:
             "enabled": self.enabled,
             "status": self.status,
             "tag": self.tag,
-            "car_number": self.car_number,
+            "number": self.number,
             "name": self.name,
             "laps": self.laps,
             "last": None if self.last_s is None else round(self.last_s, 3),
@@ -253,7 +253,7 @@ class RaceEngine:
                             if str(e.get("status", "ACTIVE")).upper() in ALLOWED_STATUS
                             else "ACTIVE"),
                     tag=(str(e.get("tag")).strip() if e.get("tag") else None),
-                    car_number=(str(e.get("car_number")).strip() if e.get("car_number") else None),
+                    number=(str(e.get("number")).strip() if e.get("number") else None),
                     name=str(e.get("name") or f"Entrant {entrant_id}"),
                 )
                 self.entrants[ent.entrant_id] = ent
@@ -391,7 +391,7 @@ class RaceEngine:
                     # make "Unknown ####"
                     suffix = tag[-4:].rjust(4,"0")
                     new_id = self._alloc_provisional_id()
-                    ent = Entrant(new_id, enabled=True, status="ACTIVE", tag=tag, car_number=None, name=f"Unknown {suffix}")
+                    ent = Entrant(new_id, enabled=True, status="ACTIVE", tag=tag, number=None, name=f"Unknown {suffix}")
                     self.entrants[new_id] = ent
                     self.tag_to_eid[tag] = new_id
                     eid = new_id

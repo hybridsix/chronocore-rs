@@ -55,7 +55,7 @@ Health check:
 ```powershell
 Invoke-RestMethod -Method Post http://127.0.0.1:8000/engine/load `
   -ContentType application/json `
-  -Body '{ "race_id":1, "race_type":"sprint", "entrants":[{"entrant_id":1,"enabled":true,"status":"ACTIVE","tag":"3000123","car_number":"101","name":"Team A"}] }'
+  -Body '{ "race_id":1, "race_type":"sprint", "entrants":[{"entrant_id":1,"enabled":true,"status":"ACTIVE","tag":"3000123","number":"101","name":"Team A"}] }'
 ```
 
 ### 4. Flip Flags

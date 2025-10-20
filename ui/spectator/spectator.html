@@ -148,7 +148,7 @@
         const el = document.createElement("div");
         el.className = "row";
         const pos   = i + 1;
-        const car   = r.car_number ?? r.car ?? r.carNum ?? "";
+  const car   = r.number ?? r.car ?? r.carNum ?? "";
         const name  = r.name ?? r.team ?? r.driver ?? `Tag ${r.tag ?? ""}`;
         const laps  = r.laps ?? 0;
         const last  = (typeof r.last === "number") ? r.last.toFixed(3) : "—";
