@@ -242,7 +242,7 @@ scanner:
   #   "mock"        → emits fake tags periodically (perfect for UI testing)
   #   "ilap.serial" → reads from an I-Lap base via USB/serial (text protocol)
   #   "ilap.udp"    → listens for UDP datagrams in the same text format
-  source: "mock"   # flip to "mock" for UI-only testing
+  source: "ilap.serial"   # flip to "mock" for UI-only testing
 
   # Serial settings (used only when source == "ilap.serial")
   serial:
