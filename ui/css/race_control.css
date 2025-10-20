@@ -717,3 +717,33 @@ body.race-control {
     justify-self: start;
   }
 }
+
+/* PRE/COUNTDOWN: Seen grid (TAG | Number | Name | Reads) */
+#panelSeen .liveHead {
+  display: grid;
+  grid-template-columns: 12ch 8ch 1fr 8ch; /* TAG | Number | Name | Reads */
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-weak, rgba(255,255,255,0.12));
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+#seenList.liveList {
+  max-height: 38vh;   /* ~12–16 rows visible */
+  overflow: auto;
+  padding: 0;
+  margin: 0;
+}
+#seenList .seenRow {
+  display: grid;
+  grid-template-columns: 12ch 8ch 1fr 8ch;
+  gap: 10px;
+  align-items: center;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--line-weak, rgba(255,255,255,0.08));
+  font-variant-numeric: tabular-nums;
+}
+#seenList .cell { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#seenList .reads { text-align: right; }
+#seenList .num   { text-align: right; justify-self: end; }

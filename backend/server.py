@@ -48,8 +48,8 @@ from .db_schema import ensure_schema, tag_conflicts
 from .config_loader import get_db_path, get_scanner_cfg
 
 
-log = logging.getLogger("uvicorn.error")
-log = logging.getLogger("race")
+# log = logging.getLogger("uvicorn.error")
+# log = logging.getLogger("race")
 log = logging.getLogger("ccrs")
 
 # ------------------------------------------------------------
@@ -272,6 +272,72 @@ def _state_clock_block() -> dict:
         "countdown_remaining_s": countdown_remaining_s,
     }
 
+# --- Live "Seen" counters (pre-race diagnostics; in-memory only) ------------
+# Populated at /race/setup from loaded entrants so we never hit the DB here.
+_TAG_TO_ENTRANT: dict[str, dict] = {}   # tag -> entrant row (from setup payload)
+_SEEN_COUNTS: dict[int, int] = {}       # entrant_id -> read count
+_SEEN_TOTAL: int = 0                    # entrants with reads > 0
+
+def _note_seen(tag: str) -> None:
+    """
+    Bump the 'seen' counter for the entrant mapped to this tag.
+    Safe no-op if tag not recognized or entrants aren't loaded yet.
+    """
+    try:
+        ent = _TAG_TO_ENTRANT.get(str(tag))
+        if not ent:
+            return
+
+        # Robust int conversion (handles None / "" / "007" / 12)
+        raw_id = ent.get("entrant_id") or ent.get("id") or ent.get("eid")
+        try:
+            eid = int(str(raw_id).strip())
+        except Exception:
+            return  # no valid ID → skip
+
+        prev = _SEEN_COUNTS.get(eid, 0)
+        _SEEN_COUNTS[eid] = prev + 1
+        if prev == 0:
+            global _SEEN_TOTAL
+            _SEEN_TOTAL += 1
+    except Exception:
+        # diagnostics should never break ingest
+        pass
+
+
+def _state_seen_block() -> dict:
+    """
+    Build a UI-friendly 'seen' block:
+      rows: [{entrant_id, tag, car_number, name, enabled, reads}]
+      count/total: numbers for the (seen/total) badge
+    Uses entrants already cached in _RACE_STATE by /race/setup.
+    """
+    rows: list[dict] = []
+    try:
+        entrants = _RACE_STATE.get("entrants") or []
+        for e in entrants:
+            eid = int(e.get("entrant_id"))
+            rows.append({
+                "entrant_id": eid,
+                "tag": e.get("tag"),
+                "car_number": e.get("car_number"),
+                "name": e.get("name"),
+                "enabled": bool(e.get("enabled", True)),
+                "reads": int(_SEEN_COUNTS.get(eid, 0)),
+            })
+        # Sort: enabled first, reads desc, then car number for stable ties
+        rows.sort(key=lambda r: (
+            0 if r["enabled"] else 1,
+            -r["reads"],
+            str(r.get("car_number") or "")
+        ))
+    except Exception:
+        pass
+    return {
+        "count": sum(1 for r in rows if r["reads"] > 0),
+        "total": len(rows),
+        "rows": rows,
+    }
 
 
 # ------------------------------------------------------------
@@ -447,7 +513,11 @@ def _engine_begin_green() -> None:
                 # Try the next option if this one raises
                 pass
 
+# --- Live "seen" counters (pre-race diagnostics) ----------------------------
+_SEEN_COUNTS: dict[int, int] = {}   # entrant_id -> read count (live, not persisted)
+_SEEN_TOTAL: int = 0                # total distinct entrants seen at least once
 
+    
 # ------------------------------------------------------------
 # Debugging Endpoints
 # ------------------------------------------------------------
@@ -703,6 +773,19 @@ async def race_setup(
             })
 
         _CURRENT_ENTRANTS_ENGINE = entrants_engine[:]  # keep for reset
+
+        # Make entrants available to Seen block (and anything else that needs roster)
+        _RACE_STATE["entrants"] = entrants_engine[:]
+
+        # Build tag -> entrant map and reset live counters for a fresh session
+        _TAG_TO_ENTRANT.clear()
+        for e in entrants_engine:  # <- use the engine-ready list we just built
+            tag = str(e.get("tag") or "").strip()
+            if tag:
+                _TAG_TO_ENTRANT[tag] = e
+        _SEEN_COUNTS.clear()
+        _SEEN_TOTAL = 0
+
 
         # Pick race_type from mode id
         race_type = str(_CURRENT_SESSION.get("mode_id", "sprint"))
@@ -960,9 +1043,13 @@ async def engine_set_flag(req: FlagReq):
             snap = ENGINE.snapshot()
             # augment with local clock/phase for UI convenience
             if isinstance(snap, dict):
-                snap.setdefault("phase", _RACE_STATE["phase"])
-                snap.setdefault("flag", _RACE_STATE["flag"])
-                snap.setdefault("clock", _state_clock_block())
+                snap["phase"] = _RACE_STATE["phase"]
+                snap["flag"] = _RACE_STATE["flag"]
+                clock_block = _state_clock_block()
+                snap["clock"] = clock_block
+                snap["clock_ms"] = clock_block.get("clock_ms")
+                snap["countdown_remaining_s"] = clock_block.get("countdown_remaining_s")
+
             return JSONResponse(snap)
         except Exception:
             pass
@@ -996,6 +1083,8 @@ async def race_state():
                 # Optional (helps some UIs): declare running only when GREEN
                 snap["running"] = (_RACE_STATE["phase"] == Phase.GREEN.value)
 
+                snap["seen"] = _state_seen_block()
+
             return JSONResponse(snap)
         except Exception:
             pass  # fall through
@@ -1013,6 +1102,8 @@ async def race_state():
         "clock_ms": clock_block.get("clock_ms"),
         "countdown_remaining_s": clock_block.get("countdown_remaining_s"),
         "engine": "no-snapshot",
+        "seen": _state_seen_block(),
+
     })
 
 
@@ -1057,7 +1148,7 @@ async def race_start_race():
 
         _cancel_task(_COUNTDOWN_TASK)
         log.info(f"[START] COUNTDOWN armed for {cd}s; anchor={_RACE_STATE['countdown_anchor_s']:.3f}")
-        _COUNTDOWN_TASK = asyncio.create_task(_auto_go_green(cd))
+        _COUNTDOWN_TASK = asyncio.get_running_loop().create_task(_auto_go_green(cd))
         return {"ok": True, "phase": _RACE_STATE["phase"], "countdown_from_s": cd}
 
     # Immediate GREEN path
@@ -1099,6 +1190,8 @@ def race_end_race():
 def race_abort_reset():
     global _COUNTDOWN_TASK
     _cancel_task(_COUNTDOWN_TASK)
+    _SEEN_COUNTS.clear()
+    _SEEN_TOTAL = 0
     """
     Abort & reset to PRE (keep roster intact, clear timing).
     """
@@ -1512,6 +1605,8 @@ async def sensors_stream(request: Request):
         try:
             # If client disconnects or cancels scan, this raises
             tag = await asyncio.wait_for(q.get(), timeout=10.0)
+            if str(tag) == "__shutdown__":
+                return  # exit immediately on shutdown          
             payload = json.dumps({"tag": str(tag)})
             yield f"event: tag\ndata: {payload}\n\n"
         except asyncio.TimeoutError:
@@ -1596,48 +1691,39 @@ class SensorPassIn(BaseModel):
 # --- Sensors inject: single pass from any decoder/bridge ---------------------
 @app.post("/sensors/inject")
 async def sensors_inject(payload: dict):
-    """
-    Neutral sensor ingest (dev/test): accepts {"tag": "...", "source": "..."}.
-    Returns a diagnostic object telling us if the engine actually counted it.
-    """
     tag = str(payload.get("tag") or "").strip()
     source = str(payload.get("source") or "ui").strip()
-
     if not tag:
         raise HTTPException(status_code=400, detail="Missing 'tag'")
 
-    # Derive a best-effort "running" signal from the engine, if available
-    def _engine_running() -> Optional[bool]:
-        for attr in ("is_running", "running", "is_green", "is_active"):
-            v = getattr(ENGINE, attr, None)
-            if isinstance(v, bool):
-                return v
-            if callable(v):
-                try:
-                    r = v()
-                    if isinstance(r, bool):
-                        return r
-                except Exception:
-                    pass
+    def _engine_running() -> bool | None:
+        for name in ("is_running", "running", "is_green"):
+            attr = getattr(ENGINE, name, None)
+            try:
+                if callable(attr):
+                    val = attr()
+                else:
+                    val = attr
+                if isinstance(val, bool):
+                    return val
+            except Exception:
+                pass
         return None
 
-    # Call ingest; many engines return True/False or raise on reject
-    accepted: Optional[bool] = None
-    err: Optional[str] = None
+    accepted, err = None, None
+    _note_seen(tag)
     try:
-        ingest = getattr(ENGINE, "ingest_pass", None)
-        if callable(ingest):
-            accepted = bool(ingest(tag=tag, source=source))
+        fn = getattr(ENGINE, "ingest_pass", None)
+        if callable(fn):
+            accepted = bool(fn(tag=tag, source=source))
         else:
             err = "ENGINE.ingest_pass not found"
     except Exception as ex:
         err = f"{type(ex).__name__}: {ex}"
 
-    # Log for server console
     log.info(f"[INJECT] tag={tag} phase={_RACE_STATE.get('phase')} "
              f"accepted={accepted} running={_engine_running()} err={err or '-'}")
 
-    # Return a diagnostic payload so we can see what happened from PowerShell too
     return {
         "ok": err is None,
         "accepted": accepted,
@@ -1685,7 +1771,7 @@ async def start_scanner():
                 pass
 
             app.state.stop_evt = asyncio.Event()
-            app.state.task = asyncio.create_task(ScannerService(cfg).run(app.state.stop_evt))
+            app.state.task = asyncio.get_running_loop().create_task(ScannerService(cfg).run(app.state.stop_evt))
             log.info("ScannerService started (source=%s).", source)
             return
         except Exception:
@@ -1727,27 +1813,66 @@ async def start_scanner():
 
 
         app.state.stop_evt = asyncio.Event()
-        app.state.task = asyncio.create_task(_mock_task(app.state.stop_evt))
+        app.state.task = asyncio.get_running_loop().create_task(_mock_task(app.state.stop_evt))
     else:
         log.info("No ScannerService and not in mock mode; scanner startup skipped.")
 
 
-
+## ----------------------------------------------------------
+# --- Embedded scanner shutdown: make deterministic/clean ---   
+#------------------------------------------------------------
 
 @app.on_event("shutdown")
 async def stop_scanner():
     """
-    Gracefully stop the background scanner on shutdown.
+    Make shutdown deterministic:
+    - cancel countdown
+    - wake SSE/stream listeners
+    - stop scanner/mock task
+    - aggressively cancel any other pending asyncio tasks
     """
-    stop_evt = getattr(app.state, "stop_evt", None)
+    import asyncio
+    import contextlib
+
+    # 1) Cancel countdown task (prevents a sleeping asyncio.sleep from pinning shutdown)
+    global _COUNTDOWN_TASK
+    _cancel_task(_COUNTDOWN_TASK)
+    _COUNTDOWN_TASK = None
+
+    # 2) Wake /sensors/stream listeners (so their generators exit immediately)
+    #    Assumes you keep a list/set of Queues called `_listeners`
+    with contextlib.suppress(Exception):
+        for q in list(_listeners):
+            q.put_nowait("__shutdown__")
+
+    # 3) Wake /diagnostics/stream subscribers (so they break out cleanly)
+    #    Assumes you track `_diag_subs` (set of Queues) and guard with `_diag_lock`
+    try:
+        async with _diag_lock:
+            for q in list(_diag_subs):
+                with contextlib.suppress(Exception):
+                    q.put_nowait({"type": "shutdown"})
+    except Exception:
+        pass
+
+    # 4) Stop the scanner/mock task if you keep one in app.state
+    #    (Cancel + await so it has a chance to clean up)
     task = getattr(app.state, "task", None)
-    if stop_evt:
-        stop_evt.set()
     if task:
-        try:
+        with contextlib.suppress(Exception):
+            task.cancel()
             await task
-        except Exception:
-            pass
+
+    # 5) Aggressively cancel ANY remaining asyncio tasks in this loop (except this one)
+    #    This handles any stragglers (background pollers, forgotten tasks, etc.)
+    loop = asyncio.get_running_loop()
+    pending = [t for t in asyncio.all_tasks(loop) if t is not asyncio.current_task(loop)]
+    for t in pending:
+        t.cancel()
+    # Give them a moment to handle CancelledError
+    with contextlib.suppress(Exception):
+        await asyncio.gather(*pending, return_exceptions=True)
+
 
 
 # ==============================================================================
@@ -1805,6 +1930,9 @@ async def diagnostics_stream(request: Request):
                 yield f"data: {json.dumps(evt, separators=(',',':'))}\n\n".encode()
             while not await request.is_disconnected():
                 evt = await q.get()
+                # break cleanly if shutdown was signaled
+                if isinstance(evt, dict) and evt.get("type") == "shutdown":
+                    break
                 yield f"data: {json.dumps(evt, separators=(',',':'))}\n\n".encode()
         finally:
             async with _diag_lock:
