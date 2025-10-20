@@ -3,3 +3,4 @@
 - [x] update frontend assets (JS/HTML) to consume `number`
 - [x] update docs/examples to reference `number`
 - [ ] verify formatting/build concerns (lint/tests if available)
+- [x] audit `ui/js/race_control.js` indentation and tidy formatting

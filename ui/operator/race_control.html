@@ -66,9 +66,9 @@
     <!-- Top toolbar -->
     <div class="toolBar">
       <div class="left">
-        <div class="toolTitle">Start settings</div>
+        <!--<div class="toolTitle">Start settings</div>
 
-        <!-- Start type -->
+         
         <label class="radio">
           <input type="radio" name="startMethod" id="startStanding" value="standing" checked>
           <span>Standing</span>
@@ -77,19 +77,22 @@
           <input type="radio" name="startMethod" id="startRolling" value="rolling">
           <span>Rolling</span>
         </label>
-
+-->
         <div class="sep">|</div>
 
-        <!-- Pre-race (unified) -->
+        <!-- Race summary -->
+        <div class="toolbar-spacer"></div>
+         <div class="rc-summary"><span id="rcSummaryText">—</span></div>
+
         
-
-        <div class="sep">|</div>
       
       </div>
 
-      <div class="right">
-        <!-- Reserved for future quick toggles -->
-      </div>
+        <div class="toolbar-center">
+          <div id="flagPill" aria-live="polite">
+            <span id="flagPillText">Pre-race</span>
+          </div>
+        </div>
     </div>
 
     <!-- Two-column grid -->
@@ -137,6 +140,10 @@
             </div>
             <div id="raceClock" class="bigClock" aria-live="polite">00:00:00</div>
           </div>
+          <!--<div id="flagBanner" aria-live="polite">
+            <span id="flagLabel">PRE</span>
+            <span id="flagSublabel"></span>
+          </div>-->
       </section>
 
       <!-- Right (row 2): Race data -->

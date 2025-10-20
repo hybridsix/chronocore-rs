@@ -43,66 +43,114 @@
   }
 
 
-// ----------------------------------------------------------------------
-// "Seen" panel rendering
-// ----------------------------------------------------------------------
-function seenCell(cls, text, style='') {
-  const d = document.createElement('div');
-  d.className = `cell ${cls}`;
-  if (style) d.setAttribute('style', style);
-  d.textContent = text;
-  return d;
-}
-
-// Render the header labels into .liveHead (replaces the title during PRE/COUNTDOWN)
-function setSeenHeader() {
-  const head = document.querySelector('#panelSeen .liveHead');
-  if (!head) return;
-  head.replaceChildren(
-    document.createTextNode('TAG'),
-    seenCell('hdr num', 'Number'),
-    seenCell('hdr name', 'Name'),
-    seenCell('hdr reads', 'Reads', 'text-align:right;')
-  );
-}
-
-// Build the rows from state.seen.rows
-function renderSeen(state) {
-  const ul    = document.getElementById('seenList');
-  const cSpan = document.getElementById('seenCount');
-  const tSpan = document.getElementById('seenTotal');
-  if (!ul) return;
-
-  const seen = state?.seen || { count:0, total:0, rows:[] };
-  if (cSpan) cSpan.textContent = String(seen.count ?? 0);
-  if (tSpan) tSpan.textContent = String(seen.total ?? 0);
-
-  setSeenHeader();
-
-  // Sort: enabled first, reads desc, then car number (stable)
-  const rows = Array.isArray(seen.rows) ? [...seen.rows] : [];
-  rows.sort((a,b) => {
-    if (!!b.enabled !== !!a.enabled) return (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0);
-    const rb = Number(b.reads||0), ra = Number(a.reads||0);
-    if (rb !== ra) return rb - ra;
-    return String(a.number||'').localeCompare(String(b.number||''));
-  });
-
-  const frag = document.createDocumentFragment();
-  for (const r of rows) {
-    const li = document.createElement('li');
-    li.className = 'seenRow';
-
-    const cTag   = seenCell('tag',   r.tag ?? '—');
-    const cNum   = seenCell('num',   r.number ? `#${r.number}` : '—');
-    const cName  = seenCell('name',  r.name ?? '');
-    const cReads = seenCell('reads', String(r.reads ?? 0), 'text-align:right;');
-
-    li.append(cTag, cNum, cName, cReads);
-    frag.appendChild(li);
+  // ----------------------------------------------------------------------
+  // "Seen" panel rendering
+  // ----------------------------------------------------------------------
+  function seenCell(cls, text, style='') {
+    const d = document.createElement('div');
+    d.className = `cell ${cls}`;
+    if (style) d.setAttribute('style', style);
+    d.textContent = text;
+    return d;
   }
-  ul.replaceChildren(frag);
-}
+
+  // Render the header labels into .liveHead (replaces the title during PRE/COUNTDOWN)
+  function setSeenHeader() {
+    const head = document.querySelector('#panelSeen .liveHead');
+    if (!head) return;
+    head.replaceChildren(
+      document.createTextNode('TAG'),
+      seenCell('hdr num', 'Number'),
+      seenCell('hdr name', 'Name'),
+      seenCell('hdr reads', 'Reads', 'text-align:right;')
+    );
+  }
+
+  // Build the rows from state.seen.rows
+  function renderSeen(state) {
+    const ul    = document.getElementById('seenList');
+    const cSpan = document.getElementById('seenCount');
+    const tSpan = document.getElementById('seenTotal');
+    if (!ul) return;
+
+    const seen = state?.seen || { count:0, total:0, rows:[] };
+    if (cSpan) cSpan.textContent = String(seen.count ?? 0);
+    if (tSpan) tSpan.textContent = String(seen.total ?? 0);
+
+    setSeenHeader();
+
+    const rows = Array.isArray(seen.rows) ? [...seen.rows] : [];
+    rows.sort((a,b) => {
+      if (!!b.enabled !== !!a.enabled) return (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0);
+      const rb = Number(b.reads||0), ra = Number(a.reads||0);
+      if (rb !== ra) return rb - ra;
+      return String(a.number||'').localeCompare(String(b.number||''));
+    });
+
+    const frag = document.createDocumentFragment();
+    for (const r of rows) {
+      const li = document.createElement('li');
+      li.className = 'seenRow';
+
+      const cTag   = seenCell('tag',   r.tag ?? '—');
+      const cNum   = seenCell('num',   r.number ? `#${r.number}` : '—');
+      const cName  = seenCell('name',  r.name ?? '');
+      const cReads = seenCell('reads', String(r.reads ?? 0), 'text-align:right;');
+
+      // Add “Entrant Seen” pill when reads > 0
+      if ((r.reads ?? 0) > 0) {
+        const pill = document.createElement('span');
+        pill.className = 'seen-pill';
+        pill.textContent = 'Entrant Seen';
+        cName.appendChild(pill);
+      }
+
+      li.append(cTag, cNum, cName, cReads);
+      frag.appendChild(li);
+    }
+    ul.replaceChildren(frag);
+  }
+
+  // ----------------------------------------------------------------------
+  // Race summary rendering
+  // ----------------------------------------------------------------------
+
+  function secondsToHuman(s) {
+    const n = Number(s);
+    if (!Number.isFinite(n) || n < 0) return '—';
+    if (n === 0) return 'Unlimited';
+    const m = Math.floor(n / 60);
+    const ss = n % 60;
+    return `${m}m ${ss}s`;
+  }
+
+  function summarizeFromState(st) {
+    // Limit
+    let limitStr = '—';
+    const lim = st?.limit;
+    if (lim?.type === 'time') limitStr = `Time ${secondsToHuman(lim.value_s)}`;
+    else if (lim?.type === 'laps') limitStr = `Laps ${lim.value_laps}`;
+    else if (lim?.type) limitStr = String(lim.type).toUpperCase();
+
+    // Rank (for now mirror Setup’s “Total Laps”; change here if you add modes)
+    const rankStr = 'Rank: Total Laps';
+
+    // MinLap
+    const minLap = st?.min_lap_s ?? st?.session?.min_lap_s ?? st?.engine?.min_lap_s;
+    const minLapStr = (minLap != null) ? `MinLap ${Number(minLap).toFixed(1)}s` : null;
+
+    const parts = [limitStr, rankStr];
+    if (minLapStr) parts.push(minLapStr);
+    return parts.join(' • ');
+  }
+
+  function renderRCSummary(st) {
+    const el = document.getElementById('rcSummaryText');
+    if (!el) return;
+    el.textContent = summarizeFromState(st);
+  }
+
+
 
 
   // ----------------------------------------------------------------------
@@ -195,6 +243,100 @@ function renderSeen(state) {
       setActiveFlag(f);
     });
   }
+
+
+
+  // ----------------------------------------------------------------------
+  // Flag banner update + pulse on change
+  // ----------------------------------------------------------------------
+
+  let lastFlagForPulse = null;
+
+  function updateFlagBanner(st) {
+    const banner = document.getElementById('flagBanner');
+    if (!banner) return;
+
+    const labelEl = document.getElementById('flagLabel');
+    const subEl   = document.getElementById('flagSublabel');
+
+    const flag = (st.flag || 'PRE').toUpperCase();
+    const phase = (st.phase || 'pre').toLowerCase();
+
+    // Human label + sublabel
+    const labelMap = {
+      PRE: 'Pre-race',
+      GREEN: 'Green',
+      YELLOW: 'Yellow',
+      RED: 'Red',
+      BLUE: 'Blue',
+      WHITE: 'White',
+      CHECKERED: 'Checkered'
+    };
+    labelEl.textContent = labelMap[flag] || flag;
+
+    if (phase === 'countdown') {
+      const rem = st?.clock?.countdown_remaining_s ?? st?.countdown_remaining_s;
+      subEl.textContent = (rem != null) ? `Start in ${Math.max(0, Math.ceil(rem))}s` : 'Start armed';
+    } else if (flag === 'GREEN') {
+      subEl.textContent = 'Race in progress';
+    } else if (flag === 'CHECKERED') {
+      subEl.textContent = 'Race complete';
+    } else {
+      subEl.textContent = '';
+    }
+
+    // Pulse on change
+    if (lastFlagForPulse !== flag) {
+      banner.classList.remove('flag-pulse');
+      // allow reflow then add (ensures animation retriggers)
+      setTimeout(() => banner.classList.add('flag-pulse'), 0);
+      lastFlagForPulse = flag;
+    }
+  }
+
+  function lockFlagButtonsByPhase(st) {
+    // Wire to your existing allowedFlagsForPhase() if present
+    const phase = (st.phase || 'pre').toLowerCase();
+    const allowed = (typeof allowedFlagsForPhase === 'function')
+        ? new Set(allowedFlagsForPhase(phase))
+        : new Set(['pre','green','yellow','red','blue','white','checkered']); // fallback
+
+    document.querySelectorAll('.flag-btn').forEach(btn => {
+      const flagName = (btn.dataset.flag || '').toLowerCase();
+      const enable = allowed.has(flagName);
+      btn.disabled = !enable;
+      btn.classList.toggle('is-active',
+        (st.flag || 'PRE').toLowerCase() === flagName);
+    });
+  }
+
+  let _lastPillFlag = null;
+
+function updateFlagPill(st){
+  const pill = document.getElementById('flagPill');
+  const txt  = document.getElementById('flagPillText');
+  if (!pill || !txt) return;
+
+  const flag  = (st.flag || 'PRE').toUpperCase();   // trust flag, ignore countdown
+  const label = {
+    PRE:'Pre-race', GREEN:'Green', YELLOW:'Yellow',
+    RED:'Red', BLUE:'Blue', WHITE:'White', CHECKERED:'Checkered'
+  }[flag] || flag;
+
+  // Only special-case GREEN/CHECKERED; countdown shows PRE
+  if (flag === 'GREEN')       txt.textContent = 'Green — Race in progress';
+  else if (flag === 'CHECKERED') txt.textContent = 'Checkered — Race complete';
+  else                        txt.textContent = label;
+
+  if (_lastPillFlag !== flag) {
+    pill.classList.remove('pulse');
+    setTimeout(() => pill.classList.add('pulse'), 0);
+    _lastPillFlag = flag;
+  }
+}
+
+
+
 
   function updateClockModeButton(st) {
     const btn = els.btnClockMode;
@@ -350,6 +492,12 @@ function renderSeen(state) {
     // ---- Flags ----
     updateFlagPad(ph);
     highlightActiveFlagButton((st.flag || 'PRE').toLowerCase());
+    updateFlagBanner(st);
+    lockFlagButtonsByPhase(st);
+    updateFlagPill(st);
+
+    //Race summary
+    renderRCSummary(st);
   }
 
   // ----------------------------------------------------------------------
