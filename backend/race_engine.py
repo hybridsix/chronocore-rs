@@ -446,6 +446,9 @@ class RaceEngine:
             if (not self._limit_reached
                 and self._limit_ms is not None
                 and self.flag != "checkered"
+                and self._limit_type == "time"
+                and self._time_limit_s > 0
+                and not self.soft_end
                 and self.clock_ms >= self._limit_ms):
                 self._auto_checkered("time_limit")
 
