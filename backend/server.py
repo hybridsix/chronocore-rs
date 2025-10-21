@@ -87,12 +87,13 @@ def _send_pass_to_engine(tag: str, source: str = "SF") -> dict:
 # ------------------------------------------------------------
 # Tag ingestion helper - For Mock/Test Scanners
 # ------------------------------------------------------------
+# Deprecated: direct callers should use ENGINE.ingest_pass(...)
+# Removed _ingest_tag_to_engine (was unused).
+""" async def _ingest_tag_to_engine(tag: str, source: str = "SF") -> dict:
 
-async def _ingest_tag_to_engine(tag: str, source: str = "SF") -> dict:
-    """
     Look up entrant by tag and forward a pass to the engine.
     Returns a small dict describing what happened (for logging/testing).
-    """
+
     tag = _normalize_tag(tag)
     if not tag:
         return {"ok": False, "reason": "empty_tag"}
@@ -141,7 +142,7 @@ async def _ingest_tag_to_engine(tag: str, source: str = "SF") -> dict:
         log.error("[ingest] engine forward failed: %s: %s", type(ex).__name__, ex)
         return {"ok": False, "reason": f"engine_error:{type(ex).__name__}"}
 
-    return {"ok": True, "resolved": entrant_id is not None, "entrant_id": entrant_id}
+    return {"ok": True, "resolved": entrant_id is not None, "entrant_id": entrant_id} """
 
 
 # ------------------------------------------------------------
@@ -536,16 +537,16 @@ async def resolve_tag_to_entrant(tag: str) -> dict | None:
         }
     return None
 
-def _allowed_flags_for_phase(ph: str) -> set[str]:
-    p = (ph or "pre").lower()
-    if p in ("pre", "countdown"):
-        return {"pre"}
-    if p == "green":
-        return {"yellow", "red", "blue", "white", "checkered"}
-    if p == "white":
-        return {"yellow", "red", "checkered", "blue"}
-    # checkered or unknown → disallow pad flags
-    return set()
+# --- Helper: which flags are allowed in a given phase (returns UPPERCASE names) ---
+def _allowed_flags_for_phase(phase: str) -> set[str]:
+    p = str(phase or "pre").lower()
+    return {
+        "pre":        {"PRE", "GREEN"},  # operator can arm/start green
+        "countdown":  {"PRE"},           # timer flips to GREEN; only abort to PRE from UI
+        "green":      {"GREEN", "YELLOW", "RED", "BLUE", "WHITE", "CHECKERED"},
+        "white":      {"GREEN", "YELLOW", "RED", "BLUE", "WHITE", "CHECKERED"},
+        "checkered":  {"CHECKERED"},     # locked; use End/Reset to change phase
+    }.get(p, {"GREEN", "YELLOW", "RED", "BLUE", "WHITE", "CHECKERED"})
 
 def _cancel_task(t: asyncio.Task | None) -> None:
     """Cancel a task if it's still running; ignore if already finished."""
@@ -1053,24 +1054,24 @@ async def engine_entrant_assign_tag(payload: Dict[str, Any]):
 
 
 
-@app.post("/engine/pass")
+""" @app.post("/engine/pass")
 async def engine_pass(payload: Dict[str, Any]):
-    """
+
     Normalized pass ingest endpoint.
-    Accepts: { "tag": "1234567", "source": "SF" }
-    """
+ #   Accepts: { "tag": "1234567", "source": "SF" }
     tag = _normalize_tag(payload.get("tag"))
     source = str(payload.get("source") or "SF")
     if not tag:
         raise HTTPException(status_code=400, detail="missing tag")
     result = await _ingest_tag_to_engine(tag, source=source)
     return JSONResponse(result if result else {"ok": True})
-
+ """
 
 # ------------------------------------------------------------
 # Endpoints — flag / state / reset (lightweight, engine-aware)
 # Race Control Endpoints
 # ------------------------------------------------------------
+# --- Route: POST /engine/flag  (idempotent + GREEN allowed while racing) ---
 class FlagReq(BaseModel):
     flag: str
 
@@ -1080,58 +1081,76 @@ async def engine_set_flag(req: FlagReq):
     Set the live flag. Calls ENGINE.set_flag(...) if available; otherwise updates local state.
     Also keeps local _RACE_STATE in sync for UI.
     """
-    upper = str(req.flag).upper()
-    # backend gate: only allow flags valid for the current phase
-    allowed = _allowed_flags_for_phase(_RACE_STATE.get("phase", Phase.PRE.value))
-    if upper.lower() not in allowed:
-        # still allow PRE always (so operators can recover)
-        if upper != "PRE":
-            raise HTTPException(status_code=409, detail=f"flag '{upper}' not allowed in phase '{_RACE_STATE.get('phase')}'")
+    # Normalize inputs/current state
+    req_flag  = str(req.flag or "PRE").upper()
+    phase_str = str(_RACE_STATE.get("phase") or Phase.PRE.value).lower()
+    cur_flag  = str(_RACE_STATE.get("flag")  or "PRE").upper()
 
-    upper = str(req.flag).upper()
+    # 1) Idempotent: setting the same flag is a no-op but returns 200
+    if req_flag == cur_flag:
+        return JSONResponse({
+            "ok": True,
+            "flag": cur_flag,
+            "phase": _RACE_STATE.get("phase"),
+            "idempotent": True,
+            "clock": _state_clock_block(),
+        })
 
-    # Try engine first (your original behavior)
+    # 2) Phase rules: allow GREEN while racing; restrict countdown; keep PRE conservative
+    allowed = _allowed_flags_for_phase(phase_str)  # UPPERCASE members
+    if req_flag not in allowed:
+        raise HTTPException(status_code=409, detail=f"flag '{req_flag}' not allowed in phase '{phase_str}'")
+
+    # 3) Try engine first (if it enforces additional rules, surface as 400)
     if hasattr(ENGINE, "set_flag"):
         try:
-            snap = ENGINE.set_flag(upper)
+            ENGINE.set_flag(req_flag)
         except ValueError as ve:
             raise HTTPException(status_code=400, detail=str(ve))
-        # fall through to local sync even if engine handled it
-    elif upper not in {"PRE","GREEN","YELLOW","RED","WHITE","CHECKERED"}:
-        raise HTTPException(status_code=400, detail="invalid flag value")
+        except Exception:
+            # Don't hard-fail UI if engine refused for non-ValueError reasons
+            pass
+    else:
+        # Basic validation if no engine behind us
+        if req_flag not in {"PRE","GREEN","YELLOW","RED","WHITE","BLUE","CHECKERED"}:
+            raise HTTPException(status_code=400, detail="invalid flag value")
 
-    # Local sync for UI consistency
-    _RACE_STATE["flag"] = upper
-    if upper == "WHITE":
+    # 4) Local sync for UI convenience
+    _RACE_STATE["flag"] = req_flag
+    if req_flag == "WHITE":
         _RACE_STATE["phase"] = Phase.WHITE.value
-    elif upper == "CHECKERED":
+    elif req_flag == "CHECKERED":
         _RACE_STATE["phase"] = Phase.CHECKERED.value
-    elif upper == "GREEN":
-        # If GREEN is asserted manually, assume race running
-        if _RACE_STATE["start_at"] is None:
+    elif req_flag == "GREEN":
+        # If GREEN is asserted manually, assume race running; start clock if needed
+        if _RACE_STATE.get("start_at") is None:
             _RACE_STATE["start_at"] = _now()
         _RACE_STATE["phase"] = Phase.GREEN.value
-    elif upper == "PRE":
+    elif req_flag == "PRE":
         _RACE_STATE["phase"] = Phase.PRE.value
+        # (intentionally not clearing start_at; abort/reset endpoint handles full reset)
 
-    # Prefer engine snapshot if it exists, else return a normalized payload
+    # 5) Prefer engine snapshot; augment with local phase/flag/clock for UI
     if hasattr(ENGINE, "snapshot"):
         try:
             snap = ENGINE.snapshot()
-            # augment with local clock/phase for UI convenience
             if isinstance(snap, dict):
                 snap["phase"] = _RACE_STATE["phase"]
-                snap["flag"] = _RACE_STATE["flag"]
-                clock_block = _state_clock_block()
+                snap["flag"]  = _RACE_STATE["flag"]
+                clock_block   = _state_clock_block()
                 snap["clock"] = clock_block
                 snap["clock_ms"] = clock_block.get("clock_ms")
                 snap["countdown_remaining_s"] = clock_block.get("countdown_remaining_s")
-
             return JSONResponse(snap)
         except Exception:
             pass
 
-    return JSONResponse({"ok": True, "flag": _RACE_STATE["flag"], "phase": _RACE_STATE["phase"], "clock": _state_clock_block()})
+    return JSONResponse({
+        "ok": True,
+        "flag": _RACE_STATE["flag"],
+        "phase": _RACE_STATE["phase"],
+        "clock": _state_clock_block(),
+    })
 
 # ------------------------- State: engine snapshot + local --------------------
 

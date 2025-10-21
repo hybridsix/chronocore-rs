@@ -66,50 +66,108 @@
     );
   }
 
-  // Build the rows from state.seen.rows
-  function renderSeen(state) {
-    const ul    = document.getElementById('seenList');
-    const cSpan = document.getElementById('seenCount');
-    const tSpan = document.getElementById('seenTotal');
-    if (!ul) return;
+// ----------------------------------------------------------------------
+// Render the "seen" list from state
+// ---------------------------------------------------------------------- 
+function renderSeen(state) {
+  const ul    = document.getElementById('seenList');
+  const cSpan = document.getElementById('seenCount');
+  const tSpan = document.getElementById('seenTotal');
+  if (!ul) return;
 
-    const seen = state?.seen || { count:0, total:0, rows:[] };
-    if (cSpan) cSpan.textContent = String(seen.count ?? 0);
-    if (tSpan) tSpan.textContent = String(seen.total ?? 0);
+  const seen = state?.seen || { count:0, total:0, rows:[] };
+  if (cSpan) cSpan.textContent = String(seen.count ?? 0);
+  if (tSpan) tSpan.textContent = String(seen.total ?? 0);
 
-    setSeenHeader();
+  setSeenHeader();
 
-    const rows = Array.isArray(seen.rows) ? [...seen.rows] : [];
-    rows.sort((a,b) => {
-      if (!!b.enabled !== !!a.enabled) return (b.enabled ? 1 : 0) - (a.enabled ? 1 : 0);
-      const rb = Number(b.reads||0), ra = Number(a.reads||0);
-      if (rb !== ra) return rb - ra;
-      return String(a.number||'').localeCompare(String(b.number||''));
-    });
+  // Normalize + choose a stable key
+  const rows = (Array.isArray(seen.rows) ? seen.rows : []).map(r => ({
+    key: r.tag ?? r.entrant_id ?? `${r.number ?? ''}:${r.name ?? ''}`,
+    tag: r.tag ?? '—',
+    number: r.number ?? null,
+    name: r.name ?? '',
+    reads: Number(r.reads ?? 0),
+    enabled: !!r.enabled,
+  }));
 
-    const frag = document.createDocumentFragment();
-    for (const r of rows) {
-      const li = document.createElement('li');
+  // Desired order: enabled first, reads desc, number asc
+  rows.sort((a,b) => {
+    if (a.enabled !== b.enabled) return (a.enabled ? -1 : 1);
+    if (a.reads !== b.reads)     return b.reads - a.reads;
+    return String(a.number ?? '').localeCompare(String(b.number ?? ''));
+  });
+
+  // Index existing <li> by key
+  const existing = new Map();
+  ul.querySelectorAll('li.seenRow').forEach(li => {
+    const key = li.getAttribute('data-key');
+    if (key) existing.set(key, li);
+  });
+
+  // Helper to build or update a row
+  function ensureRow(r) {
+    let li = existing.get(r.key);
+    if (!li) {
+      li = document.createElement('li');
       li.className = 'seenRow';
+      li.setAttribute('data-key', r.key);
 
-      const cTag   = seenCell('tag',   r.tag ?? '—');
-      const cNum   = seenCell('num',   r.number ? `#${r.number}` : '—');
-      const cName  = seenCell('name',  r.name ?? '');
-      const cReads = seenCell('reads', String(r.reads ?? 0), 'text-align:right;');
-
-      // Add “Entrant Seen” pill when reads > 0
-      if ((r.reads ?? 0) > 0) {
-        const pill = document.createElement('span');
-        pill.className = 'seen-pill';
-        pill.textContent = 'Entrant Seen';
-        cName.appendChild(pill);
-      }
+      const cTag   = document.createElement('div'); cTag.className   = 'cell tag';
+      const cNum   = document.createElement('div'); cNum.className   = 'cell num';
+      const cName  = document.createElement('div'); cName.className  = 'cell name';
+      const cReads = document.createElement('div'); cReads.className = 'cell reads';
 
       li.append(cTag, cNum, cName, cReads);
-      frag.appendChild(li);
     }
-    ul.replaceChildren(frag);
+
+    const [cTag, cNum, cName, cReads] = li.children;
+
+    // Update cells (only if changed)
+    if (cTag.textContent !== r.tag) cTag.textContent = r.tag;
+    const numTxt = r.number ? `#${r.number}` : '—';
+    if (cNum.textContent !== numTxt) cNum.textContent = numTxt;
+
+    // Name + pill
+    const wantPill = r.reads > 0;
+    if (cName.firstChild?.nodeType === Node.TEXT_NODE) {
+      if (cName.firstChild.nodeValue !== r.name) cName.firstChild.nodeValue = r.name;
+    } else {
+      cName.textContent = r.name;
+    }
+    let pill = cName.querySelector('.seen-pill');
+    if (wantPill && !pill) {
+      pill = document.createElement('span');
+      pill.className = 'seen-pill';
+      pill.textContent = 'Entrant Seen';
+      cName.appendChild(pill);
+    } else if (!wantPill && pill) {
+      pill.remove();
+    }
+
+    const readsTxt = String(r.reads);
+    if (cReads.textContent !== readsTxt) cReads.textContent = readsTxt;
+
+    // Enabled styling
+    li.classList.toggle('is-disabled', !r.enabled);
+    return li;
   }
+
+  // 1) Ensure all rows exist/updated and gather in desired order
+  const desiredNodes = rows.map(r => ensureRow(r));
+
+  // 2) Reorder DOM by appending in desired order (moves nodes cheaply)
+  //    This avoids tearing down the entire list each second.
+  const frag = document.createDocumentFragment();
+  for (const node of desiredNodes) frag.appendChild(node);
+  ul.appendChild(frag);
+
+  // 3) Remove any stale nodes not present anymore
+  existing.forEach((li, key) => {
+    if (!rows.find(r => r.key === key)) li.remove();
+  });
+}
+
 
   // ----------------------------------------------------------------------
   // Race summary rendering
@@ -199,20 +257,31 @@
   // ----------------------------------------------------------------------
   // Allowed flag presses by phase + pad update (authoritative gate)
   // ----------------------------------------------------------------------
+  // Flags permitted while in each phase.
+  // Key idea: while racing (green/white), you can always go back to GREEN (and throw other colors).
   function allowedFlagsForPhase(phase) {
     switch ((phase || 'pre').toLowerCase()) {
       case 'pre':
+        // No accidental colors; GREEN is allowed only to arm/start (if you support that).
+        return ['pre', 'green'];
       case 'countdown':
+        // UI shouldn’t force GREEN; timer flips it.
         return ['pre'];
       case 'green':
-        return ['yellow', 'red', 'blue', 'white', 'checkered'];
       case 'white':
-        return ['yellow', 'red', 'checkered', 'blue'];
+      case 'yellow':
+      case 'red':
+      case 'blue':
+        // While running / neutralized, you can always return to GREEN (and throw others).
+        return ['green', 'yellow', 'red', 'blue', 'white', 'checkered'];
       case 'checkered':
+        return ['checkered'];
       default:
-        return [];
+        return ['green', 'yellow', 'red', 'blue', 'white', 'checkered'];
     }
   }
+
+
 
   function updateFlagPad(phase) {
     const allowed = new Set(allowedFlagsForPhase(phase));
@@ -295,18 +364,12 @@
   }
 
   function lockFlagButtonsByPhase(st) {
-    // Wire to your existing allowedFlagsForPhase() if present
-    const phase = (st.phase || 'pre').toLowerCase();
-    const allowed = (typeof allowedFlagsForPhase === 'function')
-        ? new Set(allowedFlagsForPhase(phase))
-        : new Set(['pre','green','yellow','red','blue','white','checkered']); // fallback
-
+    const phase = (st?.phase || 'pre').toLowerCase();
+    const allowed = new Set(allowedFlagsForPhase(phase));
     document.querySelectorAll('.flag-btn').forEach(btn => {
       const flagName = (btn.dataset.flag || '').toLowerCase();
-      const enable = allowed.has(flagName);
-      btn.disabled = !enable;
-      btn.classList.toggle('is-active',
-        (st.flag || 'PRE').toLowerCase() === flagName);
+      btn.disabled = !allowed.has(flagName);
+      btn.classList.toggle('is-active', (st?.flag || 'pre').toLowerCase() === flagName);
     });
   }
 
@@ -519,6 +582,7 @@ function updateFlagPill(st){
     await api('/race/control/start_prep', { method: 'POST' });
     countdownAnchor = null;
     lastLapCounts.clear();
+    burstPoll(250, 3000);
     renderState(await api('/race/state'));
   }
 
@@ -528,15 +592,18 @@ function updateFlagPill(st){
       const cd = Number(res?.countdown_from_s || 0);
       if (cd > 0) countdownAnchor = (Date.now() / 1000) + cd;
     }
-    lastLapCounts.clear(); // fresh feed for a new start
+    lastLapCounts.clear();
+    burstPoll(250, 4000);
     renderState(await api('/race/state'));
   }
 
   async function endRace() {
     if (!confirm('End race and throw checkered?')) return;
     await api('/race/control/end_race', { method: 'POST' });
+    burstPoll(250, 3000);
     renderState(await api('/race/state'));
   }
+
 
   async function abortReset() {
     if (!confirm('Abort & reset to PRE? Laps/seen will be cleared.')) return;
@@ -547,18 +614,40 @@ function updateFlagPill(st){
     }
     countdownAnchor = null;
     lastLapCounts.clear();
+    burstPoll(250, 3000);
     renderState(await api('/race/state'));
   }
 
   async function setActiveFlag(flagLower) {
     const upper = String(flagLower || 'pre').toUpperCase();
-    await api('/engine/flag', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ flag: upper }),
-    });
-    renderState(await api('/race/state'));
+    const phase = (document.body.dataset.phase || 'pre').toLowerCase();
+
+    // Optimistic paint so it feels instant
+    const prevFlag = document.body.dataset.flag || 'PRE';
+    document.body.dataset.flag = upper;
+    updateFlagPill({ flag: upper, phase });
+    highlightActiveFlagButton(flagLower);
+    burstPoll(250, 3000); // faster pulls for the next ~3s
+
+    try {
+      const r = await fetch('/engine/flag', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ flag: upper }),
+      });
+      if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+
+      // Reconcile with authoritative state quickly
+      renderState(await api('/race/state'));
+    } catch (err) {
+      // Revert on failure (e.g., 409 during COUNTDOWN or illegal phase)
+      document.body.dataset.flag = prevFlag;
+      updateFlagPill({ flag: prevFlag, phase });
+      highlightActiveFlagButton((prevFlag || 'PRE').toLowerCase());
+      console.debug('Flag set rejected:', upper, String(err));
+    }
   }
+
 
   function bindControls() {
     if (els.btnPreRace)    els.btnPreRace.addEventListener('click', startPrep);
@@ -585,16 +674,33 @@ function updateFlagPill(st){
   }
 
   // ----------------------------------------------------------------------
-  // Poll loop
+  // Poll loop - Burs t mode support
   // ----------------------------------------------------------------------
-  let tick = null;
-  function refreshState() {
-    api('/race/state').then(renderState).catch(() => {/* ignore */});
+  let _burstUntil = 0;
+  let _burstMs = 250;
+  let _pollTimer = null;
+
+  function burstPoll(intervalMs = 250, durationMs = 3000) {
+    _burstMs = intervalMs;
+    _burstUntil = Date.now() + durationMs;
   }
+
+  async function refreshState() {
+    try { renderState(await api('/race/state')); } catch { /* ignore */ }
+  }
+
   function startPolling() {
-    if (tick) clearInterval(tick);
-    refreshState();
-    tick = setInterval(refreshState, 1000);
+    if (_pollTimer) { clearTimeout(_pollTimer); _pollTimer = null; }
+
+    const tick = async () => {
+      await refreshState();
+      const now = Date.now();
+      const nextMs = (now < _burstUntil) ? _burstMs : 1000; // default 1s
+      _pollTimer = setTimeout(tick, nextMs);
+    };
+
+    // prime the pump
+    tick();
   }
 
   // ----------------------------------------------------------------------
