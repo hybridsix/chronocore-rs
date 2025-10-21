@@ -910,4 +910,15 @@ body[data-flag="CHECKERED"] #flagPill {
     height: 34px; 
   }
 }
+/* continuous beacon for non-green, non-checkered flags */
+@keyframes flagBeacon {
+  0%   { transform: scale(1.00); box-shadow: 0 10px 22px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.10); }
+  50%  { transform: scale(1.015); box-shadow: 0 0 0 10px rgba(255,255,255,0.20); }
+  100% { transform: scale(1.00); box-shadow: 0 10px 22px rgba(0,0,0,0.25), inset 0 0 0 1px rgba(255,255,255,0.10); }
+}
+
+/* prefer-reduced-motion: disable the loop for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  #flagPill.beacon { animation: none !important; }
+}
 

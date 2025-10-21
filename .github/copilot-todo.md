@@ -3,4 +3,6 @@
 - [x] update frontend assets (JS/HTML) to consume `number`
 - [x] update docs/examples to reference `number`
 - [ ] verify formatting/build concerns (lint/tests if available)
+- [x] add flag operations section from FLAG_OPERATOR.md into docs/operators_guide.md
+- [ ] merge flag technical reference content into docs/TECHNICAL_REFERENCE.md
 - [x] audit `ui/js/race_control.js` indentation and tidy formatting

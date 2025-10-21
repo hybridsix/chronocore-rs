@@ -1,15 +1,15 @@
 /* ==========================================================================
    Race Setup — controller (v1.2 merged)
    --------------------------------------------------------------------------
-   What changed vs your v1.1:
-   • Keep your original form logic & UI behavior (modes, custom save, live
-     summary, readiness chips, audio tests).
-   • Replace ONLY the "Start Race" flow to use the new backend contract:
-       POST /race/setup  with  { race_id, entrants, session_config }
-     …then persist to localStorage and redirect to Race Control.
-   • Add small helpers to fetch entrants and to map your form config to the
-     backend's expected 'session_config' shape (adds the 'bypass' object).
-   • Deduplicate duplicate bindCustomSave definition (was present twice).
+   Summary of notable changes relative to v1.1:
+   • Preserves the existing form logic & UI behavior (modes, custom save,
+     live summary, readiness chips, audio tests).
+   • Updates the "Start Race" flow to call POST /race/setup with
+       { race_id, entrants, session_config }
+     then persists to localStorage and redirects to Race Control.
+   • Adds helpers to fetch entrants and to map the form config to the
+     backend's expected 'session_config' shape (including the 'bypass' block).
+   • Removes the duplicate bindCustomSave definition that previously existed twice.
 
    Contract (server.py):
      /setup/race_modes           → { modes: {...} }
@@ -31,7 +31,7 @@
   const $  = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
-  // Cache handles to inputs (IDs match your markup)
+  // Cache handles to inputs (IDs match template markup)
   const els = {
     form: $('#raceForm'),
     eventLabel: $('#eventLabel'),
@@ -332,7 +332,7 @@
     els.rowSoftEnd?.classList.toggle('is-disabled', !softEnabled);
   }
 
-  // Build YOUR existing config shape from the form (kept for UI)
+  // Build the existing config shape from the form (kept for UI)
   function formToConfig() {
     const isTime = !!els.optTime?.checked;
     const timeMin = clamp(parseInt(els.limitValueS?.value, 10) || 0, 0, 6 * 60);
@@ -387,7 +387,7 @@
       cfg.countdown.timeout_s = 0;
     }
 
-    // Sounds block (optional controls may be absent in your markup)
+    // Sounds block (optional controls may be absent in the markup)
     const beepLastOn  = !!($('#beepOnLast')?.checked);
     const beepLastVal = parseInt($('#beepOnLastValue')?.value || '0', 10) || 0;
     const whiteModeSel = $('#whiteFlagMode')?.value || 'auto';
@@ -545,7 +545,7 @@
   // Save / Start
   // ------------------------------------------------------------------------
   async function saveConfig() {
-    // Legacy endpoint retained for your workflow; no-op for new flow.
+    // Legacy endpoint retained for backward compatibility; no-op for new flow.
     const cfg = formToConfig();
     try {
       const r = await fetch('/race/config', {
@@ -561,28 +561,29 @@
     }
   }
 
-// Returns ENABLED entrants mapped to the minimal shape Race Setup needs.
-async function fetchEnabledEntrants() {
-  const res = await fetch('/admin/entrants', { cache: 'no-store' });
-  if (!res.ok) throw new Error(`Failed to fetch entrants (${res.status})`);
-  const all = await res.json();
+  // Returns ENABLED entrants mapped to the minimal shape Race Setup needs.
+  async function fetchEnabledEntrants() {
+    const res = await fetch('/admin/entrants', { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Failed to fetch entrants (${res.status})`);
+    const all = await res.json();
 
-  return all
-    .filter(e => !!e.enabled)  // only enabled entrants
-    .map(e => ({
-      id: e.id,                                // REQUIRED, non-null
-      name: e.name,
-      number: e.number,                        // leave as-is; server stringifies
-      tag: (e.tag != null ? String(e.tag).trim() : null),
-      enabled: true,                           // we filtered already
-      status: ((e.status || 'ACTIVE') + '').toUpperCase(),
-    }));
-}
+    return all
+      .filter(e => !!e.enabled)  // only enabled entrants
+      .map(e => ({
+        id: e.id,                                // REQUIRED, non-null
+        name: e.name,
+        number: e.number,                        // leave as-is; server stringifies
+        tag: (e.tag != null ? String(e.tag).trim() : null),
+        enabled: true,                           // we filtered already
+        status: ((e.status || 'ACTIVE') + '').toUpperCase(),
+      }));
+  }
+
   // NEW: authoritative start that posts the combined payload to /race/setup
   async function startRace() {
     const cfg = formToConfig();
 
-    // Guardrails (same UX you had)
+    // Guardrails (matches previous UX)
     const decoderOk  = els.decoderBypass?.checked || els.chipDecoder?.classList.contains('ok');
     const entrantsOk = els.chipEntrants?.classList.contains('ok') || els.chipEntrants?.classList.contains('warn');
     if (!decoderOk || !entrantsOk) {
@@ -665,7 +666,7 @@ async function fetchEnabledEntrants() {
     bindReadiness();
     bindActions();
 
-    // New: wire dynamic row enable/disable helpers
+  // Wire dynamic row enable/disable helpers
     wireRowToggles();
   }
 

@@ -103,6 +103,38 @@ Replace `"green"` with the desired flag: `"yellow"`, `"red"`, `"white"`, `"check
 
 ---
 
+### 8.1 Flag Operation Cheat Sheet (2025-10-21)
+
+**Phases:** `pre`, `countdown`, `green`, `white`, `checkered`
+
+**Flags:** `PRE`, `GREEN`, `YELLOW`, `RED`, `BLUE`, `WHITE`, `CHECKERED`
+
+Allowed flag presses by current phase:
+
+| Phase | Allowed Flags |
+| --- | --- |
+| `pre` | `PRE`, `GREEN` (operator can arm/start green) |
+| `countdown` | `PRE` only (timer flips to `GREEN` when countdown expires) |
+| `green` | `GREEN`, `YELLOW`, `RED`, `BLUE`, `WHITE`, `CHECKERED` (may always return to `GREEN`) |
+| `white` | `GREEN`, `YELLOW`, `RED`, `BLUE`, `WHITE`, `CHECKERED` (may always return to `GREEN`) |
+| `checkered` | `CHECKERED` (locked; change phase via End/Reset controls) |
+
+- Sending the same flag twice is idempotent. The call returns **200 OK** and leaves state unchanged.
+- Countdown only permits returning to `PRE`; the clock promotes to `GREEN` when the timer elapses.
+
+**In the Operator UI:**
+- The flag pill in the header mirrors the active flag with a high-contrast color and stays on `PRE` during countdown until the race actually goes green.
+- Flag buttons are disabled whenever a flag is illegal for the current phase (for example, only `PRE` is enabled during countdown). While racing, `GREEN` is always enabled so you can recover to green quickly.
+- After you click a flag the UI polls `/race/state` a little faster (~250 ms) so the change appears immediately.
+
+**Quick spot-check:**
+1. From `green`, press **Yellow** → pill shows Yellow.
+2. Then press **Green** → pill shows Green again.
+3. During **countdown**, only **PRE** is enabled; use it to abort the start.
+4. Clicking the same flag twice is a no-op but still reports success, which is expected.
+
+---
+
 ## 9. Choosing and Using Decoders
 
 The race timing system can work with several different hardware decoders. You only need one active at a time. This is controlled in the configuration file (`config/config.yaml`).

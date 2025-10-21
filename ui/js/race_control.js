@@ -380,22 +380,25 @@ function updateFlagPill(st){
   const txt  = document.getElementById('flagPillText');
   if (!pill || !txt) return;
 
-  const flag  = (st.flag || 'PRE').toUpperCase();   // trust flag, ignore countdown
-  const label = {
-    PRE:'Pre-race', GREEN:'Green', YELLOW:'Yellow',
-    RED:'Red', BLUE:'Blue', WHITE:'White', CHECKERED:'Checkered'
-  }[flag] || flag;
+  const flag  = (st.flag || 'PRE').toUpperCase();
+  const phase = (st.phase||'pre').toLowerCase();
 
-  // Only special-case GREEN/CHECKERED; countdown shows PRE
+  const label = { PRE:'Pre-race', GREEN:'Green', YELLOW:'Yellow', RED:'Red', BLUE:'Blue', WHITE:'White', CHECKERED:'Checkered' }[flag] || flag;
+
   if (flag === 'GREEN')       txt.textContent = 'Green — Race in progress';
   else if (flag === 'CHECKERED') txt.textContent = 'Checkered — Race complete';
-  else                        txt.textContent = label;
+  else                         txt.textContent = label;
 
-  if (_lastPillFlag !== flag) {
+  // one-shot pulse you already had
+  if (window._lastPillFlag !== flag) {
     pill.classList.remove('pulse');
     setTimeout(() => pill.classList.add('pulse'), 0);
-    _lastPillFlag = flag;
+    window._lastPillFlag = flag;
   }
+
+  // NEW: continuous beacon for everything except GREEN/CHECKERED
+  const shouldBeacon = !(flag === 'GREEN' || flag === 'CHECKERED');
+  pill.classList.toggle('beacon', shouldBeacon);
 }
 
 

@@ -1,7 +1,5 @@
 # ChronoCore Technical Reference Guide
-
 This document provides a comprehensive reference to the design, architecture, and operation of the ChronoCore Race Software.  
-It is intended for engineers, contributors, and technically curious operators who want to understand the internals of the system.  
 Lightweight summaries are included for quick readers, while detailed flows and appendices support deeper study.
 
 ---
@@ -324,11 +322,72 @@ LIMIT 1;
 
 ## Notes for UI integration
 - Map `409` to a clear user message that identifies the conflicting entrant when possible.
-- Map `412` to “Load roster first” guidance with a one‑click reload action.
+- Map `412` to “Load roster first” guidance with a one-click reload action.
 - Surface DB path from `/readyz` in an “About / Diagnostics” panel to speed up support.
+
+## 7.4 Flag State Machine & Countdown (2025-10-21)
+
+The race controller maintains both a **phase** (coarse lifecycle) and a **flag** (operator-visible color). API consumers and UIs must respect the state machine below to avoid illegal transitions and to keep the race clock aligned with race control decisions.
+
+### Phase overview
+- `pre`: grid-up / warm-up. Clock stopped. Operator may jump directly to `green`.
+- `countdown`: optional arming period. Clock stopped, UI shows an arming timer. Only `pre` is accepted during this phase; the scheduler promotes to `green` automatically when the timer expires.
+- `green`: main racing phase. Clock running. All field flags are legal, and calling `green` again is idempotent.
+- `white`: final lap window. Semantics mirror `green`, but UI may highlight the banner.
+- `checkered`: race frozen. Clock and classification lock until the session resets or a new race loads.
+
+### Allowed flag transitions
+
+| Current phase | Accepted flags | Notes |
+| --- | --- | --- |
+| `pre` | `pre`, `green` | Countdown may be scheduled from `pre`; repeated `pre` calls are no-ops. |
+| `countdown` | `pre` | UI uses this to abort a start. Timer fires `green` automatically; manual `green` calls are acknowledged but ignored. |
+| `green` | `green`, `yellow`, `red`, `blue`, `white`, `checkered` | Returning to `green` is always legal so marshals can clear incidents quickly. |
+| `white` | `green`, `yellow`, `red`, `blue`, `white`, `checkered` | Identical to `green` apart from banner styling. |
+| `checkered` | `checkered` | Engine refuses other colors until the session resets; repeated `checkered` is idempotent. |
+
+Duplicate submissions return **200 OK** with `flag` unchanged so callers can treat `/engine/flag` as idempotent.
+
+### API contract (`POST /engine/flag`)
+```json
+{ "flag": "green" }
+```
+
+- `flag` is case-insensitive on input but normalized to uppercase in `/race/state` snapshots.
+- Optional countdown: `{ "flag": "green", "countdown_s": 5 }` enters phase `countdown` and returns the projected start time in `countdown_target_utc`.
+- Responses
+  - `200` `{ "ok": true, "flag": "GREEN", "phase": "green" }`
+  - `400` invalid flag token
+  - `409` attempting to exit `checkered` without resetting the session
+- Manual `green` requests during countdown acknowledge with `200` but the scheduler still controls the actual transition.
+
+### Countdown semantics
+- Timer runs server-side via `time.monotonic_ns`; backend restarts cancel the countdown and drop the phase back to `pre`.
+- `/race/state` exposes `phase`, `flag`, `countdown_remaining_ms`, and `green_at_utc` while armed.
+- If the countdown expires while operator latency is high, the engine still promotes to `green` and begins scoring laps immediately.
+
+### UI contract
+- Operator UI polls `/race/state` at ~250 ms for two seconds after a flag change to keep the banner responsive.
+- Disable buttons whose actions would violate the table above; server validation remains authoritative, but preventing illegal presses avoids confusing end users.
+- Spectator UI maps `flag` to `.flag.flag--{color}` classes, with `.flag.is-pulsing` for `yellow`, `red`, `blue`, and `checkered`.
+
+### Error semantics & observability
+- `409 Conflict`: only emitted when a request attempts to leave `checkered`.
+- `412 Precondition Failed`: runtime session not loaded; load entrants first.
+- Every accepted change appends an event with `event_type="flag"` in the journal (`backend/lap_logger.py`). Include phase, flag, UTC timestamp, and operator ID if available.
+- Metrics: `engine_flag_active{flag="GREEN"}=1` when green; `engine_flag_transitions_total` increments on each accepted change.
+
+### Verification checklist
+1. From `pre`, request `green` with a countdown; confirm `phase=countdown`, then `green` fires automatically.
+2. Abort the countdown via `pre`; verify the timer cancels and `green_at_utc` disappears from `/race/state`.
+3. From `green`, send `yellow` → `green`; ensure standings continue updating and responses stay `200`.
+4. After `checkered`, attempt `green`; expect `409` with `phase="checkered"`.
+5. Restart the backend mid-countdown; confirm phase resets to `pre` and no stale countdown remains.
 
 
 ---
+
+
 
 ---
 
