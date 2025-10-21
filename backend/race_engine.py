@@ -79,6 +79,8 @@ class Journal:
         self._lock = threading.Lock()
         self._last_flush = time.time()
         self._ensure_schema()
+        self._white_window_begun: bool = False
+
 
     def _ensure_schema(self):
         if not self.enabled: return
@@ -218,6 +220,9 @@ class RaceEngine:
             self._lap_limit: int = 0
             self._white_window_begun: bool = False
             self.soft_end: bool = False
+            self._white_window_begun = False
+            self._white_set = False
+
 
 
             self.entrants: Dict[int, Entrant] = {}
@@ -369,8 +374,11 @@ class RaceEngine:
         if f not in ALLOWED_FLAGS:
             raise ValueError(f"Invalid flag '{flag}'")
         with self._lock:
+            prev = (self.flag or "").lower()
+            f_upper = str(flag).upper()
+            f_lower = f_upper.lower()
+
             # --- Reset/guard white state on key flag changes ---
-            f_upper = f.upper()
             if f_upper == "GREEN":
                 # When we (re)start green, allow a fresh auto-white later
                 self._white_set = False
@@ -379,13 +387,13 @@ class RaceEngine:
                 self._white_set = True
             # For manual operator colors (YELLOW/RED/BLUE/WHITE), don't touch _white_set here.
 
-            prev = self.flag  # keep your existing line
             # If we leave GREEN after the white window began and WHITE hasn't fired, block auto-WHITE later
-            if (prev == "green" and f_upper in {"RED","YELLOW","BLUE"}
-                and self._white_window_begun and not self._white_set):
-                self._white_set = True    # use as "don't auto-fire" gate
+            if (prev == "green"
+                and f_lower in {"red", "yellow", "blue"}
+                and self._white_window_begun
+                and not self._white_set):
+                self._white_set = True
 
-            prev = self.flag
             self.flag = f
             if f == "green":
                 if not self.running:
@@ -579,21 +587,27 @@ class RaceEngine:
         """Time mode: throw WHITE at T-60s (skip if T<60 or soft/free play)."""
         if self._white_set:
             return
-        if self.flag in ("CHECKERED", "RED", "YELLOW", "BLUE"):
+
+        flag = (self.flag or "").lower()  # normalize once
+        if flag in ("checkered", "red", "yellow", "blue"):
             # Respect race control; don't force WHITE over operator colors.
             return
+
         if self._limit_type != "time" or self._time_limit_s <= 0:
             return
-        # If you have a 'soft_end' concept, skip for soft or free play:
-        soft = bool(getattr(self, "soft_end", False))
-        if soft:
+
+        # Skip auto-white in soft-end / free-play
+        if bool(getattr(self, "soft_end", False)):
             return
-        # Only consider auto-white after window begins
+
+        # Only consider after window begins
         if not self._white_window_begun:
             return
-        # Only allow auto-white if currently GREEN (i.e., we entered or remained GREEN through the window)
-        if self.flag != "green":
+
+        # Only auto-white if currently GREEN (we entered/remained GREEN through window)
+        if flag != "green":
             return
+
         remaining = self._time_limit_s - self._elapsed_s()
         if 0.0 < remaining <= 60.0:
             try:
