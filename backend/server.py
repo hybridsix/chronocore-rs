@@ -871,6 +871,7 @@ async def race_setup(
             race_id=_CURRENT_RACE_ID,
             entrants=entrants_engine,
             race_type=race_type,
+            session_config=_CURRENT_SESSION,
         )
 
         # Capture a minimal echo of what the engine returned (don’t spam huge payloads)
@@ -991,7 +992,12 @@ async def engine_load(payload: Dict[str, Any]):
     # Choose race_type: prefer session mode if available, else default
     race_type = _CURRENT_SESSION.get("mode_id", "sprint") if _CURRENT_SESSION else "sprint"
 
-    snapshot = ENGINE.load(race_id=race_id, entrants=entrants_engine, race_type=str(race_type))
+    snapshot = ENGINE.load(
+        race_id=race_id,
+        entrants=entrants_engine,
+        race_type=str(race_type),
+        session_config=_CURRENT_SESSION,
+    )
     return JSONResponse(snapshot)
 
 
@@ -1332,6 +1338,7 @@ async def reset_session():
         race_id=int(_CURRENT_RACE_ID or 0),
         entrants=_CURRENT_ENTRANTS_ENGINE or [],
         race_type=str(race_type),
+        session_config=_CURRENT_SESSION,
     )
 
     # Best-effort set PRE in engine

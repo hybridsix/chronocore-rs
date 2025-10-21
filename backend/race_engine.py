@@ -39,7 +39,6 @@ class Entrant:
         self.last_pit_s: Optional[float] = None
 
         self._last_hit_ms: Optional[int] = None
-
     def as_snapshot(self, leader_best_s: Optional[float], leader_laps:int) -> Dict:
         # gap_s only meaningful on same-lap cohort; else 0 with lap_deficit>0
         lap_deficit = max(0, leader_laps - self.laps)
@@ -212,6 +211,14 @@ class RaceEngine:
             self._limit_ms = None       # precalc for time limit
             self._limit_laps = None     # precalc for lap limit
             self._limit_reached = False # guard against repeated triggers
+            # white flag / limit tracking for auto white/finish helpers
+            self._white_set: bool = False
+            self._limit_type: str = "time"
+            self._time_limit_s: int = 0
+            self._lap_limit: int = 0
+            self._white_window_begun: bool = False
+            self.soft_end: bool = False
+
 
             self.entrants: Dict[int, Entrant] = {}
             self.tag_to_eid: Dict[str, int] = {}
@@ -225,7 +232,7 @@ class RaceEngine:
             self.sim_active: bool = False
             self.sim_banner: str | None = None
 
-    def load(self, race_id:int, entrants:List[dict], race_type:str="sprint") -> dict:
+    def load(self, race_id:int, entrants:List[dict], race_type:str="sprint", session_config: Optional[dict]=None) -> dict:
         with self._lock:
             self.reset()
             self.race_id = int(race_id)
@@ -233,6 +240,53 @@ class RaceEngine:
 
             # apply mode overrides (e.g., min_lap_s, limits) if present
             self._apply_mode_cfg(self.race_type)
+
+            # Capture session-provided limit metadata for white/checkered automation
+            limit_cfg = {}
+            if isinstance(session_config, dict):
+                limit_cfg = session_config.get("limit") or {}
+            ltype = str(limit_cfg.get("type", "")).lower()
+
+            if ltype in {"time", "laps"}:
+                self._limit_type = ltype
+            elif isinstance(self._limit, dict) and self._limit.get("type") in {"time", "laps"}:
+                self._limit_type = str(self._limit["type"]).lower()
+            else:
+                self._limit_type = "time"
+
+            if self._limit_type == "time":
+                value = limit_cfg.get("value_s") if isinstance(limit_cfg, dict) else None
+                if value is None and isinstance(self._limit, dict) and self._limit.get("type") == "time":
+                    value = self._limit.get("value")
+                self._time_limit_s = int(float(value)) if value not in (None, "") else 0
+                self._lap_limit = 0
+            else:
+                value = limit_cfg.get("value_laps") if isinstance(limit_cfg, dict) else None
+                if value is None and isinstance(self._limit, dict) and self._limit.get("type") == "laps":
+                    value = self._limit.get("value")
+                self._lap_limit = int(float(value)) if value not in (None, "") else 0
+                self._time_limit_s = 0
+
+            # Soft-end (time mode only)
+            self.soft_end = bool((session_config or {}).get("limit", {}).get("soft_end", False)) \
+                            if self._limit_type == "time" else False
+
+            # Make enforcement + snapshot reflect session_config if provided
+            if self._limit_type == "time" and self._time_limit_s > 0:
+                self._limit       = {"type": "time", "value": self._time_limit_s}
+                self._limit_ms    = int(self._time_limit_s * 1000)
+                self._limit_laps  = None
+            elif self._limit_type == "laps" and self._lap_limit > 0:
+                self._limit       = {"type": "laps", "value": self._lap_limit}
+                self._limit_laps  = int(self._lap_limit)
+                self._limit_ms    = None
+            else:
+                self._limit       = None
+                self._limit_ms    = None
+                self._limit_laps  = None
+
+            # Reset white flag trigger state for a fresh session
+            self._white_set = False
 
             # install entrants
             for e in entrants or []:
@@ -315,6 +369,22 @@ class RaceEngine:
         if f not in ALLOWED_FLAGS:
             raise ValueError(f"Invalid flag '{flag}'")
         with self._lock:
+            # --- Reset/guard white state on key flag changes ---
+            f_upper = f.upper()
+            if f_upper == "GREEN":
+                # When we (re)start green, allow a fresh auto-white later
+                self._white_set = False
+            elif f_upper == "CHECKERED":
+                # We're done; ensure we won't auto-white post-finish
+                self._white_set = True
+            # For manual operator colors (YELLOW/RED/BLUE/WHITE), don't touch _white_set here.
+
+            prev = self.flag  # keep your existing line
+            # If we leave GREEN after the white window began and WHITE hasn't fired, block auto-WHITE later
+            if (prev == "green" and f_upper in {"RED","YELLOW","BLUE"}
+                and self._white_window_begun and not self._white_set):
+                self._white_set = True    # use as "don't auto-fire" gate
+
             prev = self.flag
             self.flag = f
             if f == "green":
@@ -355,6 +425,13 @@ class RaceEngine:
             now = time.perf_counter()
             delta_ms = int((now - self.clock_start_monotonic) * 1000)
             self.clock_ms += max(0, delta_ms)
+
+            # Mark when T-60 window begins (only for time-limited ≥ 60s)
+            if (self._limit_type == "time" and self._time_limit_s >= 60):
+                threshold_ms = int((self._time_limit_s - 60) * 1000)
+                if not self._white_window_begun and self.clock_ms >= threshold_ms:
+                    self._white_window_begun = True
+
             self.clock_start_monotonic = now
 
             # Time-limit enforcement
@@ -446,6 +523,7 @@ class RaceEngine:
                 ent.pace_buf.append(delta_s)
                 if len(ent.pace_buf) > 5:
                     ent.pace_buf = ent.pace_buf[-5:]
+                self._maybe_auto_white_lap()
                 lap_added = True
                 lap_time_s = round(delta_s, 3)
                 # Lap-limit enforcement
@@ -474,6 +552,75 @@ class RaceEngine:
         self._limit_reached = True
         # emit event for journal/debug
         self._emit_flag_change("checkered")
+
+    # ---------- internal helpers ----------
+    def _elapsed_s(self) -> float:
+        """Return elapsed seconds since GREEN (0 if not running)."""
+        # If you already expose clock_ms from the main clock updater, prefer that path.
+        try:
+            return max(0.0, float(self.clock_ms) / 1000.0)
+        except Exception:
+            # Fallback: derive from our monotonic clock if we're currently running.
+            if getattr(self, "running", False) and self.clock_start_monotonic is not None:
+                return max(0.0, time.perf_counter() - self.clock_start_monotonic)
+            return 0.0
+
+    def _leader_laps(self) -> int:
+        """Return the current leader's lap count (0 if unknown)."""
+        # With standings derived from entrants, grab the highest lap among enabled drivers.
+        try:
+            laps = [int(ent.laps or 0) for ent in self.entrants.values() if getattr(ent, "enabled", True)]
+            return max(laps) if laps else 0
+        except Exception:
+            # As a final fallback, treat the leader as unknown.
+            return 0
+
+    def _maybe_auto_white_time(self) -> None:
+        """Time mode: throw WHITE at T-60s (skip if T<60 or soft/free play)."""
+        if self._white_set:
+            return
+        if self.flag in ("CHECKERED", "RED", "YELLOW", "BLUE"):
+            # Respect race control; don't force WHITE over operator colors.
+            return
+        if self._limit_type != "time" or self._time_limit_s <= 0:
+            return
+        # If you have a 'soft_end' concept, skip for soft or free play:
+        soft = bool(getattr(self, "soft_end", False))
+        if soft:
+            return
+        # Only consider auto-white after window begins
+        if not self._white_window_begun:
+            return
+        # Only allow auto-white if currently GREEN (i.e., we entered or remained GREEN through the window)
+        if self.flag != "green":
+            return
+        remaining = self._time_limit_s - self._elapsed_s()
+        if 0.0 < remaining <= 60.0:
+            try:
+                self.set_flag("WHITE")
+                self._white_set = True
+            except Exception:
+                pass
+
+    def _maybe_auto_white_lap(self) -> None:
+        """Lap mode: throw WHITE when leader starts the final lap."""
+        if self._white_set:
+            return
+        if self.flag in ("CHECKERED", "RED", "YELLOW", "BLUE"):
+            return
+        if self._limit_type != "laps" or self._lap_limit <= 0:
+            return
+        if self.flag not in ("GREEN", "WHITE"):
+            return
+        leader = self._leader_laps()
+        if leader >= max(0, self._lap_limit - 1):
+            # Leader is at final lap threshold—signal WHITE exactly once.
+            try:
+                self.set_flag("WHITE")
+                self._white_set = True
+            except Exception:
+                pass
+            
     def _alloc_provisional_id(self) -> int:
         # ensure we don't collide with explicit entrant_ids
         while self._next_provisional_id in self.entrants:
@@ -530,6 +677,7 @@ class RaceEngine:
         with self._lock:
             # live clock tick (don’t tick if frozen)
             self._update_clock()
+            self._maybe_auto_white_time()
             self._last_update_utc = UTC_MS()
             # ordering
             entrants = list(self.entrants.values())
