@@ -1163,52 +1163,86 @@ async def engine_set_flag(req: FlagReq):
 @app.get("/race/state")
 async def race_state():
     """
-    Return a live snapshot. If ENGINE.snapshot() exists, use it and then
-    OVERWRITE phase/flag/limit/countdown/clock with authoritative local state.
+    Hybrid snapshot:
+      - Use ENGINE.snapshot() when available.
+      - PRE/COUNTDOWN: drive time from local _state_clock_block and mirror to top-level.
+      - GREEN/WHITE/CHECKERED: never overwrite engine clock; only mirror engine's clock.clock_ms to top-level if absent.
+      - Fill missing phase/flag/limit/countdown_from_s via setdefault.
+      - Keep local _RACE_STATE in sync with engine flags EXCEPT during COUNTDOWN.
+      - Always include 'seen'.
     """
     if hasattr(ENGINE, "snapshot"):
         try:
             snap = ENGINE.snapshot() or {}
             if isinstance(snap, dict):
-                # Authoritative overlays from our race state
-                snap["phase"] = _RACE_STATE["phase"]
-                snap["flag"]  = _RACE_STATE["flag"]
-                snap["limit"] = _RACE_STATE["limit"]
-                snap["countdown_from_s"] = _RACE_STATE["countdown_from_s"]
+            # 1) Sync local mirror from engine-driven flags FIRST,
+            #    but DO NOT clobber local COUNTDOWN (engine doesn't know about it).
+                local_phase_now = str(_RACE_STATE.get("phase") or "").lower()
+                if local_phase_now != "countdown":
+                    try:
+                        f = str(snap.get("flag") or "").upper()
+                        if f in ("WHITE", "CHECKERED", "GREEN", "PRE", "YELLOW", "RED", "BLUE"):
+                            _RACE_STATE["flag"] = f
+                            # Only map flags that have explicit Phase values; leave others as-is
+                            phase_map = {
+                                "WHITE":     Phase.WHITE.value,
+                                "CHECKERED": Phase.CHECKERED.value,
+                                "GREEN":     Phase.GREEN.value,
+                                "PRE":       Phase.PRE.value,
+                            }
+                            _RACE_STATE["phase"] = phase_map.get(f, _RACE_STATE["phase"])
+                    except Exception:
+                        pass
+                # 2) Fill gaps without stomping engine values
+                snap.setdefault("phase", _RACE_STATE["phase"])
+                snap.setdefault("flag",  _RACE_STATE["flag"])
+                snap.setdefault("limit", _RACE_STATE["limit"])
+                snap.setdefault("countdown_from_s", _RACE_STATE["countdown_from_s"])
 
-                # Clock comes from our helper; mirror to top-level for legacy UI
-                clock_block = _state_clock_block()
-                snap["clock"] = clock_block
-                snap["clock_ms"] = clock_block.get("clock_ms")
-                snap["countdown_remaining_s"] = clock_block.get("countdown_remaining_s")
+                # 3) Decide overlay by phase AFTER sync
+                phase_lower = str(snap.get("phase") or _RACE_STATE["phase"] or "").lower()
 
-                # Optional (helps some UIs): declare running only when GREEN
-                snap["running"] = (_RACE_STATE["phase"] == Phase.GREEN.value)
+                if phase_lower in ("pre", "countdown"):
+                    # Local countdown/preview is authoritative for UI
+                    cb = _state_clock_block()
+                    snap["clock"] = cb
+                    snap["clock_ms"] = cb.get("clock_ms")
+                    snap["countdown_remaining_s"] = cb.get("countdown_remaining_s")
+                else:
+                    # Racing / finish phases → engine owns time.
+                    # If engine provided a clock block but no top-level clock_ms, mirror it for legacy UI.
+                    if "clock" in snap and isinstance(snap["clock"], dict) and "clock_ms" not in snap:
+                        cm = snap["clock"].get("clock_ms")
+                        if isinstance(cm, (int, float)):
+                            snap["clock_ms"] = cm
+                    # IMPORTANT: Do NOT write our local clock here; preserves freeze at CHECKERED.
 
+                # 4) running: prefer engine; else infer (green/white = running)
+                snap.setdefault("running", phase_lower in ("green", "white"))
+
+                # 5) Live 'seen' block for operator UI
                 snap["seen"] = _state_seen_block()
 
             return JSONResponse(snap)
         except Exception:
-            pass  # fall through
+            pass  # fall through to local scaffold if engine snapshot fails
 
-    # Local scaffold (no engine snapshot)
-    clock_block = _state_clock_block()
+    # Fallback when no engine snapshot available
+    cb = _state_clock_block()
     return JSONResponse({
         "ok": True,
         "race_id": _RACE_STATE["race_id"],
-        "phase": _RACE_STATE["phase"],
-        "flag": _RACE_STATE["flag"],
-        "limit": _RACE_STATE["limit"],
+        "phase":   _RACE_STATE["phase"],
+        "flag":    _RACE_STATE["flag"],
+        "limit":   _RACE_STATE["limit"],
         "countdown_from_s": _RACE_STATE["countdown_from_s"],
-        "clock": clock_block,
-        "clock_ms": clock_block.get("clock_ms"),
-        "countdown_remaining_s": clock_block.get("countdown_remaining_s"),
-        "engine": "no-snapshot",
-        "seen": _state_seen_block(),
-
+        "clock":   cb,
+        "clock_ms": cb.get("clock_ms"),
+        "countdown_remaining_s": cb.get("countdown_remaining_s"),
+        "engine":  "no-snapshot",
+        "seen":    _state_seen_block(),
+        "running": str(_RACE_STATE["phase"]).lower() in ("green", "white"),
     })
-
-
 
 # --------------------------- Start / End / Abort -----------------------------
 

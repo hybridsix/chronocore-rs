@@ -369,47 +369,52 @@ class RaceEngine:
 
 
     # ---------- flag & clock ----------
-    def set_flag(self, flag:str) -> dict:
-        f = str(flag).lower()
-        if f not in ALLOWED_FLAGS:
+    def set_flag(self, flag: str) -> dict:
+        f_lower = str(flag).lower()
+        if f_lower not in ALLOWED_FLAGS:
             raise ValueError(f"Invalid flag '{flag}'")
+
         with self._lock:
             prev = (self.flag or "").lower()
-            f_upper = str(flag).upper()
-            f_lower = f_upper.lower()
 
-            # --- Reset/guard white state on key flag changes ---
-            if f_upper == "GREEN":
-                # When we (re)start green, allow a fresh auto-white later
-                self._white_set = False
-            elif f_upper == "CHECKERED":
-                # We're done; ensure we won't auto-white post-finish
-                self._white_set = True
-            # For manual operator colors (YELLOW/RED/BLUE/WHITE), don't touch _white_set here.
-
-            # If we leave GREEN after the white window began and WHITE hasn't fired, block auto-WHITE later
+            # If we leave GREEN after the last-minute window began and WHITE hasn't fired,
+            # block automatic WHITE when/if we come back to GREEN later.
             if (prev == "green"
                 and f_lower in {"red", "yellow", "blue"}
-                and self._white_window_begun
-                and not self._white_set):
+                and getattr(self, "_white_window_begun", False)
+                and not getattr(self, "_white_set", False)):
+                self._white_set = True  # treat as "don't auto-fire" gate
+
+            # Adjust white state based on the *incoming* flag
+            if f_lower == "green":
+                # Only re-arm auto-white for a fresh start (PRE/COUNTDOWN → GREEN).
+                if prev in {"pre", "countdown"}:
+                    self._white_set = False
+            elif f_lower == "checkered":
+                # Finishing guarantees no future auto-white
+                self._white_set = True
+            elif f_lower == "white":
+                # Operator threw WHITE manually: mark it as set to avoid redundant re-sets
                 self._white_set = True
 
-            self.flag = f
-            if f == "green":
+            # Commit the flag and apply clock/run effects
+            self.flag = f_lower
+            if f_lower == "green":
                 if not self.running:
                     self.running = True
                     self.clock_start_monotonic = time.perf_counter()
-            elif f == "checkered":
-                # freeze at current time
+            elif f_lower == "checkered":
+                # Freeze clock at current time
                 self._update_clock()
                 self.running = False
                 self.clock_start_monotonic = None
-            elif f in {"pre","yellow","red","white","blue"}:
-                # no change to running (per our rules)
+            else:
+                # pre/yellow/red/white/blue → no change to running
                 pass
 
             self._emit_flag_change(self.flag)
             return self.snapshot()
+
         
     # ---------- simulator indicator  ----------
     def set_sim(self, on: bool, label: str | None = None):
@@ -588,55 +593,57 @@ class RaceEngine:
 
     def _maybe_auto_white_time(self) -> None:
         """Time mode: throw WHITE at T-60s (skip if T<60 or soft/free play)."""
-        if self._white_set:
+        if getattr(self, "_white_set", False):
             return
 
-        flag = (self.flag or "").lower()  # normalize once
-        if flag in ("checkered", "red", "yellow", "blue"):
-            # Respect race control; don't force WHITE over operator colors.
+        flag = (self.flag or "").lower()
+        if flag in {"checkered", "red", "yellow", "blue"}:
             return
-
-        if self._limit_type != "time" or self._time_limit_s <= 0:
+        if getattr(self, "_limit_type", "") != "time" or getattr(self, "_time_limit_s", 0) <= 0:
             return
-
-        # Skip auto-white in soft-end / free-play
         if bool(getattr(self, "soft_end", False)):
             return
 
-        # Only consider after window begins
-        if not self._white_window_begun:
-            return
+        rem = float(self._time_limit_s) - float(self._elapsed_s())
 
-        # Only auto-white if currently GREEN (we entered/remained GREEN through window)
+        # Mark the T−60 window the first time we enter it
+        if (not getattr(self, "_white_window_begun", False)
+            and self._time_limit_s >= 60
+            and 0.0 < rem <= 60.0):
+            self._white_window_begun = True
+
+        # Only auto-white if the window has begun and we're GREEN now
+        if not getattr(self, "_white_window_begun", False):
+            return
         if flag != "green":
             return
 
-        remaining = self._time_limit_s - self._elapsed_s()
-        if 0.0 < remaining <= 60.0:
+        if 0.0 < rem <= 60.0:
             try:
                 self.set_flag("WHITE")
                 self._white_set = True
             except Exception:
                 pass
 
+
     def _maybe_auto_white_lap(self) -> None:
-        """Lap mode: throw WHITE when leader starts the final lap."""
         if self._white_set:
             return
-        if self.flag in ("CHECKERED", "RED", "YELLOW", "BLUE"):
+        flag = (self.flag or "").lower()
+        if flag in {"checkered", "red", "yellow", "blue"}:
             return
         if self._limit_type != "laps" or self._lap_limit <= 0:
             return
-        if self.flag not in ("GREEN", "WHITE"):
+        if flag not in {"green", "white"}:
             return
         leader = self._leader_laps()
         if leader >= max(0, self._lap_limit - 1):
-            # Leader is at final lap threshold—signal WHITE exactly once.
             try:
                 self.set_flag("WHITE")
                 self._white_set = True
             except Exception:
                 pass
+
             
     def _alloc_provisional_id(self) -> int:
         # ensure we don't collide with explicit entrant_ids
@@ -691,18 +698,73 @@ class RaceEngine:
 
     # ---------- snapshot & ordering ----------
     def snapshot(self) -> dict:
+        """
+        Build a live snapshot.
+
+        Two-phase to avoid deadlocks:
+        1) Under lock: tick clock, maybe auto-WHITE, decide if we must CHECKERED.
+        2) Outside lock: call set_flag("CHECKERED") if required (set_flag grabs the lock).
+        3) Under lock again: assemble the snapshot dict.
+        """
+        must_checkered = False
+
+        # ----- Phase 1: tick & decide, under lock -----
         with self._lock:
             # live clock tick (don’t tick if frozen)
-            self._update_clock()
-            self._maybe_auto_white_time()
+            try:
+                self._update_clock()
+            except Exception:
+                pass
+
+            # time-mode T−60 auto-white (respects soft_end, colors, window, etc.)
+            try:
+                self._maybe_auto_white_time()
+            except Exception:
+                pass
+
+            # Hard time limit → auto-CHECKERED (unless soft_end)
+            try:
+                if (getattr(self, "_limit_type", "") == "time"
+                    and getattr(self, "_time_limit_s", 0) > 0
+                    and not bool(getattr(self, "soft_end", False))
+                    and getattr(self, "clock_ms", 0) >= int(self._time_limit_s * 1000)
+                    and (self.flag or "").lower() != "checkered"):
+                    must_checkered = True
+            except Exception:
+                pass
+
+            # (Optional: laps hard stop enforcement here too, in case ingest is quiet)
+            try:
+                if (not must_checkered
+                    and getattr(self, "_limit_type", "") == "laps"
+                    and getattr(self, "_lap_limit", 0) > 0
+                    and self._leader_laps() >= int(self._lap_limit)
+                    and (self.flag or "").lower() != "checkered"):
+                    must_checkered = True
+            except Exception:
+                pass
+
+        # ----- Phase 2: enforce checkered outside lock (avoids deadlock) -----
+        if must_checkered:
+            try:
+                self.set_flag("CHECKERED")  # set_flag acquires self._lock internally
+            except Exception:
+                # Don't blow up snapshot if something races here
+                pass
+
+        # ----- Phase 3: assemble snapshot under lock -----
+        with self._lock:
             self._last_update_utc = UTC_MS()
+
             # ordering
             entrants = list(self.entrants.values())
+
             # sort: laps desc → best asc → last asc → entrant_id asc
-            def sort_key(e:Entrant):
+            def sort_key(e: Entrant):
                 best = e.best_s if e.best_s is not None else 9e9
                 last = e.last_s if e.last_s is not None else 9e9
                 return (-e.laps, best, last, e.entrant_id)
+
             entrants.sort(key=sort_key)
 
             leader_best = entrants[0].best_s if entrants else None
@@ -721,19 +783,24 @@ class RaceEngine:
                 "source": "engine",
                 "sim": self.sim_active,
                 "sim_label": self.sim_banner,
-                "features": {"pit_timing": self.feature_pits}
+                "features": {"pit_timing": self.feature_pits},
             }
+
             # Optional: advertise active mode & event meta (helps UIs/exports)
             if self._active_mode:
                 snap["mode"] = self._active_mode
             if isinstance(self._event, dict) and self._event:
                 snap["event"] = self._event
+
+            # Limit block (keep your existing shape; add remaining when time mode)
             if self._limit:
                 lim = {"type": self._limit["type"], "value": self._limit["value"]}
                 if self._limit_ms is not None:
                     lim["remaining_ms"] = max(0, self._limit_ms - self.clock_ms)
                 snap["limit"] = lim
+
             return snap
+
 
     def _maybe_checkpoint(self):
         now = time.time()
