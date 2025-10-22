@@ -1300,7 +1300,7 @@ async def race_start_race():
 
 
 
-
+#---------------------- End Race      ----------------------
 @app.post("/race/control/end_race")
 def race_end_race():
     global _COUNTDOWN_TASK
@@ -1321,27 +1321,54 @@ def race_end_race():
             pass
     return {"ok": True, "phase": _RACE_STATE["phase"]}
 
-
+# ---------------------- Abort & Reset route ----------------------
 @app.post("/race/control/abort_reset")
-def race_abort_reset():
-    global _COUNTDOWN_TASK
-    _cancel_task(_COUNTDOWN_TASK)
-    _SEEN_COUNTS.clear()
-    _SEEN_TOTAL = 0
+async def race_abort_reset():
     """
     Abort & reset to PRE (keep roster intact, clear timing).
     """
-    _RACE_STATE["phase"] = Phase.PRE.value
-    _RACE_STATE["flag"] = "PRE"
+    global _COUNTDOWN_TASK
+    _cancel_task(_COUNTDOWN_TASK)
+
+    # Local mirror: PRE with no start time
+    _RACE_STATE["phase"]    = Phase.PRE.value
+    _RACE_STATE["flag"]     = "PRE"
     _RACE_STATE["start_at"] = None
-    # If your engine has an explicit reset:
+
+    # Best-effort engine reset
     reset_fn = getattr(ENGINE, "reset_session", None)
     if callable(reset_fn):
         try:
-            reset_fn()
+            reset_fn()   # should stop running and zero the clock
         except Exception:
             pass
+    else:
+        # Fallback: force-stop the clock and go to PRE
+        try:
+            if hasattr(ENGINE, "running"):
+                ENGINE.running = False
+            if hasattr(ENGINE, "clock_start_monotonic"):
+                ENGINE.clock_start_monotonic = None
+            if hasattr(ENGINE, "clock_ms"):
+                ENGINE.clock_ms = 0
+        except Exception:
+            pass
+        try:
+            if hasattr(ENGINE, "set_flag"):
+                ENGINE.set_flag("PRE")
+        except Exception:
+            pass
+
+    # Optional: clear in-memory seen counters if you keep them
+    try:
+        if "_SEEN" in globals(): _SEEN.clear()
+        if "_SEEN_TOTAL" in globals(): 
+            globals()["_SEEN_TOTAL"] = 0
+    except Exception:
+        pass
+
     return {"ok": True, "phase": _RACE_STATE["phase"]}
+
 
 # ---------------------- Backward-compatible reset route ----------------------
 

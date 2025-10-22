@@ -33,6 +33,21 @@
     return `${sign}${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`;
   }
 
+  function paintClock(sec) {
+    if (!els.clockDisplay) return;
+    const neg = sec < 0;
+    const s   = Math.abs(Math.floor(sec || 0));
+    const h   = Math.floor(s / 3600);
+    const m   = Math.floor((s % 3600) / 60);
+    const r   = s % 60;
+
+    const digits = `${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`;
+    // Reserve one fixed-width character for the sign so the text never shifts.
+    els.clockDisplay.innerHTML =
+      `<span class="clock-sign">${neg ? '–' : '&#8201;'}</span>` +
+      `<span class="clock-digits">${digits}</span>`;
+  }
+
   function fmtLapTime(sec) {
     if (sec == null) return '—';
     // m:ss.mmm where m can grow; .mmm is 3 digits
@@ -182,18 +197,48 @@ function renderSeen(state) {
     return `${m}m ${ss}s`;
   }
 
+  function renderRCSummary(st) {
+    const el = document.getElementById('rcSummaryText');
+    if (!el) return;
+    el.textContent = summarizeFromState(st);
+}
+
+
   function summarizeFromState(st) {
     // Limit
     let limitStr = '—';
     const lim = st?.limit;
-    if (lim?.type === 'time') limitStr = `Time ${secondsToHuman(lim.value_s)}`;
-    else if (lim?.type === 'laps') limitStr = `Laps ${lim.value_laps}`;
-    else if (lim?.type) limitStr = String(lim.type).toUpperCase();
 
-    // Rank (for now mirror Setup’s “Total Laps”; change here if you add modes)
+    if (lim && typeof lim === 'object') {
+      const t = String(lim.type || '').toLowerCase();
+
+      if (t === 'time') {
+        // accept either value_s (old UI) or value (engine snapshot)
+        const seconds = (lim.value_s != null) ? Number(lim.value_s)
+                      : (lim.value    != null) ? Number(lim.value)
+                      : null;
+        if (Number.isFinite(seconds)) {
+          limitStr = `Time ${secondsToHuman(seconds)}`;
+          // optionally show soft-end if present on either source
+          if (lim.soft_end === true) limitStr += ' • soft';
+        }
+      } else if (t === 'laps') {
+        // accept either value_laps (old UI) or value (engine snapshot)
+        const laps = (lim.value_laps != null) ? Number(lim.value_laps)
+                  : (lim.value       != null) ? Number(lim.value)
+                  : null;
+        if (Number.isFinite(laps)) {
+          limitStr = `Laps ${laps}`;
+        }
+      } else if (t) {
+        limitStr = String(lim.type).toUpperCase();
+      }
+    }
+
+    // Rank (kept simple for now)
     const rankStr = 'Rank: Total Laps';
 
-    // MinLap
+    // MinLap: accept from several places
     const minLap = st?.min_lap_s ?? st?.session?.min_lap_s ?? st?.engine?.min_lap_s;
     const minLapStr = (minLap != null) ? `MinLap ${Number(minLap).toFixed(1)}s` : null;
 
@@ -201,13 +246,6 @@ function renderSeen(state) {
     if (minLapStr) parts.push(minLapStr);
     return parts.join(' • ');
   }
-
-  function renderRCSummary(st) {
-    const el = document.getElementById('rcSummaryText');
-    if (!el) return;
-    el.textContent = summarizeFromState(st);
-  }
-
 
 
 
@@ -231,8 +269,8 @@ function renderSeen(state) {
   // ----------------------------------------------------------------------
   const els = {
     // Action buttons
-    btnPreRace     : $('#btnPreRace'),
-    btnStartPrep   : $('#btnStartPrep'),
+    //btnPreRace     : $('#btnPreRace'),
+    //btnStartPrep   : $('#btnStartPrep'),
     btnStartRace   : $('#btnStartRace'),
     btnGoGreen     : $('#btnGoGreen'),
     btnEndRace     : $('#btnEndRace'),
@@ -252,6 +290,10 @@ function renderSeen(state) {
     // Flag pad
     flagPad        : $('#flagPad'),
     preFlagRow     : $('#preFlagRow'),
+
+    //Post-finish actions
+    postFinish     : document.querySelector('#postFinishActions'),
+    btnResults     : document.querySelector('#btnResults'),
   };
 
   // ----------------------------------------------------------------------
@@ -403,19 +445,26 @@ function updateFlagPill(st){
 
 
 
+// ----------------------------------------------------------------------
+// Clock mode button update (remaining vs elapsed)
+//  ----------------------------------------------------------------------
 
-  function updateClockModeButton(st) {
-    const btn = els.btnClockMode;
-    if (!btn) return;
-    const ph = st?.phase;
-    const remaining = st?.clock?.remaining_s;
-    const disable = (ph === 'countdown') || (remaining == null);
-    btn.disabled = !!disable;
-    const label = (disable && remaining == null)
-      ? 'Elapsed'
-      : (clockMode === 'elapsed' ? 'Elapsed' : 'Remaining');
-    btn.textContent = label;
-  }
+function updateClockModeButton(st) {
+  const btn = els.btnClockMode;
+  if (!btn) return;
+
+  const ph = (st?.phase || '').toLowerCase();
+  const hasRemaining =
+    (st?.limit && typeof st.limit.remaining_ms === 'number') ||
+    (st?.clock && typeof st.clock.remaining_s === 'number');
+
+  // Disable during COUNTDOWN; enable during race only if we actually have Remaining.
+  const disable = (ph === 'countdown') || !hasRemaining;
+  btn.disabled = !!disable;
+
+  // Label reflects current mode; if disabled, show "Elapsed" (the only sensible view).
+  btn.textContent = (disable || clockMode === 'elapsed') ? 'Elapsed' : 'Remaining';
+}
 
   // ----------------------------------------------------------------------
   // Lap feed: append on lap increments (GREEN/WHITE only)
@@ -491,42 +540,65 @@ function updateFlagPill(st){
     if (!st) return;
     lastState = st;
 
-    // ---- Clock ----
-    updateClockModeButton(st);
+  // ---- Clock ----
+  updateClockModeButton(st);
 
-    // Prefer authoritative server clock_ms if present (top-level or nested).
-    const srvClockMs = (typeof st.clock_ms === 'number') ? st.clock_ms
-                      : (st.clock && typeof st.clock.clock_ms === 'number') ? st.clock.clock_ms
-                      : null;
+  // Decide phase once for this block
+  const phaseLower = (st?.phase || '').toLowerCase();
 
-    if (srvClockMs != null && els.clockDisplay) {
-      els.clockDisplay.textContent = fmtClockHMS(srvClockMs / 1000);
-    } else if ((st.phase === 'countdown') && countdownAnchor) {
+  // 1) COUNTDOWN: always render the negative timer first (engine doesn't own this)
+  if (phaseLower === 'countdown') {
+    let dispSec;
+
+    // Prefer explicit remaining seconds if server sent them
+    const remS = (st?.clock?.countdown_remaining_s ?? st?.countdown_remaining_s);
+    if (typeof remS === 'number') {
+      // Show as negative HH:MM:SS (e.g., −00:00:09)
+      dispSec = -Math.max(0, Math.ceil(remS));
+    }
+    // Or derive from negative clock_ms if present
+    else if (typeof st?.clock_ms === 'number' && st.clock_ms < 0) {
+      dispSec = st.clock_ms / 1000;
+    } else if (typeof st?.clock?.clock_ms === 'number' && st.clock.clock_ms < 0) {
+      dispSec = st.clock.clock_ms / 1000;
+    }
+    // Or fall back to the local anchor
+    else if (countdownAnchor) {
       const now = Date.now() / 1000;
-      const neg = Math.max(-(countdownAnchor - now), -Number(st.countdown_from_s || 0));
-      if (els.clockDisplay) els.clockDisplay.textContent = fmtClockHMS(neg);
+      const neg = -(Math.max(0, countdownAnchor - now));
+      const maxNeg = -Number(st.countdown_from_s || 0);
+      dispSec = Math.max(neg, maxNeg);
+    }
+    // Last resort: show the full armed countdown as a static negative
+    else {
+      dispSec = -Number(st.countdown_from_s || 0);
+    }
+    // ---- Race summary (top bar) ----
+  
+  paintClock(dispSec);
+  }
+  // 2) RACING/FINISH: engine owns time → support Elapsed/Remaining toggle
+  else {
+    const srvClockMs =
+      (typeof st.clock_ms === 'number') ? st.clock_ms :
+      (st.clock && typeof st.clock.clock_ms === 'number') ? st.clock.clock_ms :
+      null;
+
+    if (srvClockMs != null) {
+      const elapsedS   = Math.max(0, srvClockMs / 1000);
+      const remMs      = st?.limit?.remaining_ms;
+      const remainingS = (typeof remMs === 'number') ? Math.max(0, remMs / 1000) : null;
+      const showS      = (remainingS != null && clockMode === 'remaining') ? remainingS : elapsedS;
+      paintClock(showS);
     } else {
       // Fallback to server-provided elapsed/remaining seconds if available
-      const elapsed   = st?.clock?.elapsed_s ?? 0;
-      const remaining = st?.clock?.remaining_s;
-      if (remaining == null) {
-        if (els.clockDisplay) els.clockDisplay.textContent = fmtClockHMS(elapsed);
-      } else {
-        const show = (clockMode === 'elapsed') ? elapsed : remaining;
-        if (els.clockDisplay) els.clockDisplay.textContent = fmtClockHMS(show);
-      }
+      const elapsed   = Number(st?.clock?.elapsed_s ?? 0);
+      const remaining = (st?.clock?.remaining_s != null) ? Number(st.clock.remaining_s) : null;
+      const show      = (remaining != null && clockMode === 'remaining') ? remaining : elapsed;
+      paintClock(show);
     }
+  }
 
-    // Initialize countdown anchor on first entry to COUNTDOWN
-    const phaseLower = (st.phase || 'pre').toLowerCase();
-    if (phaseLower === 'countdown' && !countdownAnchor) {
-      const rem = Number(st.countdown_remaining_s ?? st.clock?.countdown_remaining_s ?? 0);
-      if (rem > 0) {
-        countdownAnchor = (Date.now() / 1000) + rem;
-      }
-    }
-    // Clear anchor when we leave countdown
-    if (phaseLower !== 'countdown') countdownAnchor = null;
 
     // ---- Phase/flag dataset + pad highlight ----
     document.body.dataset.phase = st.phase || 'pre';
@@ -564,8 +636,14 @@ function updateFlagPill(st){
 
     //Race summary
     renderRCSummary(st);
-  }
 
+    // Post-finish CTA: visible only at CHECKERED + breathe
+    if (els.postFinish) {
+      const show = (phaseLower === 'checkered');
+      els.postFinish.classList.toggle('hidden', !show);
+      if (els.btnResults) els.btnResults.classList.toggle('btn--breathing', show);
+    }
+  }
   // ----------------------------------------------------------------------
   // Clock mode switch
   // ----------------------------------------------------------------------
@@ -674,6 +752,18 @@ function updateFlagPill(st){
       if (!allowed.has(f)) return;
       setActiveFlag(f);
     });
+
+    // Results button
+    if (els.btnResults) {
+      els.btnResults.addEventListener('click', () => {
+        // Prefer live state; fall back to what Race Setup cached
+        const rid = (window.lastState && lastState.race_id) ||
+                    Number(localStorage.getItem('rc.race_id') || 0);
+        // Adjust the URL if your results page path is different
+        const url = `/ui/operator/results.html${rid ? `?race=${encodeURIComponent(rid)}` : ''}`;
+        window.location.assign(url);
+      });
+    }
   }
 
   // ----------------------------------------------------------------------

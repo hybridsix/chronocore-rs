@@ -1,158 +1,154 @@
-
-# =====================================================================
-# CCRS Race Modes (engine reads seconds; UI may present minutes)
-# - Modes are presets you can select in the UI. They do NOT include
-#   event/session labels (those are stored per session in the DB).
-# - Time values are in SECONDS. The UI converts minutes -> seconds on save.
-# - Sounds use GLOBAL filenames (see config.yaml 'sounds.files'). Per-mode
-#   toggles here only decide WHEN/IF to play them.
-# =====================================================================
 modes:
-
-  practice:                       # unique mode id (kebab-case recommended)
-    label: "Practice (Free Play)" # human-friendly name shown in UI
-    limit:
-      type: time                  # 'time' | 'laps'
-      value_s: 0                  # 0 = free play (no time limit)
-      soft_end: true              # true: don't auto-stop at expiry (ignored if value_s==0)
-    rank_method: best_lap         # 'best_lap' | 'total_laps'
-    min_lap_s: 4.1                # ignore reads faster than this (anti-double-read)
-    countdown:
-      start_enabled: false        # 10s countdown beeps before green flag
-      start_from_s: 10            # if enabled, when to start beeping before race start
-      end_enabled: false          # enable end-of-race countdown beeps
-      end_from_s: 10              # when to start beeping before time expires
-      timeout_pad_s: 0            # optional pad before timeouts fire (0 = none)
+  3min-test:
     announcements:
-      lap_indication: beep        # 'beep' | 'none' (per-lap indication)
-      rank_enabled: false         # periodic rank announcements
-      rank_interval_laps: 0       # every N laps (0 = off)
-      rank_change_speech: false   # speak rank changes (future)
-      best_lap_speech: false      # speak best lap (future)
-    # Sounds are GLOBAL. This mode only toggles behavior:
-    sounds:
-      countdown_beep_last_s: 0    # beep on each of last N seconds (0 = off)
-      starting_horn: false        # play 'start' file at green
-      white_flag: { mode: off }   # 'off' | 'auto' | {mode: time, at_s: <sec> }
-      checkered_horn: false       # play 'end' or 'checkered' file
-
-  qualifying:
-    label: "Qualifying (1 hr, soft)"
-    limit: { type: time, value_s: 3600, soft_end: true }
-    rank_method: best_lap
-    min_lap_s: 4.1
+      best_lap_speech: false
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
     countdown:
+      end_enabled: false
+      end_from_s: 10
+      start_enabled: true
+      start_from_s: 5
+      timeout_s: 0
+    label: 3min Test
+    limit:
+      soft_end: false
+      type: time
+      value_s: 180
+    min_lap_s: 4.1
+    rank_method: total_laps
+  endurance:
+    announcements:
+      best_lap_speech: false
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
+    countdown:
+      end_enabled: false
+      end_from_s: 10
+      start_enabled: true
+      start_from_s: 10
+      timeout_pad_s: 0
+    hot_lap_10m: null
+    label: Hot-Lap Challenge (10 min)
+    limit:
+      soft_end: false
+      type: time
+      value_s: 600
+    min_lap_s: 4.1
+    rank_method: best_lap
+    relay:
+      change_horn: true
+      driver_change_interval_s: 900
+    sounds:
+      checkered_horn: false
+      countdown_beep_last_s: 0
+      starting_horn: false
+      white_flag:
+        mode: auto
+  practice:
+    announcements:
+      best_lap_speech: false
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
+    countdown:
+      end_enabled: false
+      end_from_s: 10
       start_enabled: false
       start_from_s: 10
-      end_enabled: false
-      end_from_s: 10
       timeout_pad_s: 0
-    announcements:
-      lap_indication: beep
-      rank_enabled: false
-      rank_interval_laps: 0
-      rank_change_speech: false
-      best_lap_speech: false
-    sounds:
-      countdown_beep_last_s: 0
-      starting_horn: false
-      white_flag: { mode: auto }  # engine decides last minute for white flag
-      checkered_horn: false
-
-  sprint:
-    label: "Sprint (15 min)"
-    limit: { type: time, value_s: 900, soft_end: false }
-    rank_method: total_laps
+    label: Practice (Free Play)
+    limit:
+      soft_end: true
+      type: time
+      value_s: 0
     min_lap_s: 4.1
-    countdown:
-      start_enabled: true
-      start_from_s: 10
-      end_enabled: false
-      end_from_s: 10
-      timeout_pad_s: 0
-    announcements:
-      lap_indication: beep
-      rank_enabled: false
-      rank_interval_laps: 0
-      rank_change_speech: false
-      best_lap_speech: false
-    sounds:
-      countdown_beep_last_s: 0
-      starting_horn: false
-      white_flag: { mode: auto }
-      checkered_horn: false
-
-  endurance:
-    label: "Endurance (75 min, relay)"
-    limit: { type: time, value_s: 4500, soft_end: false }
-    rank_method: total_laps
-    min_lap_s: 4.1
-    countdown:
-      start_enabled: true
-      start_from_s: 10
-      end_enabled: true
-      end_from_s: 10
-      timeout_pad_s: 0
-    announcements:
-      lap_indication: beep
-      rank_enabled: false
-      rank_interval_laps: 0
-      rank_change_speech: false
-      best_lap_speech: true
-    relay:
-      driver_change_interval_s: 900 # every 15 minutes
-      change_horn: true              # play a horn at driver-change time
-    sounds:
-      countdown_beep_last_s: 1
-      starting_horn: true
-      white_flag: { mode: auto }
-      checkered_horn: true
-
-    hot_lap_10m:
-    label: "Hot-Lap Challenge (10 min)"
-    # Time-based: 10 minutes (UI shows minutes; backend stores seconds)
-    limit: { type: time, value_s: 600, soft_end: false }
     rank_method: best_lap
-    min_lap_s: 4.1
-    countdown:
-      start_enabled: true
-      start_from_s: 10
-      end_enabled: false
-      end_from_s: 10
-      timeout_pad_s: 0
-    announcements:
-      lap_indication: beep
-      rank_enabled: false
-      rank_interval_laps: 0
-      rank_change_speech: false
-      best_lap_speech: false
     sounds:
+      checkered_horn: false
       countdown_beep_last_s: 0
       starting_horn: false
-      white_flag: { mode: auto }   # auto = last minute if timed
+      white_flag:
+        mode: false
+  qualifying:
+    announcements:
+      best_lap_speech: false
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
+    countdown:
+      end_enabled: false
+      end_from_s: 10
+      start_enabled: false
+      start_from_s: 10
+      timeout_pad_s: 0
+    label: Qualifying (1 hr, soft)
+    limit:
+      soft_end: true
+      type: time
+      value_s: 3600
+    min_lap_s: 4.1
+    rank_method: best_lap
+    sounds:
       checkered_horn: false
-
-  sprint_10_laps:
-    label: "Sprint (10 laps)"
-    # Lap-based: 10 laps (soft_end ignored for laps)
-    limit: { type: laps, value_laps: 10 }
+      countdown_beep_last_s: 0
+      starting_horn: false
+      white_flag:
+        mode: auto
+  sprint:
+    announcements:
+      best_lap_speech: false
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
+    countdown:
+      end_enabled: false
+      end_from_s: 10
+      start_enabled: true
+      start_from_s: 10
+      timeout_pad_s: 0
+    label: Sprint (15 min)
+    limit:
+      soft_end: false
+      type: time
+      value_s: 900
+    min_lap_s: 4.1
     rank_method: total_laps
-    min_lap_s: 4.1
-    countdown:
-      start_enabled: true
-      start_from_s: 10
-      end_enabled: false
-      end_from_s: 10
-      timeout_pad_s: 0
-    announcements:
-      lap_indication: beep
-      rank_enabled: false
-      rank_interval_laps: 0
-      rank_change_speech: false
-      best_lap_speech: false
     sounds:
+      checkered_horn: false
       countdown_beep_last_s: 0
       starting_horn: false
-      white_flag: { mode: off }    # not relevant for lap races
+      white_flag:
+        mode: auto
+  sprint_10_laps:
+    announcements:
+      best_lap_speech: false
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
+    countdown:
+      end_enabled: false
+      end_from_s: 10
+      start_enabled: true
+      start_from_s: 10
+      timeout_pad_s: 0
+    label: Sprint (10 laps)
+    limit:
+      type: laps
+      value_laps: 10
+    min_lap_s: 4.1
+    rank_method: total_laps
+    sounds:
       checkered_horn: false
-
+      countdown_beep_last_s: 0
+      starting_horn: false
+      white_flag:
+        mode: false

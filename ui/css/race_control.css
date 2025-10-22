@@ -921,4 +921,65 @@ body[data-flag="CHECKERED"] #flagPill {
 @media (prefers-reduced-motion: reduce) {
   #flagPill.beacon { animation: none !important; }
 }
+#raceClock {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+  min-width: 10ch;   /* space for sign + hh:mm:ss */
+  text-align: center;
+}
 
+#raceClock {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
+}
+#raceClock .clock-sign   { display:inline-block; width:1ch; text-align:right; }
+#raceClock .clock-digits { display:inline-block; }
+
+.post-finish {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 8px 0 12px;
+}
+
+/* Hidden until CHECKERED */
+.post-finish.hidden { display: none; }
+
+/* Blue, centered, roomy, with a little gap from Abort */
+.btn--results {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 360px;
+  padding: 10px 22px;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+
+  /* use your palette if present; otherwise sane fallbacks */
+  color: #fff;
+  background: var(--blue-500, #2b6ff7);
+  border: 1px solid var(--blue-600, #2058c7);
+  border-radius: 10px;
+
+  /* extra space before this button */
+  margin-left: 16px;
+}
+
+.btn--results:hover {
+  filter: brightness(1.08);
+}
+
+/* “breathing” pulse */
+@keyframes breathe {
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(43,111,247,0.30); }
+  50%  { transform: scale(1.015); box-shadow: 0 0 22px 0 rgba(43,111,247,0.35); }
+  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(43,111,247,0.30); }
+}
+
+.btn--breathing {
+  animation: breathe 2.4s ease-in-out infinite;
+}
