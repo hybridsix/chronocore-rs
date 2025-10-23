@@ -760,7 +760,7 @@ function updateClockModeButton(st) {
         const rid = (window.lastState && lastState.race_id) ||
                     Number(localStorage.getItem('rc.race_id') || 0);
         // Adjust the URL if your results page path is different
-        const url = `/ui/operator/results.html${rid ? `?race=${encodeURIComponent(rid)}` : ''}`;
+        const url = `/ui/operator/results_exports.html${rid ? `?race=${encodeURIComponent(rid)}` : ''}`;
         window.location.assign(url);
       });
     }
