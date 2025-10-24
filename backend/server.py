@@ -52,6 +52,11 @@ from .config_loader import get_db_path, get_scanner_cfg, CONFIG
 # log = logging.getLogger("race")
 log = logging.getLogger("ccrs")
 
+
+# Resolve DB path from config and ensure schema on boot.
+DB_PATH = get_db_path()
+ensure_schema(DB_PATH, recreate=False, include_passes=True)
+
 # ------------------------------------------------------------
 # FastAPI app bootstrap
 # ------------------------------------------------------------
@@ -339,31 +344,29 @@ _TAG_TO_ENTRANT: dict[str, dict] = {}   # tag -> entrant row (from setup payload
 _SEEN_COUNTS: dict[int, int] = {}       # entrant_id -> read count
 _SEEN_TOTAL: int = 0                    # entrants with reads > 0
 
+# ---- Seen helper: bump count for a tag (single source of truth) ------------
 def _note_seen(tag: str) -> None:
     """
-    Bump the 'seen' counter for the entrant mapped to this tag.
-    Safe no-op if tag not recognized or entrants aren't loaded yet.
+    Increment _SEEN_COUNTS for the entrant mapped to this tag,
+    only if the entrant exists and is enabled. Uses the live engine map.
     """
+    global _SEEN_COUNTS
+
+    eid = None
     try:
-        ent = _TAG_TO_ENTRANT.get(str(tag))
-        if not ent:
-            return
-
-        # Robust int conversion (handles None / "" / "007" / 12)
-        raw_id = ent.get("entrant_id") or ent.get("id") or ent.get("eid")
-        try:
-            eid = int(str(raw_id).strip())
-        except Exception:
-            return  # no valid ID → skip
-
-        prev = _SEEN_COUNTS.get(eid, 0)
-        _SEEN_COUNTS[eid] = prev + 1
-        if prev == 0:
-            global _SEEN_TOTAL
-            _SEEN_TOTAL += 1
+        # Prefer the live engine map
+        eid = getattr(ENGINE, "tag_to_eid", {}).get(str(tag))
     except Exception:
-        # diagnostics should never break ingest
-        pass
+        eid = None
+
+    if not eid:
+        return
+
+    # Only count enabled entrants
+    ent = getattr(ENGINE, "entrants", {}).get(eid)
+    if ent and getattr(ent, "enabled", True):
+        _SEEN_COUNTS[eid] = 1 + _SEEN_COUNTS.get(eid, 0)
+
 
 
 def _state_seen_block() -> dict:
@@ -443,9 +446,6 @@ log.info("Serving UI from: %s", STATIC_DIR)  # sanity print at startup
 
 
 
-# Resolve DB path from config and ensure schema on boot.
-DB_PATH = get_db_path()
-ensure_schema(DB_PATH, recreate=False, include_passes=True)
 
 
 # ------------------------------------------------------------
@@ -873,6 +873,11 @@ async def race_setup(
             race_type=race_type,
             session_config=_CURRENT_SESSION,
         )
+
+         # Initialize Seen
+        #global _SEEN_COUNTS, _SEEN_TOTAL /// already declared above
+        _SEEN_COUNTS = {}
+        _SEEN_TOTAL  = sum(1 for e in getattr(ENGINE, "entrants", {}).values() if getattr(e, "enabled", False))
 
         # Capture a minimal echo of what the engine returned (don’t spam huge payloads)
         try:
@@ -1361,9 +1366,10 @@ async def race_abort_reset():
 
     # Optional: clear in-memory seen counters if you keep them
     try:
-        if "_SEEN" in globals(): _SEEN.clear()
-        if "_SEEN_TOTAL" in globals(): 
-            globals()["_SEEN_TOTAL"] = 0
+        _SEEN_COUNTS = {}
+        # Recompute total from the current (kept) roster
+        _SEEN_TOTAL  = sum(1 for e in getattr(ENGINE, "entrants", {}).values() if getattr(e, "enabled", False))
+        return {"ok": True, "phase": _RACE_STATE["phase"]}
     except Exception:
         pass
 
@@ -1864,29 +1870,31 @@ async def sensors_inject(payload: dict):
         for name in ("is_running", "running", "is_green"):
             attr = getattr(ENGINE, name, None)
             try:
-                if callable(attr):
-                    val = attr()
-                else:
-                    val = attr
+                val = attr() if callable(attr) else attr
                 if isinstance(val, bool):
                     return val
             except Exception:
                 pass
         return None
 
-    accepted, err = None, None
+    # Always record 'seen' (even if lap is later rejected by min-lap, etc.)
     _note_seen(tag)
+
+    accepted, err = None, None
     try:
-        fn = getattr(ENGINE, "ingest_pass", None)
-        if callable(fn):
-            accepted = bool(fn(tag=tag, source=source))
+        ingest = getattr(ENGINE, "ingest_pass", None)
+        if callable(ingest):
+            # Most engines expect (tag, source) OR keyword args; use kwargs for clarity
+            accepted = bool(ingest(tag=tag, source=source))
         else:
             err = "ENGINE.ingest_pass not found"
     except Exception as ex:
         err = f"{type(ex).__name__}: {ex}"
 
-    log.info(f"[INJECT] tag={tag} phase={_RACE_STATE.get('phase')} "
-             f"accepted={accepted} running={_engine_running()} err={err or '-'}")
+    log.info(
+        "[INJECT] tag=%s phase=%s accepted=%s running=%s err=%s",
+        tag, _RACE_STATE.get("phase"), accepted, _engine_running(), err or "-"
+    )
 
     return {
         "ok": err is None,
@@ -1897,6 +1905,7 @@ async def sensors_inject(payload: dict):
         "race_id": _RACE_STATE.get("race_id"),
         "error": err,
     }
+
 
 
 # ------------------------------------------------------------
