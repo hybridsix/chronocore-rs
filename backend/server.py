@@ -433,15 +433,6 @@ app.mount("/config/sounds", StaticFiles(directory=SOUNDS_CONFIG_DIR, html=False)
 STATIC_DIR = Path(__file__).resolve().parent.parent / "ui"   # => project_root/ui
 app.mount("/ui", StaticFiles(directory=STATIC_DIR, html=True), name="ui")
 
-# ---- Sound assets: user overrides then built-in defaults ----
-SOUNDS_ASSETS_DIR = PROJECT_ROOT / "assets" / "sounds"
-SOUNDS_CONFIG_DIR = PROJECT_ROOT / "config" / "sounds"
-SOUNDS_ASSETS_DIR.mkdir(parents=True, exist_ok=True)
-SOUNDS_CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-app.mount("/assets/sounds", StaticFiles(directory=SOUNDS_ASSETS_DIR, html=False), name="assets_sounds")
-app.mount("/config/sounds", StaticFiles(directory=SOUNDS_CONFIG_DIR, html=False), name="config_sounds")
-
-
 log.info("Serving UI from: %s", STATIC_DIR)  # sanity print at startup
 
 
@@ -573,10 +564,6 @@ def _engine_begin_green() -> None:
             except Exception:
                 # Try the next option if this one raises
                 pass
-
-# --- Live "seen" counters (pre-race diagnostics) ----------------------------
-_SEEN_COUNTS: dict[int, int] = {}   # entrant_id -> read count (live, not persisted)
-_SEEN_TOTAL: int = 0                # total distinct entrants seen at least once
 
     
 # ------------------------------------------------------------
@@ -1678,9 +1665,9 @@ async def entrant_inuse(entrant_id: int):
             "counts": { "passes": passes_cnt, "lap_events": laps_cnt }
         }
 
-
-
-# ======================= DELETE (hard delete by id) =======================
+# ------------------------------------------------------------
+# Delete (hard delete by id)
+# ------------------------------------------------------------
 
 @app.post("/admin/entrants/delete")
 async def delete_entrant(request: Request):
@@ -1724,15 +1711,10 @@ async def delete_entrant(request: Request):
         raise HTTPException(status_code=404, detail="entrant not found")
 
     return {"deleted": deleted}
-
-
-
-
-
-
 # ------------------------------------------------------------
 # Polling endpoint (UI fallback)
 # ------------------------------------------------------------
+
 
 @app.get("/sensors/peek")
 async def sensors_peek():
@@ -1827,9 +1809,9 @@ async def engine_pass(payload: Dict[str, Any]):
 
 
 
-# ===============================
+# ------------------------------------------------------------
 # Neutral sensor ingest endpoint
-# ===============================
+# ------------------------------------------------------------
 
 
 class SensorPassIn(BaseModel):
@@ -1837,7 +1819,9 @@ class SensorPassIn(BaseModel):
     source: Optional[str] = "track"    # e.g. "track", "pit_in", "pit_out"
     device_id: Optional[str] = None    # optional: hardware id
 
-# --- Sensors inject: single pass from any decoder/bridge ---------------------
+# ------------------------------------------------------------
+# Sensors inject: single pass from any decoder/bridge
+# ------------------------------------------------------------
 @app.post("/sensors/inject")
 async def sensors_inject(payload: dict):
     tag = str(payload.get("tag") or "").strip()
@@ -1885,151 +1869,116 @@ async def sensors_inject(payload: dict):
         "error": err,
     }
 
+# --- Scanner lifecycle -------------------------------------------------------
+# Keep a small registry of background tasks we start (scanner, SSE pingers, etc.)
+_SCANNER_TASKS: set[asyncio.Task] = set()
 
+def _track_task(t: asyncio.Task) -> None:
+    """Remember a task and auto-untrack when it finishes."""
+    _SCANNER_TASKS.add(t)
+    t.add_done_callback(lambda tt: _SCANNER_TASKS.discard(tt))
 
-# ------------------------------------------------------------
-# --- Embedded scanner startup: publish via HTTP to our own FastAPI ---
-# ------------------------------------------------------------
 @app.on_event("startup")
 async def start_scanner():
     """
-    Try to start the real ScannerService (serial/udp). If not available or
-    if scanner.source == 'mock', run an in-process generator that:
-      • publishes tags to the simple bus (peek/stream),
-      • forwards them into the engine (_send_pass_to_engine),
-      • emits Diagnostics events with entrant names when tags are known.
+    Start the lap logger/decoder reader if enabled in config.
+    (No-op if you start it elsewhere.)
     """
     import asyncio, random  # local imports to avoid surprises during import time
 
-    scan_cfg = get_scanner_cfg() or {}
-    source = str(scan_cfg.get("source", "mock")).lower()
+    try:
+        scan_cfg = get_scanner_cfg() or {}
+        source = str(scan_cfg.get("source", "mock")).lower()
 
-    # Attempt the real scanner for non-mock sources
-    if source != "mock":
-        try:
-            from backend.lap_logger import ScannerService, load_config as ll_load
-
-            # Build a config object the lap_logger expects (your existing file path logic)
-            cfg_path = "./config/config.yaml"
-            cfg = ll_load(cfg_path)
-
-            # Force HTTP publishing into this server so we see /sensors/inject if needed
-            cfg.publisher.mode = "http"
-            # Set any commonly used fields; harmless if some don’t exist
+        if source != "mock":
             try:
-                cfg.publisher.http.base_url = "http://127.0.0.1:8000"
-                cfg.publisher.http.timeout_ms = 500
-            except Exception:
-                pass
+                from backend.lap_logger import ScannerService, load_config as ll_load
 
-            app.state.stop_evt = asyncio.Event()
-            app.state.task = asyncio.get_running_loop().create_task(ScannerService(cfg).run(app.state.stop_evt))
-            log.info("ScannerService started (source=%s).", source)
-            return
-        except Exception:
-            log.exception("ScannerService not available; falling back if mock is requested.")
+                cfg_path = "./config/config.yaml"
+                cfg = ll_load(cfg_path)
 
-    # Fallback: lightweight mock generator
-    if source == "mock":
-        log.info("Starting in-process MOCK tag generator.")
-        async def _mock_task(stop_evt: asyncio.Event):
-            tags = ["1234567", "2345678", "3456789", "4567890"]
-            while not stop_evt.is_set():
-                tag = random.choice(tags)
-
-                # Publish for /sensors/peek and /sensors/stream consumers
-                publish_tag(tag)
-
-                # Ingest using the new, neutral shape (no ilap-isms)
+                cfg.publisher.mode = "http"
                 try:
-                    # Direct call into the engine so laps/logic actually happen
-                    snap = ENGINE.ingest_pass(tag=str(tag), source="track")
-                except Exception:
-                    log.exception("Mock ingest failed for tag %s", tag)
-                    snap = None
-
-                # Diagnostics row, resolved from DB if possible
-                try:
-                    ent = await resolve_tag_to_entrant(tag)  # you added this earlier
-                    await diag_publish({
-                        "tag_id": str(tag),
-                        "entrant": ({"name": ent["name"], "number": ent["number"]} if ent else None),
-                        "source": "Start/Finish",
-                        "rssi": -60 - random.randint(0, 15),
-                        "time": None,
-                    })
+                    cfg.publisher.http.base_url = "http://127.0.0.1:8000"
+                    cfg.publisher.http.timeout_ms = 500
                 except Exception:
                     pass
 
-                await asyncio.sleep(1.5)
+                stop_evt = asyncio.Event()
+                task = asyncio.get_running_loop().create_task(ScannerService(cfg).run(stop_evt), name="scanner_service")
+                _track_task(task)
+                app.state.stop_evt = stop_evt
+                app.state.task = task
+                log.info("ScannerService started (source=%s).", source)
+                return
+            except Exception:
+                log.exception("ScannerService not available; falling back if mock is requested.")
 
+        if source == "mock":
+            log.info("Starting in-process MOCK tag generator.")
 
-        app.state.stop_evt = asyncio.Event()
-        app.state.task = asyncio.get_running_loop().create_task(_mock_task(app.state.stop_evt))
-    else:
-        log.info("No ScannerService and not in mock mode; scanner startup skipped.")
+            async def _mock_task(stop_evt: asyncio.Event):
+                tags = ["1234567", "2345678", "3456789", "4567890"]
+                while not stop_evt.is_set():
+                    tag = random.choice(tags)
+                    publish_tag(tag)
+                    try:
+                        ENGINE.ingest_pass(tag=str(tag), source="track")
+                    except Exception:
+                        log.exception("Mock ingest failed for tag %s", tag)
 
+                    try:
+                        ent = await resolve_tag_to_entrant(tag)
+                        await diag_publish({
+                            "tag_id": str(tag),
+                            "entrant": ({"name": ent["name"], "number": ent["number"]} if ent else None),
+                            "source": "Start/Finish",
+                            "rssi": -60 - random.randint(0, 15),
+                            "time": None,
+                        })
+                    except Exception:
+                        pass
 
-## ----------------------------------------------------------
-# --- Embedded scanner shutdown: make deterministic/clean ---   
-#------------------------------------------------------------
+                    await asyncio.sleep(1.5)
+
+            stop_evt = asyncio.Event()
+            task = asyncio.get_running_loop().create_task(_mock_task(stop_evt), name="mock_scanner")
+            _track_task(task)
+            app.state.stop_evt = stop_evt
+            app.state.task = task
+        else:
+            log.info("No ScannerService and not in mock mode; scanner startup skipped.")
+    except Exception:
+        log.exception("Failed to start scanner")
 
 @app.on_event("shutdown")
 async def stop_scanner():
     """
-    Make shutdown deterministic:
-    - cancel countdown
-    - wake SSE/stream listeners
-    - stop scanner/mock task
-    - aggressively cancel any other pending asyncio tasks
+    Cancel all background tasks and *absorb* CancelledError, so Starlette doesn't
+    treat a clean cancellation as an unhandled error.
     """
-    import asyncio
-    import contextlib
+    tasks = list(_SCANNER_TASKS)
+    if not tasks:
+        log.info("No scanner/background tasks to stop.")
+        return
 
-    # 1) Cancel countdown task (prevents a sleeping asyncio.sleep from pinning shutdown)
-    global _COUNTDOWN_TASK
-    _cancel_task(_COUNTDOWN_TASK)
-    _COUNTDOWN_TASK = None
-
-    # 2) Wake /sensors/stream listeners (so their generators exit immediately)
-    #    Assumes you keep a list/set of Queues called `_listeners`
-    with contextlib.suppress(Exception):
-        for q in list(_listeners):
-            q.put_nowait("__shutdown__")
-
-    # 3) Wake /diagnostics/stream subscribers (so they break out cleanly)
-    #    Assumes you track `_diag_subs` (set of Queues) and guard with `_diag_lock`
-    try:
-        async with _diag_lock:
-            for q in list(_diag_subs):
-                with contextlib.suppress(Exception):
-                    q.put_nowait({"type": "shutdown"})
-    except Exception:
-        pass
-
-    # 4) Stop the scanner/mock task if you keep one in app.state
-    #    (Cancel + await so it has a chance to clean up)
-    task = getattr(app.state, "task", None)
-    if task:
-        with contextlib.suppress(Exception):
-            task.cancel()
-            await task
-
-    # 5) Aggressively cancel ANY remaining asyncio tasks in this loop (except this one)
-    #    This handles any stragglers (background pollers, forgotten tasks, etc.)
-    loop = asyncio.get_running_loop()
-    pending = [t for t in asyncio.all_tasks(loop) if t is not asyncio.current_task(loop)]
-    for t in pending:
+    log.info("Stopping %d background task(s)...", len(tasks))
+    for t in tasks:
         t.cancel()
-    # Give them a moment to handle CancelledError
-    with contextlib.suppress(Exception):
-        await asyncio.gather(*pending, return_exceptions=True)
 
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    for res in results:
+        if isinstance(res, asyncio.CancelledError):
+            continue
+        if isinstance(res, Exception):
+            log.warning("Background task ended with exception during shutdown: %r", res)
 
+    _SCANNER_TASKS.clear()
+    log.info("All background tasks stopped cleanly.")
 
-# ==============================================================================
+# ------------------------------------------------------------
 # Diagnostics / Live Sensors — SSE stream for diag.html
-# ==============================================================================
+# ------------------------------------------------------------
 
     
 # In-memory pub/sub state

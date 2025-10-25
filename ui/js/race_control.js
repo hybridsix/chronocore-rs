@@ -361,6 +361,20 @@ function renderSeen(state) {
   // Flag banner update + pulse on change
   // ----------------------------------------------------------------------
 
+  function restartAnimation(el, className) {
+  if (!el) return;
+  if (className) {
+    el.classList.remove(className);
+    void el.offsetWidth;     // reflow to reset animation clock
+    el.classList.add(className);
+  } else {
+    // style-based fallback if you ever need it
+    el.style.animation = 'none';
+    void el.offsetWidth;
+    el.style.animation = '';
+  }
+}
+
   let lastFlagForPulse = null;
 
   function updateFlagBanner(st) {
@@ -415,33 +429,56 @@ function renderSeen(state) {
     });
   }
 
-  let _lastPillFlag = null;
+let _lastPillFlag = null;
 
-function updateFlagPill(st){
+function updateFlagPill(st) {
   const pill = document.getElementById('flagPill');
   const txt  = document.getElementById('flagPillText');
   if (!pill || !txt) return;
 
-  const flag  = (st.flag || 'PRE').toUpperCase();
-  const phase = (st.phase||'pre').toLowerCase();
+  const flag  = String(st?.flag || 'PRE').toUpperCase();
+  const label = {
+    PRE:'Pre-race',
+    GREEN:'Green — Race in progress',
+    YELLOW:'Yellow',
+    RED:'Red',
+    BLUE:'Blue',
+    WHITE:'White',
+    CHECKERED:'Checkered — Race complete'
+  }[flag] || flag;
+  txt.textContent = label;
 
-  const label = { PRE:'Pre-race', GREEN:'Green', YELLOW:'Yellow', RED:'Red', BLUE:'Blue', WHITE:'White', CHECKERED:'Checkered' }[flag] || flag;
-
-  if (flag === 'GREEN')       txt.textContent = 'Green — Race in progress';
-  else if (flag === 'CHECKERED') txt.textContent = 'Checkered — Race complete';
-  else                         txt.textContent = label;
-
-  // one-shot pulse you already had
-  if (window._lastPillFlag !== flag) {
-    pill.classList.remove('pulse');
-    setTimeout(() => pill.classList.add('pulse'), 0);
-    window._lastPillFlag = flag;
-  }
-
-  // NEW: continuous beacon for everything except GREEN/CHECKERED
+  // Beacon for everything except GREEN/CHECKERED
   const shouldBeacon = !(flag === 'GREEN' || flag === 'CHECKERED');
-  pill.classList.toggle('beacon', shouldBeacon);
+
+  // Only do the sync dance when the flag actually changes
+  if (window._lastPillFlag !== flag) {
+    // 1) Brief brightness flash (CSS transition-based, no animation keyframes)
+    pill.classList.add('flash');
+    setTimeout(() => pill.classList.remove('flash'), 200);
+
+    // 2) Restart both the pill beacon AND the active button at the exact same instant
+    //    This ensures they're perfectly in sync from the moment of flag change
+    if (shouldBeacon) {
+      restartAnimation(pill, 'beacon');
+    } else {
+      pill.classList.remove('beacon');
+    }
+
+    // 3) Restart the left pad's active button pulse at the exact same instant
+    const activeBtn = document.querySelector('#flagPad .flag.is-active, #preFlagRow .flag.is-active');
+    if (activeBtn && String(activeBtn.dataset.flag || '').toUpperCase() === flag) {
+      restartAnimation(activeBtn, 'is-active');
+    }
+
+    window._lastPillFlag = flag;
+  } else {
+    // Steady-state: just enforce beacon on/off
+    pill.classList.toggle('beacon', shouldBeacon);
+  }
 }
+
+
 
 
 

@@ -69,6 +69,7 @@ from __future__ import annotations
 from pathlib import Path
 import argparse
 import asyncio
+import contextlib
 import logging
 import os
 import signal
@@ -95,9 +96,9 @@ except Exception:  # pragma: no cover — failure is fine; we’ll log and fallb
     _inproc_publish = None
 
 
-# =========================
+# ------------------------------------------------------------
 # Config model and helpers
-# =========================
+# ------------------------------------------------------------
 
 @dataclass
 class ScannerSerialCfg:
@@ -176,10 +177,9 @@ def load_config(path: str) -> RootCfg:
     return cfg
 
 
-
-# ====================
-# Dedup & rate limiting
-# ====================
+# ------------------------------------------------------------
+# CLI
+# ------------------------------------------------------------
 
 class DedupWindow:
     """
@@ -219,9 +219,9 @@ class RateLimiter:
         self._last_pub = time.time()
 
 
-# ====================
+# ------------------------------------------------------------
 # Publishers
-# ====================
+# ------------------------------------------------------------
 
 class Publisher:
     """
@@ -315,7 +315,10 @@ class HttpPublisher(Publisher):
             self.send_attempts += 1
             t0 = time.perf_counter()
             try:
-                resp = await self._client.post("/ilap/inject", params={"tag": tag})
+                resp = await self._client.post(
+                    "/sensors/inject",
+                    json={"tag": tag, "source": "scanner"},
+                )
                 if 200 <= resp.status_code < 300:
                     self.tags_sent += 1
                     logging.getLogger("scanner.pub").info(
@@ -355,9 +358,9 @@ class HttpPublisher(Publisher):
                 await self._queue.put(tag)
 
 
-# ====================
+# ------------------------------------------------------------
 # Readers (async)
-# ====================
+# ------------------------------------------------------------
 
 ILAP_INIT_7DIGIT = bytes([1, 37, 13, 10])  # SOH '%', CR, LF
 
@@ -403,6 +406,7 @@ class ILapSerialReader(Reader):
     async def tags(self) -> AsyncGenerator[str, None]:
         backoff = 0.2
         while True:
+            ser = None
             try:
                 import serial  # lazy import
                 self._log.info("open_serial", extra={"port": self.port, "baud": self.baud})
@@ -421,8 +425,12 @@ class ILapSerialReader(Reader):
 
                     # Read loop — line oriented
                     while True:
-                        # Use a thread hop so we don't block the event loop on .readline()
-                        raw: bytes = await asyncio.to_thread(ser.readline)
+                        try:
+                            # Use a thread hop so we don't block the event loop on .readline()
+                            raw: bytes = await asyncio.to_thread(ser.readline)
+                        except asyncio.CancelledError:
+                            raise
+
                         if not raw:
                             continue
 
@@ -435,9 +443,15 @@ class ILapSerialReader(Reader):
                             if tag is not None:
                                 yield tag
                 finally:
-                    ser.close()
+                    if ser is not None:
+                        with contextlib.suppress(Exception):
+                            ser.close()
+                        ser = None
                     self._log.info("serial_closed")
                     backoff = 0.2  # reset backoff after a successful session
+            except asyncio.CancelledError:
+                self._log.info("serial_cancelled")
+                raise
             except Exception as e:
                 self._log.warning("serial_error", extra={"port": self.port, "err": str(e)})
                 await asyncio.sleep(backoff)
@@ -516,6 +530,9 @@ class ILapUDPReader(Reader):
                     except asyncio.TimeoutError:
                         # Keep loop alive so we can catch cancellation/stop
                         pass
+            except asyncio.CancelledError:
+                self._log.info("udp_cancelled")
+                raise
             except Exception as e:
                 self._log.warning("udp_bind_error", extra={"host": self.host, "port": self.port, "err": str(e)})
                 await asyncio.sleep(backoff)
@@ -527,9 +544,9 @@ class ILapUDPReader(Reader):
                 backoff = 0.2  # reset after any successful bind session
 
 
-# ====================
+# ------------------------------------------------------------
 # Parsing helpers
-# ====================
+# ------------------------------------------------------------
 
 def _parse_ilap_pass_and_extract_tag(txt: str) -> Optional[str]:
     """
@@ -556,9 +573,9 @@ def _digits_only(s: str) -> str:
     return "".join(ch for ch in s if ch.isdigit())
 
 
-# ====================
+# ------------------------------------------------------------
 # Orchestrator
-# ====================
+# ------------------------------------------------------------
 
 class ScannerService:
     """
@@ -607,15 +624,18 @@ class ScannerService:
 
     async def run(self, stop_evt: asyncio.Event):
         await self.publisher.start()
-        self.log.info("scanner_start",
-                      extra={"source": self.cfg.scanner.source,
-                             "mode": self.cfg.publisher.mode,
-                             "min_tag_len": self.cfg.scanner.min_tag_len,
-                             "dup_window_s": self.cfg.scanner.duplicate_window_sec,
-                             "rate_limit_per_sec": self.cfg.scanner.rate_limit_per_sec})
+        self.log.info(
+            "scanner_start",
+            extra={
+                "source": self.cfg.scanner.source,
+                "mode": self.cfg.publisher.mode,
+                "min_tag_len": self.cfg.scanner.min_tag_len,
+                "dup_window_s": self.cfg.scanner.duplicate_window_sec,
+                "rate_limit_per_sec": self.cfg.scanner.rate_limit_per_sec,
+            },
+        )
 
-        # Emit a periodic heartbeat with counters
-        hb_task = asyncio.create_task(self._heartbeat())
+        hb_task = asyncio.create_task(self._heartbeat(), name="scanner_heartbeat")
 
         try:
             async for tag_raw in self.reader.tags():
@@ -625,16 +645,14 @@ class ScannerService:
                 t0 = time.perf_counter()
                 self.tags_seen_total += 1
 
-                # Normalize → digits only
                 tag_digits = _digits_only(tag_raw)
 
-                # Enforce min length
                 if len(tag_digits) < int(self.cfg.scanner.min_tag_len):
-                    logging.getLogger("scanner.parse").debug("reject_short",
-                                                            extra={"raw_tag": tag_raw, "digits": tag_digits})
+                    logging.getLogger("scanner.parse").debug(
+                        "reject_short", extra={"raw_tag": tag_raw, "digits": tag_digits}
+                    )
                     continue
 
-                # Duplicate suppression
                 if not self._dups.accept(tag_digits):
                     self.tags_suppressed_total += 1
                     logging.getLogger("scanner.dedup").info(
@@ -643,18 +661,17 @@ class ScannerService:
                     )
                     continue
 
-                # Rate limit
                 await self._rl.wait_slot()
 
-                # Publish
                 published_ok = True
                 try:
                     await self.publisher.publish(tag_digits)
                 except Exception as e:
                     published_ok = False
-                    logging.getLogger("scanner.pub").warning("publish_error", extra={"tag": tag_digits, "err": str(e)})
+                    logging.getLogger("scanner.pub").warning(
+                        "publish_error", extra={"tag": tag_digits, "err": str(e)}
+                    )
 
-                # Structured event log
                 logging.getLogger("scanner.event").info(
                     "scan_event",
                     extra={
@@ -669,45 +686,69 @@ class ScannerService:
 
                 if published_ok:
                     self.tags_published_total += 1
+        except asyncio.CancelledError:
+            stop_evt.set()
+            self.log.info("scanner_run_cancelled")
+        except Exception:
+            self.log.exception("scanner_run_crashed")
         finally:
             hb_task.cancel()
-            with contextlib.suppress(Exception):
+            try:
                 await hb_task
-            with contextlib.suppress(Exception):
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                self.log.exception("heartbeat_task_error_on_shutdown")
+
+            try:
                 await self.publisher.stop()
-            self.log.info("scanner_stop",
-                          extra={"seen": self.tags_seen_total,
-                                 "published": self.tags_published_total,
-                                 "suppressed": self.tags_suppressed_total})
+            except asyncio.CancelledError:
+                pass
+            except Exception:
+                self.log.exception("scanner_publisher_stop_failed")
+
+            self.log.info(
+                "scanner_stop",
+                extra={
+                    "seen": self.tags_seen_total,
+                    "published": self.tags_published_total,
+                    "suppressed": self.tags_suppressed_total,
+                },
+            )
 
     async def _heartbeat(self):
         """
         Periodic log line so ops can see counters move without scraping metrics.
         """
         pub = self.publisher
-        while True:
-            await asyncio.sleep(10)
-            payload = {
-                "seen": self.tags_seen_total,
-                "published": self.tags_published_total,
-                "suppressed": self.tags_suppressed_total,
-            }
-            # Include HTTP publisher internals if in use
-            if isinstance(pub, HttpPublisher):
-                payload.update({
-                    "qsize": pub._queue.qsize(),
-                    "send_attempts": pub.send_attempts,
-                    "sent": pub.tags_sent,
-                    "failed": pub.tags_failed,
-                })
-            logging.getLogger("scanner.hb").info("heartbeat", extra=payload)
+        try:
+            while True:
+                await asyncio.sleep(10)
+                payload = {
+                    "seen": self.tags_seen_total,
+                    "published": self.tags_published_total,
+                    "suppressed": self.tags_suppressed_total,
+                }
+                if isinstance(pub, HttpPublisher):
+                    payload.update(
+                        {
+                            "qsize": pub._queue.qsize(),
+                            "send_attempts": pub.send_attempts,
+                            "sent": pub.tags_sent,
+                            "failed": pub.tags_failed,
+                        }
+                    )
+                logging.getLogger("scanner.hb").info("heartbeat", extra=payload)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            logging.getLogger("scanner.hb").exception("heartbeat_task_crashed")
+            raise
 
 
-# ====================
+# ------------------------------------------------------------
 # CLI
-# ====================
-
-import contextlib
+# ------------------------------------------------------------
 
 def _apply_overrides(cfg: RootCfg, args: argparse.Namespace) -> RootCfg:
     # Scanner overrides
