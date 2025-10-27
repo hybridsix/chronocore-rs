@@ -1,4 +1,4 @@
-/* ==========================================================================
+/* --------------------------------------------------------------------------
    CCRS Race Control — unified controller
    --------------------------------------------------------------------------
    - Polls /race/state once per second and renders clock/phase/flag.
@@ -6,7 +6,7 @@
    - Shows a live "Last lap feed" by diffing standings and appending entries.
    - Keeps flag pad visually synced and enforces legal-press policy.
    - Uses server-provided clock_ms when present; falls back to local calc.
-   ========================================================================== */
+  -------------------------------------------------------------------------- */
 
 (() => {
   'use strict';
@@ -49,7 +49,7 @@
   }
 
   function fmtLapTime(sec) {
-    if (sec == null) return '—';
+    if (sec == null) return '-';
     // m:ss.mmm where m can grow; .mmm is 3 digits
     const ms = Math.round((sec - Math.floor(sec)) * 1000);
     const s  = Math.floor(sec) % 60;
@@ -58,130 +58,416 @@
   }
 
 
-  // ----------------------------------------------------------------------
-  // "Seen" panel rendering
-  // ----------------------------------------------------------------------
-  function seenCell(cls, text, style='') {
-    const d = document.createElement('div');
-    d.className = `cell ${cls}`;
-    if (style) d.setAttribute('style', style);
-    d.textContent = text;
-    return d;
-  }
-
-  // Render the header labels into .liveHead (replaces the title during PRE/COUNTDOWN)
-  function setSeenHeader() {
-    const head = document.querySelector('#panelSeen .liveHead');
-    if (!head) return;
-    head.replaceChildren(
-      document.createTextNode('TAG'),
-      seenCell('hdr num', 'Number'),
-      seenCell('hdr name', 'Name'),
-      seenCell('hdr reads', 'Reads', 'text-align:right;')
-    );
-  }
 
 // ----------------------------------------------------------------------
-// Render the "seen" list from state
-// ---------------------------------------------------------------------- 
-function renderSeen(state) {
-  const ul    = document.getElementById('seenList');
-  const cSpan = document.getElementById('seenCount');
-  const tSpan = document.getElementById('seenTotal');
-  if (!ul) return;
+// Unified viewport sizing + Seen & Standings renderers
+// ----------------------------------------------------------------------
 
-  const seen = state?.seen || { count:0, total:0, rows:[] };
+const DEFAULT_VISIBLE_STANDINGS_ROWS = 16;
+let cachedPlannedEntrantCount;
+
+/** Read planned entrant count from localStorage (cached). */
+function getPlannedEntrantCount() {
+  if (cachedPlannedEntrantCount !== undefined) return cachedPlannedEntrantCount;
+  try {
+    const raw = localStorage.getItem('rc.entrants');
+    if (!raw) return (cachedPlannedEntrantCount = null);
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return (cachedPlannedEntrantCount = null);
+    cachedPlannedEntrantCount = parsed.filter(e => e && e.enabled !== false).length;
+  } catch {
+    cachedPlannedEntrantCount = null;
+  }
+  return cachedPlannedEntrantCount;
+}
+
+/** Fixed 16-row viewport; scroll activates beyond this. */
+function getStandingsViewportRows() {
+  return DEFAULT_VISIBLE_STANDINGS_ROWS;
+}
+
+/**
+ * Compute an exact scroll viewport height from header + first N rows.
+ * Optional tableEl lets callers use a different table (e.g. Seen).
+ * Backward compatible if omitted: falls back to '#rcStandings'.
+ */
+function updateStandingsScrollState(scrollEl, visibleRows, actualRows, tableEl /* optional */) {
+  if (!scrollEl) return;
+
+  const rosterSize = getPlannedEntrantCount();
+  if (typeof rosterSize === 'number' && rosterSize >= 0) {
+    scrollEl.dataset.roster = String(rosterSize);
+  } else {
+    scrollEl.removeAttribute('data-roster');
+  }
+
+  const table = tableEl || scrollEl.querySelector('#rcStandings');
+  const thead = table?.tHead;
+  const tbody = table?.tBodies?.[0];
+
+  let headH = 0, rowsH = 0;
+  try {
+    if (thead) headH = Math.ceil(thead.getBoundingClientRect().height);
+    const rows = tbody ? Array.from(tbody.rows) : [];
+    const limit = Math.min(visibleRows, rows.length);
+    for (let i = 0; i < limit; i += 1) {
+      rowsH += Math.ceil(rows[i].getBoundingClientRect().height);
+    }
+  } catch {}
+
+  let padT = 0, padB = 0;
+  try {
+    const cs = scrollEl ? getComputedStyle(scrollEl) : null;
+    padT = cs ? parseFloat(cs.paddingTop) || 0 : 0;
+    padB = cs ? parseFloat(cs.paddingBottom) || 0 : 0;
+  } catch {}
+
+  // +2px for container border +1px safety for subpixel rounding
+  const px = Math.max(0, headH + rowsH + padT + padB + 2 + 1);
+  if (px > 0) {
+    scrollEl.style.height = `${px}px`;
+    scrollEl.style.maxHeight = `${px}px`;
+    scrollEl.style.minHeight = `${px}px`;
+  }
+
+  const needsScroll = actualRows > visibleRows;
+  scrollEl.style.overflowY = needsScroll ? 'auto' : 'hidden';
+  scrollEl.classList.toggle('has-scroll', needsScroll);
+  if (!needsScroll) scrollEl.scrollTop = 0;
+}
+
+// ----------------------------------------------------------------------
+// "Seen" panel (PRE/COUNTDOWN) — table-rendered to match Standings
+// ----------------------------------------------------------------------
+
+/** No-op placeholder to keep older callsites happy. */
+function setSeenHeader() { /* unified table header now; nothing to do */ }
+
+/** Build padding rows for the Seen table to keep a full 16-row viewport. */
+function padSeenRows(tbody, minRows = DEFAULT_VISIBLE_STANDINGS_ROWS) {
+  if (!tbody) return;
+  const dataCount = tbody.querySelectorAll('tr[data-key]').length;
+  const target = Math.max(minRows, dataCount);
+
+  // Remove stale padding before rebuilding cleanly
+  tbody.querySelectorAll('tr.pad').forEach(tr => tr.remove());
+
+  for (let i = dataCount; i < target; i += 1) {
+    const tr = document.createElement('tr');
+    tr.className = 'pad';
+    tr.innerHTML = `
+      <td class="tag"></td>
+      <td class="num"></td>
+      <td class="name"></td>
+      <td class="reads"></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
+/**
+ * Render the PRE/COUNTDOWN Seen table using the same structure/spacing
+ * as live Standings. Sources:
+ *  - Prefer state.seen.rows if provided by server (already normalized)
+ *  - Else derive from state.entrants and merge state.seen.counts
+ */
+function renderSeen(state) {
+  const table   = document.getElementById('rcSeen');
+  const tbody   = document.getElementById('seenTbody');
+  const scroll  = document.querySelector('.seenScroll');
+  const cSpan   = document.getElementById('seenCount');
+  const tSpan   = document.getElementById('seenTotal');
+  if (!table || !tbody || !scroll) return;
+
+  const seen    = state?.seen || {};
+  const counts  = seen?.counts || Object.create(null);
+  const rowsSrc = Array.isArray(seen?.rows) ? seen.rows : null;
+
+  // Update header counts if provided
   if (cSpan) cSpan.textContent = String(seen.count ?? 0);
   if (tSpan) tSpan.textContent = String(seen.total ?? 0);
 
-  setSeenHeader();
+  // Build normalized row list
+  let base = [];
+  if (rowsSrc && rowsSrc.length) {
+    base = rowsSrc.map((r, idx) => ({
+      key: r.tag ?? r.entrant_id ?? `${r.number ?? ''}:${r.name ?? ''}:${idx}`,
+      tag: (r.tag ?? '').toString(),
+      number: r.number != null && r.number !== '' ? String(r.number) : '',
+      name: r.name || '',
+      reads: Number(r.reads ?? (r.tag ? counts[r.tag] : 0) ?? 0),
+      enabled: r.enabled !== false
+    }));
+  } else {
+    const entrants = Array.isArray(state?.entrants) ? state.entrants : [];
+    base = entrants.map((e, idx) => {
+      const tag = (e.tag ?? '').toString();
+      return {
+        key: tag || e.entrant_id || `${e.number ?? ''}:${e.name ?? ''}:${idx}`,
+        tag,
+        number: e.number != null && e.number !== '' ? String(e.number) : '',
+        name: e.name || '',
+        reads: Number(tag ? counts[tag] : 0) || 0,
+        enabled: e.enabled !== false
+      };
+    });
+  }
 
-  // Normalize + choose a stable key
-  const rows = (Array.isArray(seen.rows) ? seen.rows : []).map(r => ({
-    key: r.tag ?? r.entrant_id ?? `${r.number ?? ''}:${r.name ?? ''}`,
-    tag: r.tag ?? '—',
-    number: r.number ?? null,
-    name: r.name ?? '',
-    reads: Number(r.reads ?? 0),
-    enabled: !!r.enabled,
-  }));
-
-  // Desired order: enabled first, reads desc, number asc
-  rows.sort((a,b) => {
-    if (a.enabled !== b.enabled) return (a.enabled ? -1 : 1);
-    if (a.reads !== b.reads)     return b.reads - a.reads;
-    return String(a.number ?? '').localeCompare(String(b.number ?? ''));
+  // Sort: enabled first, reads desc, then number asc (numeric-aware)
+  base.sort((a, b) => {
+    if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
+    if (a.reads   !== b.reads)   return b.reads - a.reads;
+    return String(a.number || '').localeCompare(String(b.number || ''), undefined, { numeric: true });
   });
 
-  // Index existing <li> by key
+  // Diff + patch rows
   const existing = new Map();
-  ul.querySelectorAll('li.seenRow').forEach(li => {
-    const key = li.getAttribute('data-key');
-    if (key) existing.set(key, li);
+  tbody.querySelectorAll('tr[data-key]').forEach(tr => {
+    const k = tr.getAttribute('data-key');
+    if (k) existing.set(k, tr);
   });
 
-  // Helper to build or update a row
-  function ensureRow(r) {
-    let li = existing.get(r.key);
-    if (!li) {
-      li = document.createElement('li');
-      li.className = 'seenRow';
-      li.setAttribute('data-key', r.key);
-
-      const cTag   = document.createElement('div'); cTag.className   = 'cell tag';
-      const cNum   = document.createElement('div'); cNum.className   = 'cell num';
-      const cName  = document.createElement('div'); cName.className  = 'cell name';
-      const cReads = document.createElement('div'); cReads.className = 'cell reads';
-
-      li.append(cTag, cNum, cName, cReads);
+  const frag = document.createDocumentFragment();
+  for (const r of base) {
+    let tr = existing.get(r.key);
+    if (!tr) {
+      tr = document.createElement('tr');
+      tr.className = 'data';
+      tr.setAttribute('data-key', r.key);
+      tr.innerHTML = `
+        <td class="tag"></td>
+        <td class="num"></td>
+        <td class="name"></td>
+        <td class="reads"></td>`;
     }
 
-    const [cTag, cNum, cName, cReads] = li.children;
+    const [cTag, cNum, cName, cReads] = tr.children;
+  const tagTxt = r.tag || '-';
+    if (cTag.textContent !== tagTxt) cTag.textContent = tagTxt;
 
-    // Update cells (only if changed)
-    if (cTag.textContent !== r.tag) cTag.textContent = r.tag;
-    const numTxt = r.number ? `#${r.number}` : '—';
+  const numTxt = r.number ? `#${r.number}` : '-';
     if (cNum.textContent !== numTxt) cNum.textContent = numTxt;
 
-    // Name + pill
-    const wantPill = r.reads > 0;
-    if (cName.firstChild?.nodeType === Node.TEXT_NODE) {
-      if (cName.firstChild.nodeValue !== r.name) cName.firstChild.nodeValue = r.name;
-    } else {
-      cName.textContent = r.name;
-    }
-    let pill = cName.querySelector('.seen-pill');
-    if (wantPill && !pill) {
-      pill = document.createElement('span');
-      pill.className = 'seen-pill';
-      pill.textContent = 'Entrant Seen';
-      cName.appendChild(pill);
-    } else if (!wantPill && pill) {
-      pill.remove();
-    }
+    if (cName.textContent !== (r.name || '')) cName.textContent = r.name || '';
 
     const readsTxt = String(r.reads);
     if (cReads.textContent !== readsTxt) cReads.textContent = readsTxt;
 
-    // Enabled styling
-    li.classList.toggle('is-disabled', !r.enabled);
-    return li;
+    tr.classList.toggle('is-disabled', !r.enabled);
+    frag.appendChild(tr);
+    existing.delete(r.key);
+  }
+  existing.forEach(tr => tr.remove());
+  tbody.appendChild(frag);
+
+  // Pad to fixed viewport and size/scroll exactly like standings
+  const visible = getStandingsViewportRows();
+  padSeenRows(tbody, visible);
+  updateStandingsScrollState(scroll, visible, base.length, table);
+}
+
+// ----------------------------------------------------------------------
+// Standings panel (GREEN/WHITE/CHECKERED) — unchanged structure
+// ----------------------------------------------------------------------
+
+function ensureStandingsDom() {
+  let panel = document.getElementById('panelStandings');
+  if (!panel) {
+    const host = document.querySelector('#paneLive .rcLiveBody');
+    if (!host) return null;
+
+    panel = document.createElement('div');
+    panel.id = 'panelStandings';
+    panel.classList.add('hidden');
+
+    const head = document.createElement('div');
+    head.className = 'liveHead';
+    head.textContent = 'Standings';
+
+    const scroll = document.createElement('div');
+    scroll.className = 'standingsScroll';
+
+    const table = document.createElement('table');
+    table.id = 'rcStandings';
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th class="pos">Pos</th>
+          <th class="num">Number</th>
+          <th class="name">Name</th>
+          <th class="laps">Laps</th>
+          <th class="last">Last</th>
+          <th class="pace">Pace</th>
+          <th class="best">Best</th>
+        </tr>
+      </thead>
+      <tbody></tbody>`;
+
+    scroll.appendChild(table);
+    panel.append(head, scroll);
+    host.appendChild(panel);
   }
 
-  // 1) Ensure all rows exist/updated and gather in desired order
-  const desiredNodes = rows.map(r => ensureRow(r));
+  const table = panel.querySelector('#rcStandings');
+  if (!table) return null;
 
-  // 2) Reorder DOM by appending in desired order (moves nodes cheaply)
-  //    This avoids tearing down the entire list each second.
-  const frag = document.createDocumentFragment();
-  for (const node of desiredNodes) frag.appendChild(node);
-  ul.appendChild(frag);
+  let tbody = table.querySelector('tbody');
+  if (!tbody) {
+    tbody = document.createElement('tbody');
+    table.appendChild(tbody);
+  }
 
-  // 3) Remove any stale nodes not present anymore
-  existing.forEach((li, key) => {
-    if (!rows.find(r => r.key === key)) li.remove();
-  });
+  els.panelStandings = panel;
+  els.standingsTable = table;
+  els.standingsTbody = tbody;
+
+  const scroll = panel.querySelector('.standingsScroll');
+  if (scroll) els.standingsScroll = scroll;
+
+  return { panel, table, tbody, scroll };
 }
+
+function fmtLapCell(raw) {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return '-';
+  return fmtLapTime(n);
+}
+
+function renderStandings(state) {
+  const dom = ensureStandingsDom();
+  if (!dom?.panel || !dom?.tbody) return;
+
+  const phaseLower = (state?.phase || '').toLowerCase();
+  const visibleRows = getStandingsViewportRows();
+  const isRacingPhase = phaseLower === 'green' || phaseLower === 'white' || phaseLower === 'checkered';
+
+  dom.panel.classList.toggle('hidden', !isRacingPhase);
+
+  if (!isRacingPhase) {
+    dom.tbody.replaceChildren();
+    padStandingsRows(dom.tbody, visibleRows);
+    updateStandingsScrollState(dom.scroll || els.standingsScroll, visibleRows, 0);
+    return;
+  }
+
+  const srcRows = Array.isArray(state?.standings) ? state.standings : [];
+  const normalized = srcRows.map((src, idx) => {
+    const keyBase = src?.entrant_id ?? src?.tag ?? src?.number ?? src?.name ?? idx;
+    const laps = Number(src?.laps ?? src?.total_laps ?? 0) || 0;
+    const lapDeficit = Number(src?.lap_deficit ?? 0) || 0;
+    const paceSeconds = (() => {
+      const core = src?.pace_5 ?? src?.pace ?? src?.pace_s;
+      if (core != null) {
+        const v = Number(core);
+        if (Number.isFinite(v) && v > 0) return v;
+      }
+      const paceMs = src?.pace_ms;
+      if (paceMs != null) {
+        const v = Number(paceMs) / 1000;
+        if (Number.isFinite(v) && v > 0) return v;
+      }
+      return null;
+    })();
+    return {
+      key: String(keyBase),
+      position: Number(src?.position ?? idx + 1) || (idx + 1),
+      number: src?.number ?? src?.car ?? src?.car_num ?? '',
+      name: src?.name ?? src?.team ?? src?.driver ?? '',
+      laps,
+      lapDeficit,
+      last: src?.last ?? src?.last_s ?? src?.last_ms ?? null,
+      pace: paceSeconds,
+      best: src?.best ?? src?.best_s ?? src?.best_ms ?? null,
+      enabled: src?.enabled !== false,
+    };
+  });
+
+  const tbody = dom.tbody;
+  tbody.querySelectorAll('tr.pad').forEach(tr => tr.remove());
+
+  const existing = new Map();
+  tbody.querySelectorAll('tr[data-key]').forEach(tr => {
+    const key = tr.getAttribute('data-key');
+    if (key) existing.set(key, tr);
+  });
+
+  const frag = document.createDocumentFragment();
+  for (const row of normalized) {
+    let tr = existing.get(row.key);
+    if (!tr) {
+      tr = document.createElement('tr');
+      tr.className = 'data';
+      tr.setAttribute('data-key', row.key);
+      tr.innerHTML = `
+        <td class="pos"></td>
+        <td class="num"></td>
+        <td class="name"></td>
+        <td class="laps"></td>
+        <td class="last"></td>
+        <td class="pace"></td>
+        <td class="best"></td>`;
+    }
+
+    const cells = tr.children;
+    const posTxt = String(row.position);
+    if (cells[0].textContent !== posTxt) cells[0].textContent = posTxt;
+
+  const numTxt = row.number ? `#${row.number}` : '-';
+    if (cells[1].textContent !== numTxt) cells[1].textContent = numTxt;
+
+    if (cells[2].textContent !== row.name) cells[2].textContent = row.name;
+
+    let lapsTxt = String(row.laps);
+    if (row.lapDeficit > 0) {
+      const suffix = row.lapDeficit === 1 ? '−1L' : `−${row.lapDeficit}L`;
+      lapsTxt += ` (${suffix})`;
+    }
+    if (cells[3].textContent !== lapsTxt) cells[3].textContent = lapsTxt;
+
+    const lastTxt = fmtLapCell(row.last);
+    if (cells[4].textContent !== lastTxt) cells[4].textContent = lastTxt;
+
+  const paceTxt = fmtLapCell(row.pace);
+  if (cells[5].textContent !== paceTxt) cells[5].textContent = paceTxt;
+
+    const bestTxt = fmtLapCell(row.best);
+  if (cells[6].textContent !== bestTxt) cells[6].textContent = bestTxt;
+
+    tr.classList.toggle('is-disabled', !row.enabled);
+    frag.appendChild(tr);
+    existing.delete(row.key);
+  }
+
+  existing.forEach(tr => tr.remove());
+  tbody.appendChild(frag);
+
+  padStandingsRows(tbody, visibleRows);
+  updateStandingsScrollState(dom.scroll || els.standingsScroll, visibleRows, normalized.length);
+}
+
+/** Pad rows for standings to keep a full 16-row viewport. */
+function padStandingsRows(tbody, minRows = DEFAULT_VISIBLE_STANDINGS_ROWS) {
+  if (!tbody) return;
+
+  const existingData = tbody.querySelectorAll('tr[data-key]').length;
+  const target = Math.max(minRows, existingData);
+
+  tbody.querySelectorAll('tr.pad').forEach(tr => tr.remove());
+
+  for (let i = existingData; i < target; i += 1) {
+    const tr = document.createElement('tr');
+    tr.className = 'pad';
+    tr.innerHTML = `
+      <td class="pos"></td>
+      <td class="num"></td>
+      <td class="name"></td>
+      <td class="laps"></td>
+      <td class="last"></td>
+      <td class="pace"></td>
+      <td class="best"></td>`;
+    tbody.appendChild(tr);
+  }
+}
+
 
 
   // ----------------------------------------------------------------------
@@ -190,7 +476,7 @@ function renderSeen(state) {
 
   function secondsToHuman(s) {
     const n = Number(s);
-    if (!Number.isFinite(n) || n < 0) return '—';
+  if (!Number.isFinite(n) || n < 0) return '-';
     if (n === 0) return 'Unlimited';
     const m = Math.floor(n / 60);
     const ss = n % 60;
@@ -206,7 +492,7 @@ function renderSeen(state) {
 
   function summarizeFromState(st) {
     // Limit
-    let limitStr = '—';
+  let limitStr = '-';
     const lim = st?.limit;
 
     if (lim && typeof lim === 'object') {
@@ -285,7 +571,11 @@ function renderSeen(state) {
     panelSeen      : $('#panelSeen'),
     panelFeed      : $('#panelFeed'),
     lapFeed        : $('#lapFeed'),       // <ul> for last-lap feed
-    // seenList     : $('#seenList'),     // exists, not used in this step
+    panelStandings : $('#panelStandings'),
+    standingsTable : document.querySelector('#rcStandings'),
+    standingsTbody : document.querySelector('#rcStandings tbody'),
+    standingsScroll: document.querySelector('#panelStandings .standingsScroll'),
+  // seenList     : $('#seenList'),     // exists, not used in this step
 
     // Flag pad
     flagPad        : $('#flagPad'),
@@ -332,7 +622,6 @@ function renderSeen(state) {
       const name = (btn.dataset.flag || '').toLowerCase();
       const isAllowed = allowed.has(name);
       btn.disabled = !isAllowed;
-      btn.setAttribute('aria-disabled', String(!isAllowed));
       btn.classList.toggle('is-disabled', !isAllowed);
     });
   }
@@ -657,6 +946,9 @@ function updateClockModeButton(st) {
     const feedPane = els.panelFeed || document.getElementById('panelFeed');
     if (seenPane) seenPane.classList.toggle('hidden', showFeed);
     if (feedPane) feedPane.classList.toggle('hidden', !showFeed);
+
+    // NEW: standings render (visible when showFeed)
+    renderStandings(st);
 
     if (showFeed) {
       updateLapFeed(st);

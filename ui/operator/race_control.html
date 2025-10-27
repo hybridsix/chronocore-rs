@@ -18,9 +18,9 @@
   ============================================================== -->
   <header class="app-header">
     <div class="brand">
-      <a class="brand-link" href="/ui/operator/index.html" aria-label="Go to Home">
+  <a class="brand-link" href="/ui/operator/index.html">
         <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="CCRS Logo" />
-        <div class="brand__wordmark" aria-label="ChronoCore Race Software">
+  <div class="brand__wordmark">
           <div class="wordmark__top">
             <span class="wordmark__big">CHRONO</span>
             <span class="wordmark__big">CORE</span>
@@ -89,7 +89,7 @@
       </div>
 
         <div class="toolbar-center">
-          <div id="flagPill" aria-live="polite">
+          <div id="flagPill">
             <span id="flagPillText">Pre-race</span>
           </div>
         </div>
@@ -98,7 +98,7 @@
     <!-- Two-column grid -->
     <div class="rcGrid">
       <!-- Left: Flags (span both rows on the left) -->
-      <section class="pane" id="paneFlags" aria-labelledby="flagsTitle">
+  <section class="pane" id="paneFlags">
         <h2 class="pane__head" id="flagsTitle">Flags</h2>
         <div class="pane__body">
           <div id="flagColumn">
@@ -108,7 +108,7 @@
             </div>
 
             <!-- Uniform single-column flag pad -->
-            <div class="flag-pad" id="flagPad" role="group" aria-label="Flag controls">
+            <div class="flag-pad" id="flagPad">
               <button class="flag flag--green"     data-flag="green"     type="button">Green</button>
               <button class="flag flag--yellow"    data-flag="yellow"    type="button">Yellow</button>
               <button class="flag flag--red"       data-flag="red"       type="button">Red</button>
@@ -121,19 +121,19 @@
       </section>
 
       <!-- Right (row 1): Race clock -->
-      <section class="pane" id="paneClock" aria-labelledby="clockTitle">
+  <section class="pane" id="paneClock">
         <h2 class="pane__head" id="clockTitle">Race clock</h2>
         <div class="pane__body clockBody">
           <!-- NEW: actions live in the same row as the clock -->
-          <div class="clockActions" role="group" aria-label="Race actions">
+          <div class="clockActions">
             <button id="btnStartRace"  class="btn btn-success">Start race</button>
             <button id="btnEndRace"    class="btn">End race</button>
             <button id="btnAbortReset" class="btn btn-danger">Abort &amp; reset</button>
           </div>
           <!-- Post-finish actions (hidden until CHECKERED) -->
-          <div id="postFinishActions" class="post-finish hidden" aria-live="polite">
-            <button id="btnResults" class="btn btn--primary btn--xl">
-              Open results & exports
+          <div id="postFinishActions" class="post-finish hidden">
+            <button id="btnResults" class="btn btn--results">
+              Open results &amp; exports
             </button>
           </div>
           <div class="clockDisplay">
@@ -142,31 +142,68 @@
               <button id="btnClockMode" class="btn btn-primary btn--sm" type="button"
                       title="Toggle elapsed/remaining">Remaining</button>
             </div>
-            <div id="raceClock" class="bigClock" aria-live="polite">00:00:00</div>
+            <div id="raceClock" class="bigClock">00:00:00</div>
           </div>
           <!--<div id="flagBanner" aria-live="polite">
             <span id="flagLabel">PRE</span>
             <span id="flagSublabel"></span>
           </div>-->
-      </section>
-
-      <!-- Right (row 2): Race data -->
-      <section class="pane" id="paneLive" aria-labelledby="liveTitle">
-        <h2 class="pane__head" id="liveTitle">Race data</h2>
-        <div class="pane__body rcLiveBody">
-          <div id="panelSeen">
-            <div class="liveHead">
-              Seen (<span id="seenCount">0</span>/<span id="seenTotal">0</span>)
-            </div>
-            <ul id="seenList" class="liveList" aria-live="polite"></ul>
-          </div>
-
-          <div id="panelFeed" class="hidden">
-            <div class="liveHead">Last lap feed</div>
-            <ul id="lapFeed" class="liveList" aria-live="polite"></ul>
-          </div>
         </div>
       </section>
+
+<!-- Right (row 2): Race data -->
+<section class="pane" id="paneLive">
+  <h2 class="pane__head" id="liveTitle">Race data</h2>
+  <div class="pane__body rcLiveBody">
+
+    <!-- PRE/COUNTDOWN: Seen list (table skin matches Standings) -->
+    <div id="panelSeen">
+      <div class="liveHead standingsHead">
+        <div class="cell hdr title">Seen <span class="muted">(</span><span id="seenCount">0</span><span class="muted">/</span><span id="seenTotal">0</span><span class="muted">)</span></div>
+      </div>
+
+      <div class="seenScroll">
+        <table id="rcSeen" class="rcTable">
+          <thead>
+            <tr>
+              <th class="tag">TAG</th>
+              <th class="num">Number</th>
+              <th class="name">Name</th>
+              <th class="reads">Reads</th>
+            </tr>
+          </thead>
+          <tbody id="seenTbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+
+    <!-- RACING/CHECKERED: Standings (scrolls inside only this pane) -->
+  <div id="panelStandings" class="hidden">
+      <!-- NEW: match the "Seen" header bar so both states consume equal height -->
+      <div class="liveHead standingsHead">
+        <div class="cell hdr title">Standings</div>
+      </div>
+
+      <div class="standingsScroll">
+        <table id="rcStandings">
+          <thead>
+            <tr>
+              <th class="pos">Pos</th>
+              <th class="num">Number</th>
+              <th class="name">Name</th>
+              <th class="laps">Laps</th>
+              <th class="last">Last</th>
+              <th class="pace">Pace</th>
+              <th class="best">Best</th>
+            </tr>
+          </thead>
+          <tbody><!-- rows injected by race_control.js --></tbody>
+        </table>
+      </div>
+    </div>
+</section>
+
     </div>
   </main>
 
@@ -175,7 +212,7 @@
   ============================================================== -->
   <footer class="app-footer">
     <div class="footer-left">
-      <div class="status-dot" id="netDot" aria-hidden="true"></div>
+  <div class="status-dot" id="netDot"></div>
       <div id="netMsg">Ready</div>
     </div>
     <div class="footer-center">
