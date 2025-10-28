@@ -338,8 +338,10 @@ function renderStandings(state) {
 
   const phaseLower = (state?.phase || '').toLowerCase();
   const visibleRows = getStandingsViewportRows();
-  const isRacingPhase = phaseLower === 'green' || phaseLower === 'white' || phaseLower === 'checkered';
+  const isRacingPhase =
+    phaseLower === 'green' || phaseLower === 'white' || phaseLower === 'checkered';
 
+  // Only show the Standings panel during racing phases
   dom.panel.classList.toggle('hidden', !isRacingPhase);
 
   if (!isRacingPhase) {
@@ -349,11 +351,17 @@ function renderStandings(state) {
     return;
   }
 
+  // Normalize incoming rows
   const srcRows = Array.isArray(state?.standings) ? state.standings : [];
   const normalized = srcRows.map((src, idx) => {
-    const keyBase = src?.entrant_id ?? src?.tag ?? src?.number ?? src?.name ?? idx;
+    const entrantId = Number(src?.entrant_id ?? NaN);
+    const keyBase =
+      src?.entrant_id ?? src?.tag ?? src?.number ?? src?.name ?? idx;
+
     const laps = Number(src?.laps ?? src?.total_laps ?? 0) || 0;
     const lapDeficit = Number(src?.lap_deficit ?? 0) || 0;
+
+    // Prefer pace in seconds if provided; else convert ms to seconds; else null
     const paceSeconds = (() => {
       const core = src?.pace_5 ?? src?.pace ?? src?.pace_s;
       if (core != null) {
@@ -367,7 +375,9 @@ function renderStandings(state) {
       }
       return null;
     })();
+
     return {
+      entrantId,
       key: String(keyBase),
       position: Number(src?.position ?? idx + 1) || (idx + 1),
       number: src?.number ?? src?.car ?? src?.car_num ?? '',
@@ -377,19 +387,23 @@ function renderStandings(state) {
       last: src?.last ?? src?.last_s ?? src?.last_ms ?? null,
       pace: paceSeconds,
       best: src?.best ?? src?.best_s ?? src?.best_ms ?? null,
-      enabled: src?.enabled !== false,
+      gridIndex: Number(src?.grid_index ?? NaN),
+      enabled: src?.enabled !== false
     };
   });
 
+  // Clear padding rows before update
   const tbody = dom.tbody;
   tbody.querySelectorAll('tr.pad').forEach(tr => tr.remove());
 
+  // Index existing rows by key
   const existing = new Map();
   tbody.querySelectorAll('tr[data-key]').forEach(tr => {
     const key = tr.getAttribute('data-key');
     if (key) existing.set(key, tr);
   });
 
+  // Build/patch rows
   const frag = document.createDocumentFragment();
   for (const row of normalized) {
     let tr = existing.get(row.key);
@@ -397,21 +411,51 @@ function renderStandings(state) {
       tr = document.createElement('tr');
       tr.className = 'data';
       tr.setAttribute('data-key', row.key);
+      if (Number.isFinite(row.entrantId)) tr.dataset.entrantId = String(row.entrantId);
+
+      // Column order MUST match your <thead>:
+      // 0: Pos, 1: Number, 2: Name, 3: Brake, 4: Laps, 5: Last, 6: Pace, 7: Best
       tr.innerHTML = `
         <td class="pos"></td>
         <td class="num"></td>
         <td class="name"></td>
+        <td class="brake col-brake">
+        <button class="btn btn--sm brake-toggle" data-ok="">—</button></td>
         <td class="laps"></td>
         <td class="last"></td>
         <td class="pace"></td>
-        <td class="best"></td>`;
+        <td class="best"></td>
+      `;
+
+      // Initialize the brake button (no-op unless body.is-qualifying)
+      if (typeof window.CCRS?.initBrakeCell === 'function') {
+        window.CCRS.initBrakeCell(tr);
+      }
+    } else {
+      // Ensure entrant id is stamped for existing rows
+      if (Number.isFinite(row.entrantId)) tr.dataset.entrantId = String(row.entrantId);
+
+      // If this row predates the Brake column, insert it at index 3
+      if (!tr.querySelector('.brake-toggle')) {
+        const td = document.createElement('td');
+        td.className = 'brake col-brake';
+        td.innerHTML = `<button class="btn btn--sm brake-toggle" data-ok="">—</button>`;
+        // Insert before current index 3 (Laps) to keep order aligned
+        const insertBefore = tr.children[3] || null;
+        tr.insertBefore(td, insertBefore);
+        if (typeof window.CCRS?.initBrakeCell === 'function') {
+          window.CCRS.initBrakeCell(tr);
+        }
+      }
     }
 
+    // Update cell contents (keep indices aligned with header order)
     const cells = tr.children;
+
     const posTxt = String(row.position);
     if (cells[0].textContent !== posTxt) cells[0].textContent = posTxt;
 
-  const numTxt = row.number ? `#${row.number}` : '-';
+    const numTxt = row.number ? `#${row.number}` : '-';
     if (cells[1].textContent !== numTxt) cells[1].textContent = numTxt;
 
     if (cells[2].textContent !== row.name) cells[2].textContent = row.name;
@@ -421,28 +465,31 @@ function renderStandings(state) {
       const suffix = row.lapDeficit === 1 ? '−1L' : `−${row.lapDeficit}L`;
       lapsTxt += ` (${suffix})`;
     }
-    if (cells[3].textContent !== lapsTxt) cells[3].textContent = lapsTxt;
+    if (cells[4].textContent !== lapsTxt) cells[4].textContent = lapsTxt;
 
     const lastTxt = fmtLapCell(row.last);
-    if (cells[4].textContent !== lastTxt) cells[4].textContent = lastTxt;
+    if (cells[5].textContent !== lastTxt) cells[5].textContent = lastTxt;
 
-  const paceTxt = fmtLapCell(row.pace);
-  if (cells[5].textContent !== paceTxt) cells[5].textContent = paceTxt;
+    const paceTxt = fmtLapCell(row.pace);
+    if (cells[6].textContent !== paceTxt) cells[6].textContent = paceTxt;
 
     const bestTxt = fmtLapCell(row.best);
-  if (cells[6].textContent !== bestTxt) cells[6].textContent = bestTxt;
+    if (cells[7].textContent !== bestTxt) cells[7].textContent = bestTxt;
 
     tr.classList.toggle('is-disabled', !row.enabled);
     frag.appendChild(tr);
     existing.delete(row.key);
   }
 
+  // Remove rows not in the new snapshot
   existing.forEach(tr => tr.remove());
-  tbody.appendChild(frag);
 
+  // Commit DOM, pad to viewport, update scroll state
+  tbody.appendChild(frag);
   padStandingsRows(tbody, visibleRows);
   updateStandingsScrollState(dom.scroll || els.standingsScroll, visibleRows, normalized.length);
 }
+
 
 /** Pad rows for standings to keep a full 16-row viewport. */
 function padStandingsRows(tbody, minRows = DEFAULT_VISIBLE_STANDINGS_ROWS) {
@@ -657,7 +704,7 @@ function padStandingsRows(tbody, minRows = DEFAULT_VISIBLE_STANDINGS_ROWS) {
     void el.offsetWidth;     // reflow to reset animation clock
     el.classList.add(className);
   } else {
-    // style-based fallback if you ever need it
+    // style-based fallback if needed
     el.style.animation = 'none';
     void el.offsetWidth;
     el.style.animation = '';
@@ -1121,7 +1168,7 @@ function updateClockModeButton(st) {
       _pollTimer = setTimeout(tick, nextMs);
     };
 
-    // prime the pump
+    // initial tick
     tick();
   }
 
@@ -1133,3 +1180,192 @@ function updateClockModeButton(st) {
     startPolling();
   });
 })();
+
+/* ======================================================================
+   QUALIFYING — Brake Test toggles (Race Control)
+   ----------------------------------------------------------------------
+   Purpose
+   - Provide a per-row Brake toggle shown only during qualifying.
+   - Cycle order: null (—) → Pass → Fail → null.
+   - Persist immediately to /qual/heat/{heat_id}/brake as { entrant_id, brake_ok }.
+   - Restore saved state on load from GET /qual/heat/{heat_id}/brake (e.g. {"17":true}).
+
+   DOM contract
+   - <thead> contains: <th class="brake col-brake">Brake</th>
+   - Each standings row: <tr data-entrant-id> (set via tr.dataset.entrantId)
+   - Cell markup (inserted by renderStandings):
+       <td class="brake col-brake">
+         <button class="btn btn--sm brake-toggle" data-ok="">—</button>
+       </td>
+   - CSS: .col-brake is hidden unless body.is-qualifying is present.
+
+   Behavior
+   - No-op outside qualifying.
+   - Optimistic UI update; POST errors are logged and state re-syncs on refresh.
+   - CCRS.initBrakeCell(tr) initializes the button when a row is created.
+
+   Storage
+   - In-memory Map: entrant_id -> true | false | null
+   - Server stores flags in heats.config_json.qual_brake_flags
+   ====================================================================== */
+(function () {
+  'use strict';
+
+  // Namespace + tiny query helper
+  const CCRS = (window.CCRS = window.CCRS || {});
+  const $ = (sel, root) => (root || document).querySelector(sel);
+
+  // Cache of verdicts: entrant_id -> true | false | null
+  const brakeVerdicts = new Map();
+
+  // Current session (set on boot)
+  let qualHeatId = null;
+  let isQualifying = false;
+
+  // -------------------------------------------------------------------
+  // Runtime discovery: prefer a global CCRS.runtime if you set one;
+  // otherwise pull from /setup/runtime (heat_id, session_type, etc.).
+  // -------------------------------------------------------------------
+  async function getRuntime() {
+    const rtv = (window.CCRS && window.CCRS.runtime) || null;
+    if (rtv && (rtv.heat_id != null) && typeof rtv.session_type === 'string') {
+      return rtv;
+    }
+    try {
+      const r = await fetch('/setup/runtime');
+      if (!r.ok) throw new Error('runtime fetch failed');
+      return await r.json();
+    } catch {
+      return { heat_id: null, session_type: null };
+    }
+  }
+
+  function setQualMode(on) {
+    isQualifying = !!on;
+    document.body.classList.toggle('is-qualifying', isQualifying);
+  }
+
+  // -------------------------------------------------------------------
+  // Server I/O for verdicts (stored in heats.config_json.qual_brake_flags)
+  // GET returns { "17": true, "44": false, ... }
+  // POST body: { entrant_id, brake_ok }
+  // -------------------------------------------------------------------
+  async function loadBrakeVerdicts(heat_id) {
+    brakeVerdicts.clear();
+    if (!heat_id) return;
+    try {
+      const r = await fetch(`/qual/heat/${heat_id}/brake`);
+      if (!r.ok) return;
+      const data = await r.json();
+      for (const [k, v] of Object.entries(data)) {
+        brakeVerdicts.set(Number(k), v === true);
+      }
+    } catch {
+      /* swallow; remain empty */
+    }
+  }
+
+  async function persistBrake(entrantId, nextVal) {
+    if (!qualHeatId) return;
+    try {
+      const r = await fetch(`/qual/heat/${qualHeatId}/brake`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ entrant_id: entrantId, brake_ok: nextVal }),
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    } catch (e) {
+      console.warn('Brake verdict update failed:', e);
+    }
+  }
+
+  // -------------------------------------------------------------------
+  // UI helpers
+  // -------------------------------------------------------------------
+  function renderBrakeButton(btn, entrantId) {
+    const val = brakeVerdicts.has(entrantId) ? brakeVerdicts.get(entrantId) : null;
+    btn.dataset.ok = (val === null ? '' : String(val));
+    btn.classList.remove('is-yes', 'is-no', 'is-unk');
+    if (val === true) {
+      btn.classList.add('is-yes'); btn.textContent = 'Pass';
+    } else if (val === false) {
+      btn.classList.add('is-no');  btn.textContent = 'Fail';
+    } else {
+      btn.classList.add('is-unk'); btn.textContent = '—';
+    }
+  }
+
+  // Public hook: call this after you build a TR to stamp initial state
+  CCRS.initBrakeCell = function initBrakeCell(tr) {
+    if (!isQualifying) return; // hidden anyway
+    const btn = tr.querySelector('button.brake-toggle');
+    const entrantId = Number(tr?.dataset?.entrantId);
+    if (!btn || !Number.isFinite(entrantId)) return;
+    renderBrakeButton(btn, entrantId);
+  };
+
+  // One delegated click listener for the standings table
+  function wireClicks() {
+    const table = $('#rcStandings');
+    if (!table) return;
+    table.addEventListener('click', async (ev) => {
+      const btn = ev.target.closest('button.brake-toggle');
+      if (!btn || !isQualifying) return; // ignore outside qualifying
+
+      const tr = btn.closest('tr');
+      const entrantId = Number(tr?.dataset?.entrantId);
+      if (!Number.isFinite(entrantId)) return;
+
+      // Current → next (cycle: — → Pass → Fail → —)
+      const cur = (btn.dataset.ok === 'true') ? true :
+                  (btn.dataset.ok === 'false') ? false : null;
+      const next = (cur === null) ? true : (cur === true ? false : null);
+
+      // Optimistic cache + UI, then persist
+      brakeVerdicts.set(entrantId, next);
+      renderBrakeButton(btn, entrantId);
+      await persistBrake(entrantId, next);
+      // Re-render from cache (in case of class/text drift)
+      renderBrakeButton(btn, entrantId);
+    });
+  }
+
+  // Observe <tbody> so rows added later get initialized automatically
+  function observeStandingsBody() {
+    const tbody = $('#rcStandings tbody');
+    if (!tbody) return;
+    // Initialize any existing rows
+    tbody.querySelectorAll('tr').forEach((tr) => CCRS.initBrakeCell(tr));
+    const mo = new MutationObserver((muts) => {
+      for (const m of muts) {
+        m.addedNodes.forEach((n) => {
+          if (n.nodeType === 1 && n.tagName === 'TR') CCRS.initBrakeCell(n);
+        });
+      }
+    });
+    mo.observe(tbody, { childList: true });
+  }
+
+  // -------------------------------------------------------------------
+  // Boot sequence (runs once per page load)
+  // -------------------------------------------------------------------
+  async function bootQualBrake() {
+    const rt = await getRuntime();
+    const isQual = (rt.session_type || '').toLowerCase() === 'qualifying';
+    qualHeatId = isQual ? rt.heat_id : null;
+    setQualMode(isQual);
+
+    if (!isQual) return; // nothing else to do in non-qual sessions
+
+    await loadBrakeVerdicts(qualHeatId);
+    wireClicks();
+    observeStandingsBody();
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootQualBrake);
+  } else {
+    bootQualBrake();
+  }
+})();
+

@@ -1,4 +1,8 @@
 from __future__ import annotations
+import json
+import sqlite3
+from typing import Any, Dict
+
 
 """
 backend/db_schema.py (ultimate)
@@ -304,3 +308,43 @@ def tag_conflicts(conn: sqlite3.Connection, tag: str, incumbent_entrant_id: Opti
             (tag, incumbent_entrant_id),
         )
     return cur.fetchone() is not None
+
+# --------------------------------------------------------------------
+# JSON config helpers (heats/events) — persistence for tiny settings
+# --------------------------------------------------------------------
+def _get_json(conn: sqlite3.Connection, table: str, id_col: str, row_id: int) -> Dict[str, Any]:
+    cur = conn.execute(f"SELECT config_json FROM {table} WHERE {id_col}=?", (row_id,))
+    row = cur.fetchone()
+    if not row or row[0] is None:
+        return {}
+    try:
+        return json.loads(row[0])
+    except Exception:
+        return {}
+
+def _set_json(conn: sqlite3.Connection, table: str, id_col: str, row_id: int, payload: Dict[str, Any]) -> None:
+    conn.execute(
+        f"UPDATE {table} SET config_json=? WHERE {id_col}=?",
+        (json.dumps(payload), row_id),
+    )
+    conn.commit()
+
+# ---- Qualifying brake test verdicts (stored on the QUALIFYING heat) ----
+def get_brake_flags(conn: sqlite3.Connection, heat_id: int) -> Dict[int, bool]:
+    flags = _get_json(conn, "heats", "heat_id", heat_id).get("qual_brake_flags", {})
+    return {int(k): bool(v) for k, v in flags.items()}
+
+def set_brake_flag(conn: sqlite3.Connection, heat_id: int, entrant_id: int, brake_ok: bool) -> None:
+    cfg = _get_json(conn, "heats", "heat_id", heat_id)
+    flags = cfg.get("qual_brake_flags", {})
+    flags[str(entrant_id)] = bool(brake_ok)
+    cfg["qual_brake_flags"] = flags
+    _set_json(conn, "heats", "heat_id", heat_id, cfg)
+
+# ---- Frozen weekend qualifying grid (stored on the EVENT) ----
+def get_event_config(conn: sqlite3.Connection, event_id: int) -> Dict[str, Any]:
+    return _get_json(conn, "events", "event_id", event_id)
+
+def set_event_config(conn: sqlite3.Connection, event_id: int, cfg: Dict[str, Any]) -> None:
+    _set_json(conn, "events", "event_id", event_id, cfg)
+

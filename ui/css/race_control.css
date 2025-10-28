@@ -1142,3 +1142,37 @@ body[data-flag="CHECKERED"] #flagPill {
   color: rgba(255,255,255,.28);
 }
 
+/* Qualifying-only Brake column: hidden by default */
+#rcStandings th.col-brake,
+#rcStandings td.col-brake,
+#rcSeen      th.col-brake,
+#rcSeen      td.col-brake { display: none; }
+
+/* Visible only when this heat is qualifying */
+body.is-qualifying #rcStandings th.col-brake,
+body.is-qualifying #rcStandings td.col-brake,
+body.is-qualifying #rcSeen      th.col-brake,
+body.is-qualifying #rcSeen      td.col-brake { display: table-cell; }
+
+/* Stable sizing so adding the column doesn’t wiggle layout */
+#rcStandings th.brake, #rcStandings td.brake,
+#rcSeen      th.brake, #rcSeen      td.brake {
+  width: 7.5ch;
+  text-align: center;
+  padding-left: 6px;
+  padding-right: 6px;
+}
+
+/* Button visual states */
+.brake-toggle { min-width: 6ch; font-weight: 700; }
+.brake-toggle.is-yes {
+  background: linear-gradient(180deg, #1f7a4d, #165a39);
+  border-color:#2c5f47; color:#eafff4;
+}
+.brake-toggle.is-no {
+  background: linear-gradient(180deg, #8b3434, #672525);
+  border-color:#6d3a3a; color:#fff3f3;
+}
+.brake-toggle.is-unk {
+  background: #172532; border:1px solid #263546; color:#cfd7e3;
+}

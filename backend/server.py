@@ -44,8 +44,9 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 
 ## Our Race engine data, config, and db settings##
 from .race_engine import ENGINE  
-from .db_schema import ensure_schema, tag_conflicts
+from .db_schema import ensure_schema, tag_conflicts, get_event_config
 from .config_loader import get_db_path, get_scanner_cfg, CONFIG
+from backend.qualifying import qual
 
 
 # log = logging.getLogger("uvicorn.error")
@@ -61,6 +62,9 @@ ensure_schema(DB_PATH, recreate=False, include_passes=True)
 # FastAPI app bootstrap
 # ------------------------------------------------------------
 app = FastAPI(title="CCRS Backend", version="0.2.1")
+
+# Register auxiliary routers
+app.include_router(qual)
 
 # ------------------------------------------------------------
 # Simple scan bus state
@@ -442,6 +446,133 @@ log.info("Serving UI from: %s", STATIC_DIR)  # sanity print at startup
 # ------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
+def _grid_map_for_event(conn: sqlite3.Connection, event_id: int) -> Dict[int, int]:
+    """Return a map of entrant_id -> order from the event's frozen qualifying grid.
+
+    Reads event config JSON via get_event_config and extracts
+    qualifying.grid[].order. Missing data returns an empty dict.
+    """
+    cfg = get_event_config(conn, event_id) or {}
+    grid = (cfg.get("qualifying") or {}).get("grid") or []
+    return {int(item["entrant_id"]): int(item["order"]) for item in grid if "entrant_id" in item and "order" in item}
+
+def _brake_map_for_event(conn: sqlite3.Connection, event_id: int) -> dict[int, bool]:
+    """
+    Read event config and return entrant_id -> brake_ok boolean.
+    Expected shape in events.config_json:
+      {
+        "qualifying": {
+          "grid": [
+            {"entrant_id": 101, "order": 1, "brake_ok": true},
+            ...
+          ]
+        }
+      }
+    Missing keys default to True (i.e., treat as passed).
+    """
+    cfg = get_event_config(conn, event_id) or {}
+    grid = (cfg.get("qualifying") or {}).get("grid") or []
+    out: dict[int, bool] = {}
+    for item in grid:
+        try:
+            eid = int(item["entrant_id"])
+        except Exception:
+            continue
+        out[eid] = bool(item.get("brake_ok", True))
+    return out
+
+
+def build_standings_payload(
+    conn: sqlite3.Connection,
+    event_id: int,
+    phase: str | None,
+) -> list[dict]:
+    """
+    Build the UI 'standings' array. Behavior:
+      • PRE/COUNTDOWN → order by frozen grid (qualifying).
+      • GREEN/WHITE/CHECKERED → use engine’s live values; if engine
+        doesn’t provide an ordered list, derive a reasonable order.
+
+    Each row has:
+      { entrant_id, number, name, laps, last, pace, best,
+        enabled, grid_index, brake_valid }
+    """
+    # 1) Snapshot the engine entrants as our baseline “roster”
+    ents = getattr(ENGINE, "entrants", {}) or {}
+    rows: list[dict] = []
+    for eid, ent in ents.items():
+        try:
+            eid_i = int(getattr(ent, "entrant_id", eid))
+        except Exception:
+            continue
+
+        # Pull what we can from the engine object
+        number = getattr(ent, "number", None)
+        name   = getattr(ent, "name", None)
+        enabled = bool(getattr(ent, "enabled", True))
+
+        laps = int(getattr(ent, "total_laps", 0) or 0)
+        # “last” / “pace” / “best” fields come in many dialects; be permissive
+        last = getattr(ent, "last_s", None) or getattr(ent, "last_ms", None) or getattr(ent, "last", None)
+        pace = getattr(ent, "pace_5", None) or getattr(ent, "pace_s", None) or getattr(ent, "pace_ms", None)
+        best = getattr(ent, "best_s", None) or getattr(ent, "best_ms", None) or getattr(ent, "best", None)
+
+        rows.append({
+            "entrant_id": eid_i,
+            "number": (str(number) if number is not None else None),
+            "name": (str(name) if name is not None else f"Entrant {eid_i}"),
+            "laps": laps,
+            "last": last,
+            "pace": pace,
+            "best": best,
+            "enabled": enabled,
+            # filled below
+            "grid_index": None,
+            "brake_valid": True,
+        })
+
+    # 2) Grid + brake maps from event config
+    grid_map  = _grid_map_for_event(conn, event_id) or {}
+    brake_map = _brake_map_for_event(conn, event_id) or {}
+
+    for r in rows:
+        eid = r["entrant_id"]
+        r["grid_index"] = grid_map.get(eid)
+        r["brake_valid"] = brake_map.get(eid, True)
+
+    # 3) Ordering policy
+    phase_lower = (phase or "").lower()
+    if phase_lower in ("pre", "countdown"):
+        # Sort strictly by frozen grid. Unknowns go last, stable by number/name.
+        rows.sort(key=lambda r: (r["grid_index"] is None, r["grid_index"] or 10**9,
+                                 str(r.get("number") or ""), str(r.get("name") or "")))
+    else:
+        # Racing/finished: prefer laps desc, then pace/best (smallest wins), then grid as gentle tiebreaker
+        def _sec(x):
+            # normalize x to seconds if ms; tolerate None
+            if x is None:
+                return None
+            try:
+                v = float(x)
+                # Heuristic: if it looks like milliseconds in the thousands, divide
+                return (v / 1000.0) if v > 600.0 else v
+            except Exception:
+                return None
+
+        rows.sort(key=lambda r: (
+            -int(r.get("laps") or 0),
+            (_sec(r.get("pace")) if _sec(r.get("pace")) is not None else 9e9),
+            (_sec(r.get("best")) if _sec(r.get("best")) is not None else 9e9),
+            (r["grid_index"] if r["grid_index"] is not None else 10**9),
+        ))
+
+        # Stamp 1-based position for convenience (UI still free to compute)
+        for i, r in enumerate(rows, start=1):
+            r["position"] = i
+
+    return rows
+
+
 async def _fetch_one(db: aiosqlite.Connection, sql: str, params: tuple = ()) -> Optional[aiosqlite.Row]:
     cur = await db.execute(sql, params)
     row = await cur.fetchone()
@@ -1190,7 +1321,20 @@ async def race_state():
                 # 3) Running hint (don’t fight engine if already present)
                 snap.setdefault("running", phase_lower in ("green", "white"))
 
-                # 4) Always attach live 'seen'
+                # 4) Build standings using frozen grid when not racing; live when racing
+                try:
+                    raw_eid = _CURRENT_RACE_ID
+                    if raw_eid not in (None, "", 0, "0"):
+                        event_id = int(raw_eid)
+                        with sqlite3.connect(DB_PATH) as sconn:
+                            snap["standings"] = build_standings_payload(
+                                sconn, event_id=event_id, phase=phase_lower
+                            )
+                except Exception as _ex:
+                    # Don’t let standings break state responses
+                    pass
+
+                # 5) Always attach live 'seen'
                 snap["seen"] = _state_seen_block()
 
             return JSONResponse(snap)
