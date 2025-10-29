@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>ChronoCore — Spectator</title>
+  <title>ChronoCore - Spectator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <!-- Your real styles -->
@@ -18,7 +18,7 @@
       <img src="/ui/img/PRS_Logo.svg" alt="PRS Logo"
            onerror="this.onerror=null;this.src='/ui/PRS_Logo.svg'">
     </div>
-    <div class="title">Live Timing — Spectator</div>
+  <div class="title">Live Timing - Spectator</div>
     <!-- Simulator status pill (hidden until state arrives) -->
     <div class="sim-wrap">
   <div class="pill hidden" id="simPill">SIMULATOR ACTIVE</div>
@@ -33,7 +33,7 @@
     <!-- Flag banner -->
     <div id="flagBanner" class="flag hidden">
       <div class="flag__icon"></div>
-      <div class="flag__label" id="flagLabel">—</div>
+  <div class="flag__label" id="flagLabel">-</div>
     </div>
 
     <section class="card">
@@ -151,8 +151,8 @@
   const car   = r.number ?? r.car ?? r.carNum ?? "";
         const name  = r.name ?? r.team ?? r.driver ?? `Tag ${r.tag ?? ""}`;
         const laps  = r.laps ?? 0;
-        const last  = (typeof r.last === "number") ? r.last.toFixed(3) : "—";
-        const best  = (typeof r.best === "number") ? r.best.toFixed(3) : "—";
+  const last  = (typeof r.last === "number") ? r.last.toFixed(3) : "-";
+  const best  = (typeof r.best === "number") ? r.best.toFixed(3) : "-";
         el.innerHTML = `
           <div>${pos}</div>
           <div class="car">${car}</div>
@@ -196,9 +196,9 @@
       renderSim(s.sim, s.sim_label);
 
       const n = Array.isArray(s?.standings) ? s.standings.length : 0;
-      setNetStatus(true, `OK — ${n} karts`);
+  setNetStatus(true, `OK - ${n} karts`);
     }, 333, () => {
-      setNetStatus(false, "Disconnected — retrying…");
+  setNetStatus(false, "Disconnected - retrying…");
       // Keep last good clock rendered; don't blank it here
     });
     poller.start();

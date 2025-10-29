@@ -1,5 +1,5 @@
 /* ==========================================================================
-   CCRS — Entrants & Tags page logic
+  CCRS - Entrants & Tags page logic
    - Forward-only helpers via window.CCRS
    - setNetStatus(ok:boolean, message:string)
    - DB pill uses /readyz (immediate + poller)
@@ -43,7 +43,7 @@
     newBtn:      $('#newBtn'),
     formMsg:     $('#formMsg'),
 
-    // NEW — color controls (hex text + native picker)
+  // NEW - color controls (hex text + native picker)
     entColor:        $('#entColor'),        // text input (hex)
     entColorPicker:  $('#entColorPicker'),  // <input type="color">
 
@@ -380,7 +380,7 @@
       if (!Array.isArray(data)) throw new Error('Bad entrants payload');
       ALL = data;
       render();
-      setNetStatus(true, `OK — ${ALL.length} entrants`);
+  setNetStatus(true, `OK - ${ALL.length} entrants`);
       highlightSelection();
     } catch (err) {
       console.error('[Entrants] loadEntrants failed:', err.message || err);
@@ -456,7 +456,7 @@
       // NEW ORDER (Enabled | Tag | Number | Team | Actions | Status)
       el.innerHTML = `
         <div>${row.enabled ? 'Yes' : 'No'}</div>
-        <div class="tag-cell"><span class="mono">${row.tag ?? '—'}</span></div>
+  <div class="tag-cell"><span class="mono">${row.tag ?? '-'}</span></div>
         <div class="right mono">${row.number ?? ''}</div>
         <div class="name">${clamp(row.name ?? '', 64)}</div>
         <div class="actions">
@@ -557,7 +557,7 @@
     const tag = tagRaw === '' ? null : digitsOnly(tagRaw);
     const enabled = !!els.entEnabled.checked;
 
-      // NEW — Color normalized to #RRGGBB or null
+  // NEW - Color normalized to #RRGGBB or null
     let color = null;
     if (els.entColor) {
       const norm = normalizeHexColor(els.entColor.value);
@@ -581,7 +581,7 @@
     // focus the single Tag field
     els.entTag.value = tagDigits;
     els.entTag.focus();
-    setNetStatus(false, '409 — duplicate tag');
+  setNetStatus(false, '409 - duplicate tag');
   }
 
   /* =========================
@@ -611,7 +611,7 @@
 
     if (!ok) {
       if (code === 409) { els.quickCreateModal.close(); handleConflict(digitsOnly(tag)); return; }
-      setQCMsg('Save failed — check connection/logs.', 'error');
+  setQCMsg('Save failed - check connection/logs.', 'error');
       return;
     }
 
@@ -692,7 +692,7 @@
       if (!scanCancel) els.assignBtn.disabled = !els.entTag.value.trim();
     });
 
-      // NEW — Color sync: hex <-> picker (soft validation)
+  // NEW - Color sync: hex <-> picker (soft validation)
       if (els.entColor && els.entColorPicker) {
         // Hex -> Picker
         els.entColor.addEventListener('input', () => {
@@ -812,7 +812,7 @@
       // If a row is selected → assign to that entrant
       if (selectedId != null) {
         const row = findById(selectedId);
-        if (!row) { setNetStatus(false, 'Selection lost — refresh'); return; }
+  if (!row) { setNetStatus(false, 'Selection lost - refresh'); return; }
         const body = { id: row.id, number: row.number, name: row.name, tag, enabled: row.enabled };
         const { ok, code } = await saveEntrant(body);
         if (!ok && code === 409) { handleConflict(tag); return; }

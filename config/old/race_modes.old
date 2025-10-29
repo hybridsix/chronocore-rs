@@ -1,4 +1,4 @@
-# ChronoCore — Race Modes (v1.1)
+# ChronoCore - Race Modes (v1.1)
 # ---------------------------------------------------------------------------
 # Presets that pre-fill the Race Setup form. Operators can edit freely.
 # "Free play" is represented as limit.type = time with value_s = 0 (no limit).

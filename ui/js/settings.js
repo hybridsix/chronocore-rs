@@ -1,5 +1,5 @@
 /* =======================================================================
-   CCRS Settings — Page Logic (Verbose-Commented)
+  CCRS Settings - Page Logic (Verbose-Commented)
    -----------------------------------------------------------------------
    Responsibilities
    1) Left-nav behavior
@@ -34,7 +34,7 @@
   const $ = (sel, root) => (root || document).querySelector(sel);
 
   // ---------------------------------------------------------------------
-  // Element registry — if a control doesn't exist on the page yet, the
+  // Element registry - if a control doesn't exist on the page yet, the
   // corresponding entry is simply null. Code below guards these accesses.
   // ---------------------------------------------------------------------
   const ids = [
@@ -76,7 +76,7 @@
   document.addEventListener('DOMContentLoaded', init);
 
   async function init() {
-    // 1) Header pill — pull from CCRS helper if available
+  // 1) Header pill - pull from CCRS helper if available
     if (typeof CCRS.effectiveEngineLabel === 'function' && el.engineLabel) {
       el.engineLabel.textContent = 'Engine: ' + CCRS.effectiveEngineLabel();
     }
@@ -159,7 +159,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // Runtime I/O — load snapshot and hydrate fields
+  // Runtime I/O - load snapshot and hydrate fields
   // ---------------------------------------------------------------------
   async function fetchRuntime() {
     const res = await fetch('/setup/runtime', { credentials: 'same-origin' });
@@ -200,7 +200,7 @@
     renderBindings(val(rt, 'track.bindings', []));
 
     // Engine host informational fields
-    el.effectiveHost && (el.effectiveHost.value = val(rt, 'meta.engine_host', '—'));
+  el.effectiveHost && (el.effectiveHost.value = val(rt, 'meta.engine_host', '-'));
     el.policySummary && (el.policySummary.value = 'Runtime: merged config');
   }
 
@@ -246,9 +246,9 @@
     bindings.forEach(b => {
       const row = document.createElement('div'); row.className = 'row';
       row.innerHTML = `
-        <div class="key">${b.computer_id || '—'}</div>
-        <div>${b.decoder_id || '—'}</div>
-        <div>${b.port || '—'}</div>
+  <div class="key">${b.computer_id || '-'}</div>
+  <div>${b.decoder_id || '-'}</div>
+  <div>${b.port || '-'}</div>
         <div>→ <b>${b.location_id || 'UNKNOWN'}</b></div>`;
       box.appendChild(row);
     });
@@ -322,7 +322,7 @@
     return obj;
   }
 
-  // Apply (hot) — no restart
+  // Apply (hot) - no restart
   async function onApplyHot() {
     try {
       const patch = collectPatch();
@@ -341,7 +341,7 @@
     }
   }
 
-  // Save & restart — persist to config and recycle engine
+  // Save & restart - persist to config and recycle engine
   async function onSaveRestart() {
     try {
       const patch = collectPatch();
@@ -360,7 +360,7 @@
     }
   }
 
-  // Revert — rehydrate from the live runtime snapshot
+  // Revert - rehydrate from the live runtime snapshot
   function onRevert() {
     fetchRuntime()
       .then(rt => { hydrate(rt); toast('Reverted to runtime.'); })

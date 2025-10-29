@@ -1,6 +1,6 @@
 /* ============================================================================
-   Results & Exports — Frontend logic (no framework, no ARIA)
-   ============================================================================ */
+  Results & Exports - Frontend logic (no framework, no ARIA)
+  ============================================================================ */
 (() => {
   'use strict';
 
@@ -132,7 +132,8 @@
       item.className = 'heat';
       if (selectedHeat && selectedHeat.heat_id === h.heat_id) item.classList.add('is-selected');
       item.innerHTML = `
-        <div class="heat__name">${escapeHtml(h.name || '—')}</div>
+  <div class="heat__name">${escapeHtml(h.name || '-')}</div>
+    <div class="heat__name">${escapeHtml(h.name || '-')}</div>
         <div class="heat__count">${(h.laps_count ?? 0)} laps • ${(h.entrant_count ?? 0)} cars</div>
         <div class="heat__meta">${escapeHtml(h.status || '')}</div>
       `;
@@ -150,7 +151,8 @@
       if (btn) btn.classList.add('is-selected');
     }
 
-    heatTitle.textContent = `${h.name || '—'}  (ID ${h.heat_id})`;
+  heatTitle.textContent = `${h.name || '-'}  (ID ${h.heat_id})`;
+    heatTitle.textContent = `${h.name || '-'}  (ID ${h.heat_id})`;
     heatWindow.textContent = formatWindow(h.started_utc, h.finished_utc);
 
     tabsButtons.forEach(b => b.classList.toggle('is-active', b.dataset.tab === 'standings'));
@@ -185,7 +187,8 @@
       }
 
       statFast.textContent = msToStr(summary.totals?.fastest_ms);
-      statCars.textContent = String(summary.totals?.cars_classified ?? '—');
+  statCars.textContent = String(summary.totals?.cars_classified ?? '-')
+    statCars.textContent = String(summary.totals?.cars_classified ?? '-');
 
       renderStandings(summary.standings || []);
       standingsEmpty.hidden = (summary.standings || []).length > 0;
@@ -273,7 +276,8 @@
   }
 
 function msToStr(ms) {
-  if (ms == null || isNaN(ms)) return '—';
+  if (ms == null || isNaN(ms)) return '-';
+    if (ms == null || isNaN(ms)) return '-';
   const m = Math.floor(ms / 60000);
   const s = ((ms % 60000) / 1000).toFixed(3).padStart(6, '0');
   return `${String(m).padStart(2, '0')}:${s}`;
@@ -289,7 +293,8 @@ function msToStr(ms) {
   function formatWindow(startIso, endIso) {
     const s = startIso ? new Date(startIso) : null;
     const e = endIso ? new Date(endIso) : null;
-    if (!s && !e) return '—';
+  if (!s && !e) return '-';
+    if (!s && !e) return '-';
     const fmt = (d) => d.toLocaleString();
     return e ? `${fmt(s)} → ${fmt(e)}` : `${fmt(s)} → (running)`;
   }

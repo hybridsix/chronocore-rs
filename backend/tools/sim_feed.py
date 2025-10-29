@@ -396,15 +396,15 @@ class Simulator:
 
     def _view(self) -> str:
         lines = []
-        lines.append(f"PRS Simulator Feed — Race {self.state.race_id}")
+        lines.append(f"PRS Simulator Feed - Race {self.state.race_id}")
         lines.append(f"Race Type: {self.state.race_type}   Speed: {self.state.speed:.2f}x   Flag: {self.state.flag}   Running: {self.state.running}")
         lines.append(f"Clock: {format_clock_ms(int(self.state.sim_clock_s*1000))}   Entrants: {len(self.entrants)}   DB: {self.db.path}")
         lines.append("")
         lines.append("Pos | Car | Racer Name                 | Laps | Last(s) | Best(s)")
         lines.append("----+-----+----------------------------+------+---------+--------")
         for i, (name, car, laps, last, best, _) in enumerate(self._rows(), start=1):
-            last_s = f"{last:5.2f}" if last is not None else "  —  "
-            best_s = f"{best:5.2f}" if best is not None else "  —  "
+            last_s = f"{last:5.2f}" if last is not None else "  -  "
+            best_s = f"{best:5.2f}" if best is not None else "  -  "
             lines.append(f"{i:3d} | {car:>3s} | {name:<26} | {laps:4d} | {last_s:>7} | {best_s:>6}")
         lines.append("")
         lines.append("Commands: s=start  p=pause  t=toggle  g=green  y=yellow  r=red  w=white  b=blue  c=checkered  n=next  +=faster  -=slower  x=pre  q=quit")

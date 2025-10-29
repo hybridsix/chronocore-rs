@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-ChronoCore RS — backend/server.py (drop-in)
+ChronoCore RS - backend/server.py (drop-in)
 ------------------------------------------
 This version keeps the original public surface but fixes the following:
 1) /engine/entrant/assign_tag
@@ -71,6 +71,29 @@ app.include_router(qual)
 # ------------------------------------------------------------
 last_tag: dict[str, object] = {"tag": None, "seen_at": None}
 _listeners: list[asyncio.Queue[str]] = []   # SSE subscribers
+
+# ----------------------------------------------------------------------
+# Scanner liveness - single source of truth for "decoder online"
+# Online = we have heard a heartbeat within N seconds.
+# ----------------------------------------------------------------------
+
+_SCANNER_STATUS: Dict[str, Any] = {
+    "last_heartbeat": 0.0,  # epoch seconds of the most recent heartbeat
+    "meta": None,           # last metadata dict posted by scanner (port, baud, etc.)
+}
+
+# Consider the scanner online if we’ve heard from it within this window.
+_HEARTBEAT_ONLINE_WINDOW_S: float = 5.0
+
+
+def _mark_scanner_heartbeat(meta: Optional[Dict[str, Any]] = None) -> None:
+    """
+    Record a scanner heartbeat and (optionally) remember its metadata.
+    Safe to call from /sensors/meta and also at the top of /sensors/inject.
+    """
+    _SCANNER_STATUS["last_heartbeat"] = time.time()
+    if isinstance(meta, dict):
+        _SCANNER_STATUS["meta"] = meta
 
 def publish_tag(tag: str) -> float:
     """Push a tag into the bus and wake SSE listeners. Returns seen_at timestamp."""
@@ -1438,7 +1461,7 @@ def save_race_mode(payload: ModeUpsert):
 
 
 # ------------------------------------------------------------
-# Endpoints — Race Setup save + Race Control fetch
+# Endpoints - Race Setup save + Race Control fetch
 # ------------------------------------------------------------
 
 
@@ -1623,9 +1646,22 @@ async def entrants_enabled_count():
         return {"count": int(row[0] if row and row[0] is not None else 0)}
 
 @app.get("/decoders/status")
-def decoders_status_stub():
-    # Replace with real decoder detection when available.
-    return {"online": 0}
+async def decoders_status():
+    now = time.time()
+    age = now - float(_SCANNER_STATUS.get("last_heartbeat") or 0.0)
+    online = (age >= 0.0) and (age < _HEARTBEAT_ONLINE_WINDOW_S)
+
+    meta = _SCANNER_STATUS.get("meta") or {}
+    return JSONResponse({
+        "online": 1 if online else 0,
+        "age_s": round(age, 3) if age > 0 else None,
+        "source": (meta.get("source") or meta.get("type") or "unknown"),
+        "port": meta.get("port") or meta.get("device") or None,
+        "baud": meta.get("baud") or meta.get("baudrate") or None,
+        "device_id": meta.get("device_id") or None,
+        "host": meta.get("host") or None,
+    })
+
 
 # ------------------------------------------------------------
 # Endpoints
@@ -1767,7 +1803,7 @@ async def engine_pass(payload: Dict[str, Any]):
  """
 
 # ------------------------------------------------------------
-# Endpoints — flag / state / reset (lightweight, engine-aware)
+# Endpoints - flag / state / reset (lightweight, engine-aware)
 # Race Control Endpoints
 # ------------------------------------------------------------
 # --- Route: POST /engine/flag  (idempotent + GREEN allowed while racing) ---
@@ -1999,7 +2035,7 @@ def race_end_race():
 
     _RACE_STATE["phase"]     = Phase.CHECKERED.value
     _RACE_STATE["flag"]      = "CHECKERED"
-    _RACE_STATE["frozen_at"] = time.time()   # <— add this line
+    _RACE_STATE["frozen_at"] = time.time()   # <- add this line
 
     if hasattr(ENGINE, "set_flag"):
         try:
@@ -2438,6 +2474,21 @@ async def sensors_peek():
     return JSONResponse(last_tag)
 
 
+@app.post("/sensors/meta")
+async def sensors_meta(req: Request):
+    """
+    External scanner heartbeat. POST small JSON like:
+    { "source": "ilap.serial", "port": "COM3", "baud": 9600,
+      "device_id": "ilap-210", "host": "race_control" }
+    """
+    try:
+        payload = await req.json()
+    except Exception:
+        payload = {}
+    _mark_scanner_heartbeat(payload if isinstance(payload, dict) else None)
+    return JSONResponse({"ok": True, "t": _SCANNER_STATUS["last_heartbeat"]})
+
+
 # ------------------------------------------------------------
 # SSE endpoint (preferred by UI)
 # ------------------------------------------------------------
@@ -2540,6 +2591,7 @@ class SensorPassIn(BaseModel):
 # ------------------------------------------------------------
 @app.post("/sensors/inject")
 async def sensors_inject(payload: dict):
+    _mark_scanner_heartbeat({"via": "inject"})
     tag = str(payload.get("tag") or "").strip()
     source = str(payload.get("source") or "ui").strip()
     if not tag:
@@ -2585,9 +2637,44 @@ async def sensors_inject(payload: dict):
         "error": err,
     }
 
+
+@app.post("/sensors/meta")
+async def sensors_meta(req: Request):
+    """
+    External scanner heartbeat.
+    The logger should POST a small JSON blob like:
+      {
+        "source": "ilap.serial",  # or "ambrc.serial", etc.
+        "port":   "COM3",
+        "baud":   9600,
+        "device_id": "ilap-210",
+        "host":   "race_control"
+      }
+    We treat *presence* of this call (or any /sensors/inject) as liveness.
+    """
+    try:
+        payload = await req.json()
+    except Exception:
+        payload = {}
+
+    _mark_scanner_heartbeat(payload if isinstance(payload, dict) else None)
+    return JSONResponse({"ok": True, "t": _SCANNER_STATUS["last_heartbeat"]})
+
 # --- Scanner lifecycle -------------------------------------------------------
 # Keep a small registry of background tasks we start (scanner, SSE pingers, etc.)
 _SCANNER_TASKS: set[asyncio.Task] = set()
+
+
+def _should_start_inprocess_scanner(cfg: dict) -> bool:
+    """
+    Only allow in-process serial if publisher.mode == 'inprocess'.
+    External logger path (publisher.mode=http) must NOT open the port here.
+    """
+    try:
+        return (cfg.get("publisher", {}).get("mode") or "").strip().lower() == "inprocess"
+    except Exception:
+        return False
+
 
 def _track_task(t: asyncio.Task) -> None:
     """Remember a task and auto-untrack when it finishes."""
@@ -2605,6 +2692,17 @@ async def start_scanner():
     try:
         scan_cfg = get_scanner_cfg() or {}
         source = str(scan_cfg.get("source", "mock")).lower()
+        allow_inprocess = _should_start_inprocess_scanner(CONFIG)
+
+        if allow_inprocess:
+            log.info("In-process scanner ENABLED (publisher.mode=inprocess)")
+        else:
+            log.info(
+                "In-process scanner DISABLED (publisher.mode!=inprocess); expecting external logger heartbeats at /sensors/meta"
+            )
+
+        if source != "mock" and not allow_inprocess:
+            return
 
         if source != "mock":
             try:
@@ -2613,12 +2711,13 @@ async def start_scanner():
                 cfg_path = "./config/config.yaml"
                 cfg = ll_load(cfg_path)
 
-                cfg.publisher.mode = "http"
-                try:
-                    cfg.publisher.http.base_url = "http://127.0.0.1:8000"
-                    cfg.publisher.http.timeout_ms = 500
-                except Exception:
-                    pass
+                if cfg.publisher.mode != "inprocess":
+                    cfg.publisher.mode = "http"
+                    try:
+                        cfg.publisher.http.base_url = "http://127.0.0.1:8000"
+                        cfg.publisher.http.timeout_ms = 500
+                    except Exception:
+                        pass
 
                 stop_evt = asyncio.Event()
                 task = asyncio.get_running_loop().create_task(ScannerService(cfg).run(stop_evt), name="scanner_service")
@@ -2693,7 +2792,7 @@ async def stop_scanner():
     log.info("All background tasks stopped cleanly.")
 
 # ------------------------------------------------------------
-# Diagnostics / Live Sensors — SSE stream for diag.html
+# Diagnostics / Live Sensors - SSE stream for diag.html
 # ------------------------------------------------------------
 
     

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 """
-ChronoCore RS — backend/server.py (drop-in)
+ChronoCore RS - backend/server.py (drop-in)
 ------------------------------------------
 This version keeps the original public surface but fixes the following:
 1) /engine/entrant/assign_tag
@@ -740,7 +740,7 @@ async def stop_scanner():
 
 
 # ==============================================================================
-# Diagnostics / Live Sensors — SSE stream for diag.html
+# Diagnostics / Live Sensors - SSE stream for diag.html
 # ==============================================================================
 
     

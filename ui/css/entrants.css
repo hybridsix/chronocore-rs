@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------------
-  ENTRANTS PAGE — extends base.css/operator.css
+  ENTRANTS PAGE - extends base.css/operator.css
   - Uses global --gutterX, --headerH, --footerH
   - No brand scaling here (handled in base.css via .home / 
 
@@ -378,7 +378,7 @@
   display: none;
 }
 
-/* ===== Field-mode (daylight) tweaks — left pane only ==================== */
+/* ===== Field-mode (daylight) tweaks - left pane only ==================== */
 .pane--left .drawer.card,
 .pane--left .logo-card {
   background: #0f1b29;            /* deep cool blue */
@@ -499,7 +499,7 @@
 
 /* Contrast pass (left + right panes) consolidated above. Duplicate rules removed. */
 
-/* Right pane — table + card chrome (cool-cyan contrast pass) */
+/* Right pane - table + card chrome (cool-cyan contrast pass) */
 .pane--right .card,
 .pane--right .ent-table-card {
   background: #0f1b29;              /* deep cool navy */
@@ -566,7 +566,7 @@
 .pane--right .ent-table-card .ent-rows::-webkit-scrollbar-thumb { background: #244257; border: 2px solid #0c151d; border-radius: 8px; }
 
 /* =======================================================================
-   ENTRANTS — Column Spacing Adjustment
+  ENTRANTS - Column Spacing Adjustment
    - Doubles the horizontal gap between left and right data panes
    ----------------------------------------------------------------------- */
 
@@ -576,7 +576,7 @@
 }
 
   /* =======================================================================
-   ENTRANTS — Expand layout for fixed-width operator webview
+  ENTRANTS - Expand layout for fixed-width operator webview
    ----------------------------------------------------------------------- */
 
 /* Remove the global 1200 px clamp applied by .wrap (from base.css/operator.css) */
@@ -720,7 +720,7 @@ main.wrap {
   box-shadow: 0 0 0 1px #173243 inset, 0 10px 24px rgba(0,0,0,.35);
 }
 
-/* Entrants — ease spacing around the Tag scan bar */
+/* Entrants - ease spacing around the Tag scan bar */
 .pane--left .field:has(#entTag) .tag-row {
   margin-bottom: 8px;            /* space between Tag row and the bar */
 }
@@ -735,7 +735,7 @@ main.wrap {
 }
 
 /* ================================================================
-   Entrants — prevent layout shift when Tag scan text appears
+  Entrants - prevent layout shift when Tag scan text appears
    ---------------------------------------------------------------- */
 
 /* Keep some breathing room between the Tag row and the bar */
@@ -766,7 +766,7 @@ main.wrap {
 }
 
 /* ================================================================
-   Right table — header alignment + clearer vertical dividers
+  Right table - header alignment + clearer vertical dividers
    - Center specific headers (Enabled, Tag, Number, Actions, Status)
    - Keep Team left-aligned
    - Fix Number header font (no monospace)
@@ -787,7 +787,7 @@ main.wrap {
   text-align: center;
 }
 
-/* Team (4) remains left-aligned — nothing to do */
+/* Team (4) remains left-aligned - nothing to do */
 
 /* 2) NUMBER header should use the regular UI font (not mono/right styles) */
 .ent-table-card .ent-thead > div:nth-child(3) {
@@ -808,7 +808,7 @@ main.wrap {
 
 
 /* ================================================================
-   Right table — header font/color fix + centering + stronger dividers
+  Right table - header font/color fix + centering + stronger dividers
    ---------------------------------------------------------------- */
 
 /* 0) Normalize all header cells: UI font + consistent color */
@@ -865,7 +865,7 @@ main.wrap {
   /* already display:grid; align-items:center from your base */
 }
 
-/* 2) Column alignment in rows — mirror the header:
+/* 2) Column alignment in rows - mirror the header:
    1:Enabled, 2:Tag, 3:Number, 4:Team, 5:Actions, 6:Status */
 .ent-table-card .rows .ent-row > div { text-align: left; } /* default */
 .ent-table-card .rows .ent-row > div:nth-child(1),
@@ -906,7 +906,7 @@ main.wrap {
 
 
 /* ================================================================
-   Right table — top controls bar (filter + chips + refresh)
+  Right table - top controls bar (filter + chips + refresh)
    ----------------------------------------------------------------
    Expected DOM (use whatever you already have; these selectors are
    flexible and will match .ent-toolbar OR .toolbar OR .controls):
@@ -922,7 +922,7 @@ main.wrap {
    </div>
 */
 
-/* 0) The bar itself — flex layout, subtle padding, crisp bottom border */
+/* 0) The bar itself - flex layout, subtle padding, crisp bottom border */
 .pane--right .ent-table-card .ent-toolbar,
 .pane--right .ent-table-card .toolbar,
 .pane--right .ent-table-card .controls {
@@ -934,7 +934,7 @@ main.wrap {
   border-bottom: 1px solid #2e4a61;      /* clearer divider above headers */
 }
 
-/* 1) Filter block — padded container so inputs don’t feel jammed */
+/* 1) Filter block - padded container so inputs don’t feel jammed */
 .pane--right .ent-table-card .filter-block {
   display: inline-flex;
   align-items: center;
@@ -971,7 +971,7 @@ main.wrap {
   box-shadow: inset 0 0 0 1px rgba(125,253,254,.18);
 }
 
-/* 3) Refresh button — on the right; “Save” look but smaller */
+/* 3) Refresh button - on the right; “Save” look but smaller */
 .pane--right .ent-table-card .btn-refresh {
   margin-left: auto;                        /* pushes it to the right */
   padding: 4px 10px;                        /* smaller than .btn */
@@ -1001,7 +1001,7 @@ main.wrap {
 
 
 /* ================================================================
-   Right table — push Refresh to the right + pad the filter block
+  Right table - push Refresh to the right + pad the filter block
    ---------------------------------------------------------------- */
 
 /* Make the top controls bar a flex row (catch common class names) */
@@ -1033,7 +1033,7 @@ main.wrap {
   margin: 0;
 }
 
-/* Refresh pill — smaller “Save” style, anchored at far right */
+/* Refresh pill - smaller “Save” style, anchored at far right */
 .pane--right .ent-table-card :is(.ent-toolbar, .toolbar, .controls, .table-controls) .btn-refresh {
   margin-inline-start: auto;         /* ← this pins it to the right */
   order: 99;                         /* even if other elements follow */
@@ -1096,7 +1096,7 @@ main.wrap {
 .pane--right .ent-table-card .btn-refresh:hover { filter: brightness(1.08); }
 
 /* ================================================================
-   Right table — kill the nested borders, keep the polish
+  Right table - kill the nested borders, keep the polish
    ---------------------------------------------------------------- */
 
 /* 1) Filter tray: keep spacing, drop ring so we don't get border-in-border */
@@ -1115,7 +1115,7 @@ main.wrap {
   background: transparent;
 }
 
-/* 3) Keep inputs/pills with their own borders (clear affordance) — no change */
+/* 3) Keep inputs/pills with their own borders (clear affordance) - no change */
 
 /* 4) Single, crisp divider line before the header (header already has one) */
 /* If you still see a stray line above the header, ensure tray has no bottom border */
@@ -1131,7 +1131,7 @@ main.wrap {
 }
 
 /* ================================================================
-   Right table — center chip text + brighter active highlight
+  Right table - center chip text + brighter active highlight
    ---------------------------------------------------------------- */
 .pane--right .ent-table-card .chip-group {
   display: inline-flex;

@@ -1,5 +1,5 @@
 /* ==========================================================================
-   ChronoCore Race Software (CCRS) — Base Browser Helpers
+  ChronoCore Race Software (CCRS) - Base Browser Helpers
    --------------------------------------------------------------------------
    PURPOSE
    - Provide a tiny, well-documented helper layer that ALL Operator UI pages
@@ -22,7 +22,7 @@
    - NO legacy shims. This file is CCRS-only by design.
    - Keep this file small, dependency-free, and boring. Stability wins here.
    - Keep functions side-effect-free unless obviously UI-related (setNetStatus).
-   - Multi-line, verbose comments are intentional — they document our intent.
+  - Multi-line, verbose comments are intentional - they document our intent.
    ========================================================================== */
 (function () {
   'use strict';
@@ -195,8 +195,8 @@
      - MIN_TAG_LEN   : basic guard against accidental short inputs
      ------------------------------------------------------------------------ */
   const CONFIG = {
-    SSE_URL: '/ilap/stream',
-    POLL_URL: '/ilap/peek',
+    SSE_URL: '/sensors/stream',
+    POLL_URL: '/sensors/peek',
     POLL_INTERVAL: 200,
     MIN_TAG_LEN: 7
   };

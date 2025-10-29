@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------------
-  OPERATOR CONSOLE — page styles
+  OPERATOR CONSOLE - page styles
   - Dark theme + sticky footer layout
   - Header: logo + stacked wordmark (compact, left-aligned)
   - Main "hero" card: two columns (brand left / actions right)
@@ -59,7 +59,7 @@ body {
   gap: var(--headerBrandGap, 8px);
 }
 
-/* Brand / wordmark — canonical rules (placed with header rules) */
+/* Brand / wordmark - canonical rules (placed with header rules) */
 .app-header .brand__wordmark {
   display: flex;
   flex-direction: column;
@@ -92,7 +92,7 @@ body {
   opacity: 0.92;
 }
 
-/* Header logo only (scoped) — keeps black SVG white on dark header */
+/* Header logo only (scoped) - keeps black SVG white on dark header */
 .app-header .brand-logo {
   /* scale the logo to the header height (respecting vertical padding) */
   height: calc(var(--headerH-ops, 72px) - 2 * var(--headerPadY, 8px));
@@ -296,7 +296,7 @@ main {
   filter: brightness(1.08);
 }
 
-/* ===== Flag controls (operator) — standalone, NOT limited to small screens ===== */
+/* ===== Flag controls (operator) - standalone, NOT limited to small screens ===== */
 .btnrow {
   display: flex;
   flex-wrap: wrap;

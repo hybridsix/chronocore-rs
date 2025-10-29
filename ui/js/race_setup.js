@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Race Setup — controller (v1.2 merged)
+  Race Setup - controller (v1.2 merged)
    --------------------------------------------------------------------------
    Summary of notable changes relative to v1.1:
    • Preserves the existing form logic & UI behavior (modes, custom save,
@@ -107,7 +107,7 @@
 
   // Pretty duration for the Summary line
   function secondsToHuman(s) {
-    if (!Number.isFinite(s) || s < 0) return '—';
+  if (!Number.isFinite(s) || s < 0) return '-';
     if (s === 0) return 'Unlimited';
     const m = Math.floor(s / 60);
     const ss = s % 60;

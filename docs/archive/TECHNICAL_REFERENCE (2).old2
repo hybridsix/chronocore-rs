@@ -82,7 +82,7 @@ app:
 ### 4.1 Logical Flow
 The following describes the authoritative race loop and how it processes events in real time.
 
-**ChronoCore Race Engine — Logical Flow**
+**ChronoCore Race Engine - Logical Flow**
 
 1. **Initialization (`engine.load`)**  
    The operator creates a new race with a unique `race_id` and roster of entrants.  

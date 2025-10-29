@@ -12,7 +12,7 @@
 
 
 # =============================================================================
-# event.yaml — Event identity & branding
+# event.yaml - Event identity & branding
 # =============================================================================
 # This file is strictly about the event you’re running:
 #   - Metadata (name, date, location, timezone)

@@ -1,5 +1,5 @@
 /* ======================================================================
-   RACE CONTROL — cleaned + organized (multiline formatting)
+  RACE CONTROL - cleaned + organized (multiline formatting)
    Keeps existing visuals; removes duplicates; clarifies cascade.
    ====================================================================== */
 
@@ -766,7 +766,7 @@ body.race-control {
 /* Normalize table header height across Seen + Standings */
 #rcStandings thead th,
 .rcTable thead th {
-  /* exact cap height — no vertical padding that would change total box size */
+  /* exact cap height - no vertical padding that would change total box size */
   height: var(--standings-header-h);
   line-height: var(--standings-header-h);
   padding: 0 14px;           /* horizontal only, vertical = 0 */

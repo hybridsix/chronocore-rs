@@ -1,5 +1,5 @@
 /* =======================================================================
-   CCRS Diagnostics / Live Sensors — Frontend Logic
+  CCRS Diagnostics / Live Sensors - Frontend Logic
    -----------------------------------------------------------------------
    Responsibilities
    1) Connect to the backend SSE endpoint (/diagnostics/stream)
@@ -23,7 +23,7 @@
   const $ = (sel, root) => (root || document).querySelector(sel);
 
   // ---------------------------------------------------------------------
-  // DOM references — all optional-safe
+  // DOM references - all optional-safe
   // ---------------------------------------------------------------------
   const bodyEl       = $('#liveBody');
   const btnPause     = $('#btnPause');
@@ -31,7 +31,6 @@
   const chkBeep      = $('#chkBeep');
   const chkKnownOnly = $('#chkKnownOnly');
   const chkShowRssi  = $('#chkShowRssi');
-  const engineLabel  = $('#engineLabel');
   const diagWarn     = $('#diagWarn');
 
   // ---------------------------------------------------------------------
@@ -116,7 +115,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // Runtime loader — fetch /setup/runtime (same structure as Settings)
+  // Runtime loader - fetch /setup/runtime (same structure as Settings)
   // ---------------------------------------------------------------------
   async function loadRuntime() {
     const res = await fetch('/setup/runtime', { credentials: 'same-origin' });
@@ -131,7 +130,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // SSE Connection — opens EventSource to /diagnostics/stream
+  // SSE Connection - opens EventSource to /diagnostics/stream
   // ---------------------------------------------------------------------
   function openStream() {
     beginWarmup();                         // <- start silent window
@@ -180,11 +179,11 @@
 
     // Build table row content safely
     const ts   = formatTime(evt.time);
-    const src  = evt.source || '—';
-    const tag  = evt.tag_id || '—';
-    const num  = (evt.entrant && (evt.entrant.num || evt.entrant.number)) || '—';
-    const name = (evt.entrant && evt.entrant.name) || '—';
-    const rssi = evt.rssi != null ? String(evt.rssi) : '—';
+  const src  = evt.source || '-';
+  const tag  = evt.tag_id || '-';
+  const num  = (evt.entrant && (evt.entrant.num || evt.entrant.number)) || '-';
+  const name = (evt.entrant && evt.entrant.name) || '-';
+  const rssi = evt.rssi != null ? String(evt.rssi) : '-';
 
     tr.innerHTML = `
       <td class="col-time">${ts}</td>
@@ -241,7 +240,7 @@
 
   // Build the RSSI cell innerHTML (number + smooth bar)
   function renderRssiCell(rssi) {
-    const val = (rssi ?? rssi === 0) ? String(rssi) : '—';
+  const val = (rssi ?? rssi === 0) ? String(rssi) : '-';
     const s = rssiToStrength(rssi);
     const pct = (s * 100).toFixed(0) + '%';
     const color = strengthToColor(s);
@@ -279,7 +278,7 @@
   }
 
   // ---------------------------------------------------------------------
-  // Beep logic — simple square wave tone
+  // Beep logic - simple square wave tone
   // ---------------------------------------------------------------------
   function maybeBeep() {
     const now = Date.now();
@@ -313,7 +312,7 @@
       const ss = String(d.getSeconds()).padStart(2, '0');
       const ms = String(d.getMilliseconds()).padStart(3, '0');
       return `${hh}:${mm}:${ss}.${ms}`;
-    } catch { return iso || '—'; }
+  } catch { return iso || '-'; }
   }
 
   function esc(s) {

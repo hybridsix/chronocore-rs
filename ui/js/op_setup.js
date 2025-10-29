@@ -1,5 +1,5 @@
 /* ============================================================================
- * Operator — Race Setup
+ * Operator - Race Setup
  * ----------------------------------------------------------------------------
  * Responsibilities:
  *  - Load event + race mode YAML and render operator-friendly previews
@@ -175,7 +175,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // UI rendering — Event + Mode previews
+  // UI rendering - Event + Mode previews
   // ---------------------------------------------------------------------------
   function renderEventPreview(ev) {
     if (!elEventPreview || !ev) return;
@@ -237,10 +237,10 @@
         <div class="k">Mode</div><div class="v">${escapeHtml(label)}</div>
       </div>
       <div class="kv">
-        <div class="k">Min Lap</div><div class="v">${minLap != null ? `${minLap}s` : "—"}</div>
+  <div class="k">Min Lap</div><div class="v">${minLap != null ? `${minLap}s` : "-"}</div>
       </div>
       <div class="kv">
-        <div class="k">Limit</div><div class="v">${escapeHtml(capText || "—")}</div>
+  <div class="k">Limit</div><div class="v">${escapeHtml(capText || "-")}</div>
       </div>`;
   }
 
@@ -255,7 +255,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Entrants — from /race/state or pasted JSON
+  // Entrants - from /race/state or pasted JSON
   // ---------------------------------------------------------------------------
   async function useEnabledEntrantsFromState() {
     try {
@@ -304,7 +304,7 @@
     const modeKey = getSelectedModeKey();
     const payload = parseEntrantsFromTextarea();
     if (!Array.isArray(payload)) {
-      flashTextareaError("Invalid JSON — please paste an array of entrants.");
+  flashTextareaError("Invalid JSON - please paste an array of entrants.");
       return;
     }
 
@@ -337,7 +337,7 @@
           const add = j.added ?? j.add ?? 0;
           const upd = j.updated ?? j.upd ?? 0;
           const rem = j.removed ?? j.rem ?? 0;
-          diff = `Loaded entrants — +${add} new, ${upd} updated, ${rem} removed.`;
+          diff = `Loaded entrants - +${add} new, ${upd} updated, ${rem} removed.`;
         }
       } catch {
         diff = merge ? "Loaded entrants (merged)." : "Loaded entrants (replaced).";
@@ -390,7 +390,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Flags — /engine/flag pre/green helpers
+  // Flags - /engine/flag pre/green helpers
   // ---------------------------------------------------------------------------
   async function postFlag(flag) {
     try {

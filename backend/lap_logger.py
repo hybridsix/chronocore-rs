@@ -1,5 +1,5 @@
 """
-ChronoCore / CCRS — Pluggable Scanner Publisher
+ChronoCore / CCRS - Pluggable Scanner Publisher
 ===============================================
 
 Purpose
@@ -70,11 +70,14 @@ from pathlib import Path
 import argparse
 import asyncio
 import contextlib
+import json
 import logging
 import os
 import signal
 import sys
+import threading
 import time
+import urllib.request
 from dataclasses import dataclass, field
 from typing import AsyncGenerator, AsyncIterable, AsyncIterator, Optional, Mapping, Any
 
@@ -83,6 +86,49 @@ from abc import ABC, abstractmethod
 # Third-party deps present in your repo
 import yaml
 import httpx
+# ----------------------------------------------------------------------
+# Heartbeat client for CCRS - keeps /decoders/status truthful in real-time
+# ----------------------------------------------------------------------
+
+
+def _post_json(url: str, payload: dict, timeout: float = 1.0) -> None:
+    data = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(url, data=data, headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        # Not reading response body is okay; server returns a tiny JSON
+        _ = resp.read()
+
+
+def start_heartbeat_thread(
+    base_url: str,
+    meta: dict,
+    period_s: float = 2.0,
+    gate: threading.Event | None = None,
+) -> threading.Thread:
+    """
+    Fire-and-forget heartbeat background loop. Posts to /sensors/meta every period_s.
+    Swallows exceptions; if the server is unreachable, it will just retry later.
+    """
+    url = f"{base_url.rstrip('/')}/sensors/meta"
+
+    def _loop() -> None:
+        last_post = 0.0
+        while True:
+            if gate is None or gate.is_set():
+                now = time.time()
+                if (now - last_post) >= period_s:
+                    try:
+                        _post_json(url, meta, timeout=1.0)
+                    except Exception:
+                        # Avoid chatty logs here; the operator UI is the source of truth
+                        pass
+                    last_post = now
+            time.sleep(0.25)
+
+    t = threading.Thread(target=_loop, daemon=True)
+    t.start()
+    return t
+
 
 # pyserial is used only in serial mode; imported lazily inside the reader
 # to keep other modes runnable without the dependency at import-time.
@@ -92,7 +138,7 @@ import httpx
 # launcher that starts both), we can publish directly without HTTP.
 try:
     from server import publish_tag as _inproc_publish  # type: ignore
-except Exception:  # pragma: no cover — failure is fine; we’ll log and fallback
+except Exception:  # pragma: no cover - failure is fine; we’ll log and fallback
     _inproc_publish = None
 
 
@@ -104,6 +150,8 @@ except Exception:  # pragma: no cover — failure is fine; we’ll log and fallb
 class ScannerSerialCfg:
     port: str = "COM7"
     baud: int = 9600
+    device_id: Optional[str] = None
+    host: Optional[str] = None
 
 @dataclass
 class ScannerUdpCfg:
@@ -156,6 +204,8 @@ def load_config(path: str) -> RootCfg:
             serial=ScannerSerialCfg(
                 port=pick(raw, "scanner", "serial", "port", default="COM7"),
                 baud=int(pick(raw, "scanner", "serial", "baud", default=9600)),
+                device_id=pick(raw, "scanner", "serial", "device_id"),
+                host=pick(raw, "scanner", "serial", "host"),
             ),
             udp=ScannerUdpCfg(
                 host=pick(raw, "scanner", "udp", "host", default="0.0.0.0"),
@@ -398,10 +448,39 @@ class ILapSerialReader(Reader):
 
     We parse lines that start with SOH+'@' and yield only the tag field.
     """
-    def __init__(self, port: str, baud: int):
+    def __init__(self, port: str, baud: int, *, heartbeat_base_url: Optional[str] = None,
+                 heartbeat_meta: Optional[Mapping[str, Any]] = None):
         self.port = port
         self.baud = baud
         self._log = logging.getLogger("scanner.serial")
+        self._heartbeat_base_url = heartbeat_base_url
+        self._heartbeat_meta = dict(heartbeat_meta) if heartbeat_meta else None
+        self._heartbeat_thread: Optional[threading.Thread] = None
+        self._heartbeat_period_s = 2.0
+        self._heartbeat_boot_sent = False
+        self._heartbeat_gate = threading.Event()
+
+    def _ensure_heartbeat(self) -> None:
+        if not self._heartbeat_base_url or not self._heartbeat_meta:
+            return
+        if self._heartbeat_thread is None or not self._heartbeat_thread.is_alive():
+            self._heartbeat_thread = start_heartbeat_thread(
+                self._heartbeat_base_url,
+                dict(self._heartbeat_meta),
+                period_s=self._heartbeat_period_s,
+                gate=self._heartbeat_gate,
+            )
+        self._heartbeat_gate.set()
+        if not self._heartbeat_boot_sent:
+            try:
+                _post_json(
+                    f"{self._heartbeat_base_url.rstrip('/')}/sensors/meta",
+                    dict(self._heartbeat_meta),
+                    timeout=1.0,
+                )
+            except Exception:
+                pass
+            self._heartbeat_boot_sent = True
 
     async def tags(self) -> AsyncGenerator[str, None]:
         backoff = 0.2
@@ -411,6 +490,7 @@ class ILapSerialReader(Reader):
                 import serial  # lazy import
                 self._log.info("open_serial", extra={"port": self.port, "baud": self.baud})
                 ser = serial.Serial(self.port, self.baud, bytesize=8, parity='N', stopbits=1, timeout=0.25)
+                self._ensure_heartbeat()
                 try:
                     # Per I-Lap guidance: RTS low/off
                     try:
@@ -423,7 +503,7 @@ class ILapSerialReader(Reader):
                     ser.flush()
                     self._log.info("sent_init_7digit")
 
-                    # Read loop — line oriented
+                    # Read loop - line oriented
                     while True:
                         try:
                             # Use a thread hop so we don't block the event loop on .readline()
@@ -448,6 +528,8 @@ class ILapSerialReader(Reader):
                             ser.close()
                         ser = None
                     self._log.info("serial_closed")
+                    self._heartbeat_gate.clear()
+                    self._heartbeat_boot_sent = False
                     backoff = 0.2  # reset backoff after a successful session
             except asyncio.CancelledError:
                 self._log.info("serial_cancelled")
@@ -600,7 +682,23 @@ class ScannerService:
         if src == "mock":
             self.reader: Reader = MockReader()
         elif src == "ilap.serial":
-            self.reader = ILapSerialReader(cfg.scanner.serial.port, cfg.scanner.serial.baud)
+            heartbeat_meta: dict[str, Any] = {
+                "source": "ilap.serial",
+                "port": cfg.scanner.serial.port,
+                "baud": cfg.scanner.serial.baud,
+            }
+            if cfg.scanner.serial.device_id:
+                heartbeat_meta["device_id"] = cfg.scanner.serial.device_id
+            if cfg.scanner.serial.host:
+                heartbeat_meta["host"] = cfg.scanner.serial.host
+
+            heartbeat_base_url = cfg.publisher.http.base_url
+            self.reader = ILapSerialReader(
+                cfg.scanner.serial.port,
+                cfg.scanner.serial.baud,
+                heartbeat_base_url=heartbeat_base_url,
+                heartbeat_meta=heartbeat_meta,
+            )
         elif src == "ilap.udp":
             self.reader = ILapUDPReader(cfg.scanner.udp.host, cfg.scanner.udp.port)
         else:

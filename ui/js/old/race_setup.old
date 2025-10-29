@@ -1,5 +1,5 @@
 /* ==========================================================================
-   Race Setup — controller (v1.1)
+  Race Setup - controller (v1.1)
    - Single "Mode" select (built-ins from race_modes.yaml) + trailing "Custom"
    - Limit = time | laps (time=0 => unlimited/free-play)
    - Soft end default true for Qualifying; hidden when time==0
@@ -97,7 +97,7 @@
   }
 
   function secondsToHuman(s) {
-    if (!Number.isFinite(s) || s < 0) return '—';
+  if (!Number.isFinite(s) || s < 0) return '-';
     if (s === 0) return 'Unlimited';
     const m = Math.floor(s / 60);
     const ss = s % 60;

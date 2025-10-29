@@ -1,5 +1,5 @@
 /* ==========================================================================
-   CCRS — Entrants & Tags page logic
+  CCRS - Entrants & Tags page logic
    - Forward-only helpers via window.CCRS
    - CCRS.setNetStatus(ok:boolean, message:string)
    - DB pill uses /readyz (immediate + poller)
@@ -60,7 +60,7 @@
       } else {
         if (updEl.tagName === 'TIME') {
           updEl.dateTime = '';
-          updEl.textContent = '—';
+          updEl.textContent = '-';
         } else {
           updEl.value = '';
         }
@@ -130,7 +130,7 @@ window.normalizeEntrant = window.normalizeEntrant || function normalizeEntrant(r
     newBtn:      $('#newBtn'),
     formMsg:     $('#formMsg'),
 
-    // NEW — color controls (hex text + native picker)
+  // NEW - color controls (hex text + native picker)
     entColor:        $('#entColor'),        // text input (hex)
     entColorPicker:  $('#entColorPicker'),  // <input type="color">
 
@@ -182,7 +182,7 @@ window.normalizeEntrant = window.normalizeEntrant || function normalizeEntrant(r
   function resolveIdAndLabelFromRowEl(rowEl) {
     const idVal = Number(rowEl?.dataset?.id);
     const full  = (window.ROSTER_BY_ID && window.ROSTER_BY_ID.get(idVal)) || {};
-    const label = `${(full.number ?? '—')} · ${(full.name ?? '')}`.trim();
+  const label = `${(full.number ?? '-')} · ${(full.name ?? '')}`.trim();
     return { idVal, full, label };
   }
 
@@ -510,7 +510,7 @@ async function deleteEntrant(id) {
       }
 ALL = data;
       render();
-      CCRS.setNetStatus(true, `OK — ${ALL.length} entrants`);
+  CCRS.setNetStatus(true, `OK - ${ALL.length} entrants`);
       highlightSelection();
     } catch (err) {
       console.error('[Entrants] loadEntrants failed:', err.message || err);
@@ -608,7 +608,7 @@ ALL = data;
       // NEW ORDER (Enabled | Tag | Number | Team | Actions | Status)
       el.innerHTML = `
         <div>${row.enabled ? 'Yes' : 'No'}</div>
-        <div class="tag-cell"><span class="mono">${row.tag ?? '—'}</span></div>
+  <div class="tag-cell"><span class="mono">${row.tag ?? '-'}</span></div>
         <div class="right mono">${row.number ?? ''}</div>
         <div class="name">${clamp(row.name ?? '', 64)}</div>
         <div class="actions">
@@ -656,7 +656,7 @@ ALL = data;
         const id = row.id ?? row.entrant_id ?? Number(el.dataset.id);
         const full = (window.ROSTER_BY_ID instanceof Map ? window.ROSTER_BY_ID.get(id) : row) || row;
         const teamName = String(full.name ?? '').trim();
-        const label = `${full.number ?? '—'} · ${teamName}`;
+  const label = `${full.number ?? '-'} · ${teamName}`;
 
         // Preflight: do they have passes/laps?
         let needsTypedConfirm = false;
@@ -680,7 +680,7 @@ ALL = data;
           );
           if (typed == null) return; // cancelled
           if (String(typed).trim().toLowerCase() !== teamName.toLowerCase()) {
-            setFormMsg('Delete cancelled — team name did not match.', 'error');
+            setFormMsg('Delete cancelled - team name did not match.', 'error');
             CCRS.setNetStatus(false, 'Delete cancelled');
             return;
           }
@@ -759,7 +759,7 @@ ALL = data;
 
     const updEl = document.getElementById('entUpdated') || document.getElementById('entUpdatedAt');
     if (updEl) {
-      if (updEl.tagName === 'TIME') { updEl.dateTime = ''; updEl.textContent = '—'; }
+  if (updEl.tagName === 'TIME') { updEl.dateTime = ''; updEl.textContent = '-'; }
       else { updEl.value = ''; }
     }
     document.querySelectorAll('.ent-row.active').forEach(el => el.classList.remove('active'));
@@ -808,7 +808,7 @@ ALL = data;
         if (updEl.tagName === 'TIME') { updEl.dateTime = d.toISOString(); updEl.textContent = d.toLocaleString(); }
         else { updEl.value = d.toLocaleString(); }
       } else {
-        if (updEl.tagName === 'TIME') { updEl.dateTime = ''; updEl.textContent = '—'; }
+  if (updEl.tagName === 'TIME') { updEl.dateTime = ''; updEl.textContent = '-'; }
         else { updEl.value = ''; }
       }
     }
@@ -879,7 +879,7 @@ ALL = data;
     // focus the single Tag field
     els.entTag.value = tagDigits;
     els.entTag.focus();
-    CCRS.setNetStatus(false, '409 — duplicate tag');
+  CCRS.setNetStatus(false, '409 - duplicate tag');
   }
 
   /* =========================
@@ -920,7 +920,7 @@ ALL = data;
 
     if (!ok) {
       if (code === 409) { els.quickCreateModal.close(); handleConflict(digitsOnly(tag)); return; }
-      setQCMsg('Save failed — check connection/logs.', 'error');
+  setQCMsg('Save failed - check connection/logs.', 'error');
       return;
     }
 
@@ -1030,7 +1030,7 @@ ALL = data;
       if (!scanCancel) els.assignBtn.disabled = !els.entTag.value.trim();
     });
 
-      // NEW — Color sync: hex <-> picker (soft validation)
+  // NEW - Color sync: hex <-> picker (soft validation)
       if (els.entColor && els.entColorPicker) {
         // Hex -> Picker
         els.entColor.addEventListener('input', () => {
@@ -1144,7 +1144,7 @@ ALL = data;
       // If a row is selected → assign to that entrant
       if (selectedId != null) {
         const row = findById(selectedId);
-        if (!row) { CCRS.setNetStatus(false, 'Selection lost — refresh'); return; }
+  if (!row) { CCRS.setNetStatus(false, 'Selection lost - refresh'); return; }
         const body = {
           id,
           number: full.number,
@@ -1229,7 +1229,7 @@ function __closeAllTooltips(scope, returnFocus = false) {
 }
 
 /* ===== Initialize tooltips: scan fields, inject button + popover =========
-   NOTE: This function is idempotent — it won't duplicate buttons if called
+  NOTE: This function is idempotent - it won't duplicate buttons if called
          more than once (e.g., after partial rerenders).
 ========================================================================= */
 // === Auto-hide timing ======================================================
@@ -1395,7 +1395,7 @@ document.addEventListener('DOMContentLoaded', () => {
 window.fillForm = fillForm;
 
 
-/* __DELEGATED_EDIT__ — always hydrate with full row, even if a per-row handler ran first */
+/* __DELEGATED_EDIT__ - always hydrate with full row, even if a per-row handler ran first */
 (function(){
   const root = document.getElementById('rows');
   if (!root) return;

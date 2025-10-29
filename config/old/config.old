@@ -154,7 +154,7 @@ log:
 
 
 # =============================================================================
-# ENGINE RUNTIME — SITE OVERRIDES
+# ENGINE RUNTIME - SITE OVERRIDES
 # =============================================================================
 engine:
   diagnostics:
@@ -178,7 +178,7 @@ engine:
       # PIT_OUT: 200
 
 # =============================================================================
-# TRACK TOPOLOGY — LABELS & PHYSICAL BINDINGS
+# TRACK TOPOLOGY - LABELS & PHYSICAL BINDINGS
 # =============================================================================
 track:
   # Human labels for logical points. Change labels freely; IDs stay stable.
@@ -213,7 +213,7 @@ track:
       location_id: "X1"
 
 # =============================================================================
-# RACE CONTROL & INFERENCE — OPS-FACING KNOBS
+# RACE CONTROL & INFERENCE - OPS-FACING KNOBS
 # =============================================================================
 race:
   flags:
@@ -232,7 +232,7 @@ race:
     mark_inferred: true
 
 # =============================================================================
-# UI / OPERATOR — SMALL QUALITY OF LIFE
+# UI / OPERATOR - SMALL QUALITY OF LIFE
 # =============================================================================
 ui:
   operator:

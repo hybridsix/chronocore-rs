@@ -1,5 +1,5 @@
 /* --------------------------------------------------------------------------
-   CCRS Race Control — unified controller
+  CCRS Race Control - unified controller
    --------------------------------------------------------------------------
    - Polls /race/state once per second and renders clock/phase/flag.
    - Wires action buttons to backend (/race/control/*, /engine/flag).
@@ -137,7 +137,7 @@ function updateStandingsScrollState(scrollEl, visibleRows, actualRows, tableEl /
 }
 
 // ----------------------------------------------------------------------
-// "Seen" panel (PRE/COUNTDOWN) — table-rendered to match Standings
+// "Seen" panel (PRE/COUNTDOWN) - table-rendered to match Standings
 // ----------------------------------------------------------------------
 
 /** No-op placeholder to keep older callsites happy. */
@@ -266,7 +266,7 @@ function renderSeen(state) {
 }
 
 // ----------------------------------------------------------------------
-// Standings panel (GREEN/WHITE/CHECKERED) — unchanged structure
+// Standings panel (GREEN/WHITE/CHECKERED) - unchanged structure
 // ----------------------------------------------------------------------
 
 function ensureStandingsDom() {
@@ -420,7 +420,7 @@ function renderStandings(state) {
         <td class="num"></td>
         <td class="name"></td>
         <td class="brake col-brake">
-        <button class="btn btn--sm brake-toggle" data-ok="">—</button></td>
+  <button class="btn btn--sm brake-toggle" data-ok="">-</button></td>
         <td class="laps"></td>
         <td class="last"></td>
         <td class="pace"></td>
@@ -439,7 +439,7 @@ function renderStandings(state) {
       if (!tr.querySelector('.brake-toggle')) {
         const td = document.createElement('td');
         td.className = 'brake col-brake';
-        td.innerHTML = `<button class="btn btn--sm brake-toggle" data-ok="">—</button>`;
+  td.innerHTML = `<button class="btn btn--sm brake-toggle" data-ok="">-</button>`;
         // Insert before current index 3 (Laps) to keep order aligned
         const insertBefore = tr.children[3] || null;
         tr.insertBefore(td, insertBefore);
@@ -775,12 +775,12 @@ function updateFlagPill(st) {
   const flag  = String(st?.flag || 'PRE').toUpperCase();
   const label = {
     PRE:'Pre-race',
-    GREEN:'Green — Race in progress',
+  GREEN:'Green - Race in progress',
     YELLOW:'Yellow',
     RED:'Red',
     BLUE:'Blue',
     WHITE:'White',
-    CHECKERED:'Checkered — Race complete'
+  CHECKERED:'Checkered - Race complete'
   }[flag] || flag;
   txt.textContent = label;
 
@@ -1182,11 +1182,11 @@ function updateClockModeButton(st) {
 })();
 
 /* ======================================================================
-   QUALIFYING — Brake Test toggles (Race Control)
+  QUALIFYING - Brake Test toggles (Race Control)
    ----------------------------------------------------------------------
    Purpose
    - Provide a per-row Brake toggle shown only during qualifying.
-   - Cycle order: null (—) → Pass → Fail → null.
+  - Cycle order: null (-) → Pass → Fail → null.
    - Persist immediately to /qual/heat/{heat_id}/brake as { entrant_id, brake_ok }.
    - Restore saved state on load from GET /qual/heat/{heat_id}/brake (e.g. {"17":true}).
 
@@ -1195,7 +1195,7 @@ function updateClockModeButton(st) {
    - Each standings row: <tr data-entrant-id> (set via tr.dataset.entrantId)
    - Cell markup (inserted by renderStandings):
        <td class="brake col-brake">
-         <button class="btn btn--sm brake-toggle" data-ok="">—</button>
+         <button class="btn btn--sm brake-toggle" data-ok="">-</button>
        </td>
    - CSS: .col-brake is hidden unless body.is-qualifying is present.
 
@@ -1291,7 +1291,7 @@ function updateClockModeButton(st) {
     } else if (val === false) {
       btn.classList.add('is-no');  btn.textContent = 'Fail';
     } else {
-      btn.classList.add('is-unk'); btn.textContent = '—';
+      btn.classList.add('is-unk'); btn.textContent = '-';
     }
   }
 
@@ -1316,7 +1316,7 @@ function updateClockModeButton(st) {
       const entrantId = Number(tr?.dataset?.entrantId);
       if (!Number.isFinite(entrantId)) return;
 
-      // Current → next (cycle: — → Pass → Fail → —)
+  // Current → next (cycle: - → Pass → Fail → -)
       const cur = (btn.dataset.ok === 'true') ? true :
                   (btn.dataset.ok === 'false') ? false : null;
       const next = (cur === null) ? true : (cur === true ? false : null);

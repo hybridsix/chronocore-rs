@@ -1,5 +1,5 @@
 """
-operator_launcher.py — ChronoCoreRS Operator Console launcher
+operator_launcher.py - ChronoCoreRS Operator Console launcher
 
 PURPOSE
 -------
@@ -44,9 +44,23 @@ from typing import Optional
 from http.client import HTTPResponse
 
 import webview  # requires: pywebview + a GUI backend (PySide6 recommended)
+
+# Ensure we can import the 'backend' package even when launching directly.
+_THIS_FILE = Path(__file__).resolve()
+_REPO_ROOT_FOR_IMPORT = _THIS_FILE.parent
+if _REPO_ROOT_FOR_IMPORT.name in {"backend", "operator"}:
+    _REPO_ROOT_FOR_IMPORT = _REPO_ROOT_FOR_IMPORT.parent
+if str(_REPO_ROOT_FOR_IMPORT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT_FOR_IMPORT))
+
 # These imports are part of the ChronoCore backend and may no-op if not used directly here.
 from backend.db_schema import ensure_schema  # idempotent schema bootstrap (safe to import)
-from backend.config_loader import CONFIG     # parsed config (YAML), safe to import
+from backend.config_loader import (
+    CONFIG,
+    DEFAULT_CFG,
+    get_publisher_cfg,
+    get_scanner_cfg,
+)
 
 
 # --------------------------------------------------------------------------------------
@@ -55,7 +69,7 @@ from backend.config_loader import CONFIG     # parsed config (YAML), safe to imp
 
 # Resolve project root based on this file's typical location.
 # This file usually lives at <repo_root>/operator_launcher.py or <repo_root>/backend/…/operator_launcher.py
-THIS_FILE = Path(__file__).resolve()
+THIS_FILE = _THIS_FILE
 REPO_ROOT = THIS_FILE.parent  # default guess
 # If we're inside backend/, move up a level to the repo root
 if (THIS_FILE.parent.name == "backend") or (THIS_FILE.parent.name == "operator"):
@@ -67,7 +81,7 @@ UI_DIR = REPO_ROOT / "ui" / "operator"
 # Optional: a secondary location (FastAPI may mount <repo_root>/ui/ at /ui)
 UI_TOP = REPO_ROOT / "ui"
 
-# Backend serving address — adjustable by env if needed.
+# Backend serving address - adjustable by env if needed.
 # We prefer explicit loopback to avoid name resolution snags on some Windows setups.
 BACKEND_HOST = os.environ.get("CCRS_UI_HOST", "127.0.0.1")
 BACKEND_PORT = int(os.environ.get("CCRS_UI_PORT", "8000"))
@@ -89,7 +103,7 @@ try:
 except Exception:
     DB_PATH = Path(REPO_ROOT / "backend" / "db" / "laps.sqlite").resolve()
 
-# Build the SCREENS mapping to LOCAL FILES (these stay as-is — we won’t break them)
+# Build the SCREENS mapping to LOCAL FILES (these stay as-is - we won’t break them)
 # Note: These are used for the splash screen and as a fallback when backend is unreachable.
 SCREENS = {
     "splash": (UI_DIR / "splash.html"),      # Small frameless splash while services warm up
@@ -108,8 +122,10 @@ UVICORN_APP = os.environ.get("CCRS_UVICORN_APP", "backend.server:APP")
 
 # Give ourselves a global handle for cleanup & API plumbing
 _backend_proc: Optional[subprocess.Popen] = None
+_logger_proc: Optional[subprocess.Popen] = None
 _splash_win: Optional[webview.Window] = None
 _main_win:   Optional[webview.Window] = None
+CONFIG_PATH = DEFAULT_CFG
 
 
 # --------------------------------------------------------------------------------------
@@ -158,11 +174,84 @@ def _backend_healthy() -> bool:
                 return True
             if isinstance(v, str) and v.strip().lower() in {"ok", "ready", "alive", "healthy", "true"}:
                 return True
-        # No recognizable keys? still fine—HTTP 200 is enough.
+        # No recognizable keys? still fine-HTTP 200 is enough.
         return True
     except Exception:
         # Not JSON? fine. 200 means healthy.
         return True
+
+
+def _should_start_logger() -> bool:
+    """Return True when the external lap_logger should be spawned."""
+    try:
+        pub_mode = str(get_publisher_cfg().get("mode", "http") or "").strip().lower()
+        source = str(get_scanner_cfg().get("source", "mock") or "").strip().lower()
+    except Exception:
+        return False
+    return pub_mode == "http" and source != "mock"
+
+
+def _start_logger(timeout_s: float = 5.0) -> None:
+    """Spawn lap_logger as a subprocess when publishing over HTTP."""
+    global _logger_proc
+
+    if _logger_proc and _logger_proc.poll() is None:
+        return
+
+    if not _should_start_logger():
+        _log("Logger not started (publisher!=http or scanner==mock).")
+        return
+
+    if not _backend_healthy():
+        _log("Backend not healthy yet; delaying logger start.")
+        return
+
+    cmd = [
+        sys.executable,
+        str(REPO_ROOT / "backend" / "lap_logger.py"),
+        "--config",
+        str(CONFIG_PATH),
+    ]
+    env = os.environ.copy()
+    env["CCRS_CONFIG"] = str(CONFIG_PATH)
+
+    _log(f"Starting lap_logger: {' '.join(cmd)}")
+    _logger_proc = subprocess.Popen(
+        cmd,
+        cwd=str(REPO_ROOT),
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        env=env,
+    )
+
+    start = time.time()
+    while time.time() - start < timeout_s:
+        if _logger_proc.poll() is not None:
+            _log("lap_logger exited during startup:")
+            if _logger_proc.stdout:
+                lines = _logger_proc.stdout.readlines()[-20:]
+                for ln in lines:
+                    _log(f"> {ln.rstrip()}")
+            break
+        time.sleep(0.2)
+
+
+def _stop_logger() -> None:
+    """Terminate lap_logger subprocess if running."""
+    global _logger_proc
+    if not _logger_proc:
+        return
+    try:
+        _log("Stopping lap_logger…")
+        _logger_proc.terminate()
+        try:
+            _logger_proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            _log("lap_logger did not exit promptly; killing…")
+            _logger_proc.kill()
+    finally:
+        _logger_proc = None
 
 
 def _backend_ready() -> bool:
@@ -214,7 +303,7 @@ def _get_screen_url(screen_id: str) -> str:
         if _backend_healthy():
             # Load the directory URL so StaticFiles serves index.html by default.
             return _serve_url("/ui/operator/")
-        # Health probe failed — use local file as a fallback so users see *something*.
+    # Health probe failed - use local file as a fallback so users see *something*.
         return _file_uri("home")
 
     # Non-home pages default to local files (splash is an example that should come up immediately)
@@ -229,7 +318,7 @@ def _start_backend(timeout_s: float = 15.0) -> None:
     """
     Start the FastAPI/uvicorn backend as a subprocess IF HEALTH CHECKS FAIL.
     - If the backend is already up (another terminal or service), we don't spawn a duplicate.
-    - Otherwise, we launch: uvicorn backend.server:APP --host 127.0.0.1 --port 8000 --reload?
+    - Otherwise, we launch: uvicorn backend.server:app --host 127.0.0.1 --port 8000 --reload?
       (We don't force --reload here; you can run reload yourself during development.)
     - We then wait until /healthz returns ok OR until timeout.
     """
@@ -237,7 +326,7 @@ def _start_backend(timeout_s: float = 15.0) -> None:
 
     # If someone already started the backend, don't fight them.
     if _backend_healthy():
-        _log(f"Backend already healthy at {BACKEND_URL} — not spawning a new process.")
+        _log(f"Backend already healthy at {BACKEND_URL} - not spawning a new process.")
         return
 
     _log(f"Starting backend process for {UVICORN_APP} on {BACKEND_URL} ...")
@@ -245,7 +334,7 @@ def _start_backend(timeout_s: float = 15.0) -> None:
     # Construct uvicorn command
     uvicorn_cmd = [
         sys.executable, "-m", "uvicorn",
-        UVICORN_APP,
+    UVICORN_APP,
         "--host", BACKEND_HOST,
         "--port", str(BACKEND_PORT),
         # For production, omit --reload. For dev, you can uncomment this.
@@ -268,7 +357,7 @@ def _start_backend(timeout_s: float = 15.0) -> None:
     while time.time() - start_ts < timeout_s:
         # Drain any available lines from uvicorn (non-blocking-ish)
         if _backend_proc.poll() is not None:
-            # Process exited early — print what we have and bail
+            # Process exited early - print what we have and bail
             _log("Backend process exited unexpectedly during startup.")
             for ln in line_cache[-12:]:
                 _log(f"> {ln.strip()}")
@@ -291,12 +380,12 @@ def _start_backend(timeout_s: float = 15.0) -> None:
         if _backend_healthy():
             _log("Backend /healthz is OK.")
             # Optional: we could also wait for /readyz to succeed before continuing.
-            # We'll be lenient — the Operator UI can show its own DB readiness states.
+            # We'll be lenient - the Operator UI can show its own DB readiness states.
             return
 
         time.sleep(0.2)
 
-    # If we reach here, we didn't get healthy in time — show context for debugging.
+    # If we reach here, we didn't get healthy in time - show context for debugging.
     _log(f"Timed out waiting for backend to become healthy after {timeout_s:.1f}s.")
     if line_cache:
         _log("Recent backend logs:")
@@ -328,7 +417,7 @@ def _stop_backend() -> None:
 class Api:
     """
     Methods on this class become accessible from JavaScript via window.pywebview.api.<method>().
-    Keep these small and safe — they're part of our UI surface area.
+    Keep these small and safe - they're part of our UI surface area.
     """
     def __init__(self) -> None:
         self.window: Optional[webview.Window] = None
@@ -413,11 +502,12 @@ def _bootstrap():
 
     # Start or attach to the backend; block until (best-effort) healthy or timeout.
     _start_backend()
+    _start_logger()
 
     # Create the main window using the BEST URL (served if possible, else file://)
     api = Api()
     _main_win = webview.create_window(
-        title="ChronoCoreRS — Operator Console",
+    title="ChronoCoreRS - Operator Console",
         url=_get_screen_url("home"),
         width=1920, height=1080,
         resizable=True,
@@ -448,7 +538,7 @@ def main():
     # Splash comes from local file so users get instant feedback even if backend is cold.
     splash_uri = _get_screen_url("splash")
     _splash_win = webview.create_window(
-        title="ChronoCore — Starting…",
+    title="ChronoCore - Starting…",
         url=splash_uri,
         width=460, height=280,
         resizable=False, frameless=True, on_top=True,
@@ -460,6 +550,7 @@ def main():
         # debug=False → production-ish. Flip to True when you want DevTools.
         webview.start(gui="qt", http_server=False, debug=False, func=_bootstrap)
     finally:
+        _stop_logger()
         _stop_backend()
 
 
