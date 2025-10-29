@@ -1,9 +1,249 @@
-/* Results & Exports page styles
-   NOTE: Do not style .app-header / .app-footer here — operator.css owns header/footer.
-*/
+/* ==========================================================================
+   Results & Exports — operator page
+   - Fixed 1920×1080 feel; outer page never scrolls
+   - Left rail scrolls internally; tables scroll within their wrappers
+   - Sticky theads for both tables
+   - Verbose comments because Future-You will thank Past-You
+   ========================================================================== */
 
-/* Content area scaffolding only */
+/* ----- Layout shell: header/footer height come from operator.css/base.css ----- */
 .op-page.results main.wrap {
-  /* room for content; header/footer sizing is shared */
+  /* Prevent an accidental outer scrollbar:
+     we clamp the main area and handle all scrolling inside sub-panes. */
+  height: calc(100vh - var(--headerH-ops) - var(--footer-h));
+  overflow: hidden;
   padding: 16px;
 }
+
+/* Grid: left rail (fixed) + right pane (fills) */
+.results-layout {
+  display: grid;
+  grid-template-columns: 360px 1fr; /* left fixed, right fluid */
+  gap: 16px;
+  height: 100%;
+}
+
+/* ===== Left rail ===== */
+.rail {
+  display: grid;
+  grid-template-rows: auto 1fr auto; /* head / list / empty */
+  border: 1px solid #0b0f13;
+  border-radius: 12px;
+  background: #0f141a;
+  box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+
+.rail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  background: linear-gradient(180deg, rgba(0,180,255,0.12), rgba(0,180,255,0.04));
+  border-bottom: 1px solid #0b2230;
+}
+
+.rail__title {
+  margin: 0;
+  font-size: 16px;
+  color: #bfefff;
+  letter-spacing: 0.4px;
+}
+
+.btn.btn-small {
+  padding: 6px 10px;
+  font-size: 14px;
+  border-radius: 8px;
+}
+
+.rail__list {
+  overflow: auto;           /* internal scroll only */
+  max-height: 100%;
+  padding: 6px;
+  display: grid;
+  gap: 6px;
+}
+
+/* Individual heat rows act like selectable pills */
+.heat {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px 10px;
+  padding: 10px;
+  border: 1px solid #0b2230;
+  border-radius: 10px;
+  cursor: pointer;
+  background: #12171c;
+}
+.heat:hover { filter: brightness(1.06); }
+.heat.is-selected {
+  background: rgba(0,180,255,0.14);
+  border-color: rgba(0,180,255,0.45);
+}
+.heat__name { font-weight: 700; }
+.heat__meta { color: #aac4d6; font-size: 14px; }
+.heat__count { font-family: var(--mono); opacity: 0.9; }
+
+/* Empty state below list (rarely shown) */
+.rail__empty {
+  padding: 10px;
+  text-align: center;
+  color: #b7cbdc;
+  border-top: 1px solid #0b2230;
+}
+
+/* ===== Right pane ===== */
+.pane {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto; /* topbar / tabs / panel / exports */
+  gap: 12px;
+  min-width: 0;   /* enables child overflow to work in grid */
+}
+
+/* Top bar: name, chips, stats, freeze action */
+.topbar {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 10px 12px;
+  border: 1px solid #0b0f13;
+  border-radius: 12px;
+  background: #0f141a;
+  box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0,0,0,.35);
+}
+
+.topbar__left { display: grid; gap: 6px; }
+.heat-title   { font-weight: 800; font-size: 22px; letter-spacing: .3px; }
+.heat-window  { color: #b5cfe4; font-size: 14px; }
+
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid #0b2230;
+  background: rgba(0,180,255,.08);
+  color: #d9f3ff;
+  font-size: 13px;
+  line-height: 1.2;
+}
+.chip--state { background: rgba(34,197,94,.14); border-color: rgba(34,197,94,.35); }
+.chip--warn  { background: rgba(234,179,8,.14); border-color: rgba(234,179,8,.35); }
+.chip--grid  { background: rgba(147,197,253,.12); border-color: rgba(147,197,253,.35); }
+
+.topbar__right { display: flex; align-items: center; gap: 16px; }
+.stats { display: flex; gap: 14px; }
+.stat { display: grid; gap: 2px; text-align: right; }
+.stat__label { font-size: 12px; color: #a7c2d7; }
+.stat__value { font-family: var(--mono); font-weight: 700; }
+
+/* Freeze controls */
+.freeze { display: flex; align-items: center; gap: 8px; }
+.select {
+  background: #12171c;
+  border: 1px solid #0b2230;
+  border-radius: 8px;
+  color: #e6ebf0;
+  padding: 6px 8px;
+}
+
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 8px;
+}
+.tab {
+  appearance: none;
+  border: 1px solid #0b2230;
+  background: #12171c;
+  color: #e6ebf0;
+  padding: 8px 12px;
+  border-radius: 10px;
+  cursor: pointer;
+}
+.tab.is-active {
+  background: rgba(0,180,255,.14);
+  border-color: rgba(0,180,255,.45);
+}
+
+/* Panels share a wrapper with an inner scrollable table container */
+.panel {
+  min-height: 0;          /* allow child to define the scroll area */
+}
+.panel.is-hidden { display: none; }
+
+.table-wrap {
+  height: 100%;
+  border: 1px solid #0b0f13;
+  border-radius: 12px;
+  background: #0f141a;
+  box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0, 0, 0, 0.35);
+  overflow: hidden;       /* clip sticky header sheen */
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+/* Tables: sticky thead + inner scroll for tbody */
+.table {
+  width: 100%;
+  border-collapse: separate; /* needed for sticky header shadow to look clean */
+  border-spacing: 0;
+}
+.table thead th {
+  position: sticky;
+  top: 0;
+  background: linear-gradient(180deg, rgba(0,180,255,.12), rgba(0,180,255,.04));
+  border-bottom: 1px solid #0b2230;
+  z-index: 2;
+  text-align: left;
+  padding: 8px 10px;
+  font-size: 14px;
+  color: #bfefff;
+}
+.table tbody {
+  display: block;          /* tbody scroll container */
+  overflow: auto;
+  max-height: calc(100vh - var(--headerH-ops) - var(--footer-h) - 240px); /* stable inner scroll */
+}
+.table thead,
+.table tbody tr {
+  display: table;          /* keep column sizing consistent */
+  width: 100%;
+  table-layout: fixed;
+}
+
+.table tbody td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #0b0f13;
+}
+.table--mono td { font-family: var(--mono); }
+
+/* Empty states inside panels */
+.empty {
+  padding: 10px;
+  text-align: center;
+  color: #b7cbdc;
+  border-top: 1px solid #0b2230;
+}
+
+/* Exports row (bottom) */
+.exports {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.exports .btn {
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid #0b2230;
+  background: #12171c;
+  color: #e6ebf0;
+  cursor: pointer;
+}
+.exports .btn[disabled] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+/* Subtle zebra striping for dense tables */
+.table tbody tr:nth-child(odd) td { background: rgba(255,255,255,.02); }

@@ -154,7 +154,7 @@ app:
       # Preferred (I-Lap) serial reader defaults:
       ilap_serial:
         port: "COM3"        # e.g., "/dev/ttyUSB0" on Linux
-        baudrate: 115200
+        baudrate: 9600
         init_7digit: true   # send '7-digit init' on connect
         min_lap_s: 10       # local filter (extra safety on the reader thread)
 
@@ -294,9 +294,9 @@ log:
 # -----------------------------------------------------------------------------
 track:
   bindings:
-    - computer_id: "t640-gate-a"
+    - computer_id: "race_control"
       decoder_id:  "ilap-210"
-      port:        "COM7"
+      port:        "COM3"
       location_id: "SF"
 
     - computer_id: "t640-pit-a"
