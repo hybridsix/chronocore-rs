@@ -36,7 +36,7 @@
       // Try to give the operator/devs actionable diagnostics
       let detail = '';
       try { detail = await res.text(); } catch (_) { /* ignore */ }
-      const msg = `HTTP ${res.status} ${res.statusText} — ${url}${detail ? ` — ${detail.slice(0, 240)}` : ''}`;
+  const msg = `HTTP ${res.status} ${res.statusText} - ${url}${detail ? ` - ${detail.slice(0, 240)}` : ''}`;
       const err = new Error(msg);
       err.response = res; // hand back Response for callers that need status
       throw err;

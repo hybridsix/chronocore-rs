@@ -174,7 +174,7 @@ The race timing system can work with several different hardware decoders. You on
 
 ## 10. Tag Management & Conflict Behavior (2025-10-04)
 
-# ChronoCore Operator Guide — Tag Management & Conflict Behavior
+# ChronoCore Operator Guide - Tag Management & Conflict Behavior
 *Revision:* 2025‑10‑04
 
 ## Why this matters
@@ -261,7 +261,7 @@ app:
 
 ---
 
-# Operator’s Guide — Tag Scanning & Entrants Integration (v2025-10-06)
+# Operator’s Guide - Tag Scanning & Entrants Integration (v2025-10-06)
 ...
 
 ---
@@ -309,6 +309,6 @@ The Operator UI footer always shows the **Effective Engine** host it is connecte
 - Example (fixed): `Engine: 10.77.0.10:8000`  
 - Example (same-origin): `Engine: same-origin`  
 
-If you see “Disconnected — retrying…” in the footer, check this host setting first.  
+If you see “Disconnected - retrying…” in the footer, check this host setting first.  
 
 ---

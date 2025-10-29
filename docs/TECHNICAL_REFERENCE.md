@@ -80,7 +80,7 @@ app:
 ### 4.1 Logical Flow
 The following describes the authoritative race loop and how it processes events in real time.
 
-**ChronoCore Race Engine — Logical Flow**
+**ChronoCore Race Engine - Logical Flow**
 
 1. **Initialization (`engine.load`)**  
    The operator creates a new race with a unique `race_id` and roster of entrants.  
@@ -191,7 +191,7 @@ ChronoCore exposes a set of REST endpoints via FastAPI. Below is a detailed refe
 
 # Integrated Update (2025‑10‑04): Enabled‑Only Tag Uniqueness & API Contracts
 
-# ChronoCore Technical Reference — Enabled‑Only Tag Uniqueness & API Contracts
+# ChronoCore Technical Reference - Enabled‑Only Tag Uniqueness & API Contracts
 *Revision:* 2025‑10‑04
 
 ## Summary of changes
@@ -204,7 +204,7 @@ ChronoCore exposes a set of REST endpoints via FastAPI. Below is a detailed refe
 
 ---
 
-## Database — schema and constraints
+## Database - schema and constraints
 
 ### Partial UNIQUE index (enabled‑only)
 ```sql
@@ -393,7 +393,7 @@ Duplicate submissions return **200 OK** with `flag` unchanged so callers can tre
 
 # Integrated Update (2025‑10‑06): Lap Scanner Publisher Integration
 
-# Technical Reference — Lap Scanner Publisher Integration (v2025-10-06)
+# Technical Reference - Lap Scanner Publisher Integration (v2025-10-06)
 ...
 
 ---

@@ -43,7 +43,7 @@ Data flow summary:
 
 ## Important, project-specific conventions
 
-- Forward-only unified config: edits should be made to `config/config.yaml` — `config_loader`
+- Forward-only unified config: edits should be made to `config/config.yaml` - `config_loader`
   will fail loudly if required sections are missing. Prefer updating YAML over scattering
   ad-hoc config.
 - Entrant id semantics (see `backend/server.py` / `EntrantIn` model):
@@ -99,11 +99,11 @@ If `tag` equals the current value, the endpoint returns 200 and keeps the Engine
 
 ## Files to inspect for deeper changes
 
-- `backend/server.py` — main HTTP surface and entrainment with Engine.
-- `backend/race_engine.py` — core business logic; the single source of truth for lap rules.
-- `backend/db_schema.py` — DDL, partial-unique index, and helper `tag_conflicts`.
-- `backend/config_loader.py` — unified config expectations and helpers.
-- `scripts/Run-Server.ps1` and `README.md` — canonical developer commands.
+- `backend/server.py` - main HTTP surface and entrainment with Engine.
+- `backend/race_engine.py` - core business logic; the single source of truth for lap rules.
+- `backend/db_schema.py` - DDL, partial-unique index, and helper `tag_conflicts`.
+- `backend/config_loader.py` - unified config expectations and helpers.
+- `scripts/Run-Server.ps1` and `README.md` - canonical developer commands.
 
 If anything here is unclear or you want more examples (unit tests, common refactors,
 or a policy for schema migrations), tell me which area to expand and I’ll iterate.

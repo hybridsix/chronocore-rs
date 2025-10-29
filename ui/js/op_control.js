@@ -1,5 +1,5 @@
 /* ============================================================================
- * Operator — Race Control
+ * Operator - Race Control
  * ----------------------------------------------------------------------------
  * Responsibilities:
  *  - Poll the engine state and keep the UI in sync (flag banner, clock, table)
@@ -26,7 +26,7 @@
   const $ = CCRS.$ || ((sel, root) => (root || document).querySelector(sel));
   const $$ = CCRS.$$ || ((sel, root) => Array.from((root || document).querySelectorAll(sel)));
 
-  // DOM cache — we keep these here to avoid repeated lookups inside the poller.
+  // DOM cache - we keep these here to avoid repeated lookups inside the poller.
   let elFlagBanner, elClock, elRows, elNetMsg, elNetDot, elEngineHost;
 
   // Current UI state cache to reduce churn/reflows.
@@ -82,7 +82,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Networking — all through YAML-driven resolver
+  // Networking - all through YAML-driven resolver
   // ---------------------------------------------------------------------------
 
   // Poll /race/state, update UI. Called on an interval.
@@ -146,7 +146,7 @@
   }
 
   // ---------------------------------------------------------------------------
-  // Poll loop — prefer CCRS.makePoller if present; otherwise setInterval fallback
+  // Poll loop - prefer CCRS.makePoller if present; otherwise setInterval fallback
   // ---------------------------------------------------------------------------
   function startPolling() {
     // If base.js provides a makePoller with jitter/backoff, use it

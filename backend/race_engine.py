@@ -514,7 +514,7 @@ class RaceEngine:
                         ent.pit_open_at_ms = None
                 return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "pit_event"}
 
-            # track (lap) logic — red still counts per your rule. checkered freezes (no increments)
+            # track (lap) logic - red still counts per your rule. checkered freezes (no increments)
             if self.flag == "checkered":
                 return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "checkered_freeze"}
 

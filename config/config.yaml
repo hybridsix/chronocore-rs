@@ -213,7 +213,7 @@ app:
     net_status_text:
       ok: "OK"
       connecting: "Connecting…"
-      disconnected: "Disconnected — retrying…"
+  disconnected: "Disconnected - retrying…"
 
 # -----------------------------------------------------------------------------
 # Client/UI preferences for the local Operator station (device-level hints).
@@ -289,14 +289,14 @@ log:
   level: info
 
 # -----------------------------------------------------------------------------
-# TRACK BINDINGS — physical inputs (computer+decoder+port) → logical location_id
+# TRACK BINDINGS - physical inputs (computer+decoder+port) → logical location_id
 # These seed the 'sources' table at boot (idempotent upserts).
 # -----------------------------------------------------------------------------
 track:
   bindings:
-    - computer_id: "t640-gate-a"
+    - computer_id: "control-pc"
       decoder_id:  "ilap-210"
-      port:        "COM7"
+      port:        "COM3"
       location_id: "SF"
 
     - computer_id: "t640-pit-a"

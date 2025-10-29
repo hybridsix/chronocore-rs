@@ -1,5 +1,5 @@
 """
-ChronoCore RS — backend/qualifying.py
+ChronoCore RS - backend/qualifying.py
 -------------------------------------
 Qualifying utilities and endpoints for freezing a starting grid from a
 qualifying heat. Uses manual Brake Test verdicts (if any) together with

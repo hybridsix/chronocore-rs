@@ -1,5 +1,5 @@
 # =============================================================================
-# app.yaml — Platform & runtime defaults (single source of truth for the app)
+# app.yaml - Platform & runtime defaults (single source of truth for the app)
 # =============================================================================
 # This file defines:
 #   - Client → Engine host discovery policy (how UIs find the engine)
@@ -190,6 +190,6 @@ app:
     net_status_text:
       ok: "OK"
       connecting: "Connecting…"
-      disconnected: "Disconnected — retrying…"
+  disconnected: "Disconnected - retrying…"
 
 # End of app.yaml

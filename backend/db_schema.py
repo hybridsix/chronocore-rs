@@ -310,7 +310,7 @@ def tag_conflicts(conn: sqlite3.Connection, tag: str, incumbent_entrant_id: Opti
     return cur.fetchone() is not None
 
 # --------------------------------------------------------------------
-# JSON config helpers (heats/events) — persistence for tiny settings
+# JSON config helpers (heats/events) - persistence for tiny settings
 # --------------------------------------------------------------------
 def _get_json(conn: sqlite3.Connection, table: str, id_col: str, row_id: int) -> Dict[str, Any]:
     cur = conn.execute(f"SELECT config_json FROM {table} WHERE {id_col}=?", (row_id,))

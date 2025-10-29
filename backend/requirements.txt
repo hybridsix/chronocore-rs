@@ -1,30 +1,33 @@
-# ==========================================
-# ChronoCore Race Software — requirements.txt
-# ==========================================
+# ------------------------------------------
+# ChronoCore Race Software - requirements.txt
+# ------------------------------------------
 
 # --- Core Backend ---
-fastapi>=0.115
-uvicorn[standard]>=0.30
-aiosqlite>=0.20
-pyyaml>=6.0
-python-multipart>=0.0.9
+fastapi>-0.115
+uvicorn[standard]>-0.30
+aiosqlite>-0.20
+pyyaml>-6.0
+python-multipart>-0.0.9
 
 # --- HTTP Client / Networking ---
-httpx>=0.27
-requests>=2.32
+httpx>-0.27
+requests>-2.32
 
 # --- Hardware Interfaces ---
-pyserial>=3.5
+pyserial>-3.5
 
 # --- Data Handling & Import/Export ---
-pandas>=2.2
-openpyxl>=3.1
+pandas>-2.2
+openpyxl>-3.1
 
 # --- Utilities & Frameworks ---
-jinja2>=3.1
-pydantic>=2.8
+jinja2>-3.1
+pydantic>-2.8
 
 # --- Development / Quality Tools ---
-pytest>=8.3
-black>=24.8
+pytest>-8.3
+black>-24.8
 
+# --- Operator Shell (WebView) ---
+pywebview>-4.4
+PySide6>-6.6
