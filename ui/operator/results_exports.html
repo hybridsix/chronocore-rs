@@ -4,41 +4,178 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Results & Exports — ChronoCore</title>
+
+    <!-- Shared operator styles -->
     <link rel="stylesheet" href="../css/base.css" />
     <link rel="stylesheet" href="../css/operator.css" />
+
+    <!-- Page-specific styles -->
     <link rel="stylesheet" href="../css/results.css" />
+
+    <!-- Shared JS (net status, helpers you already use) -->
     <script src="../js/base.js" defer></script>
 
+    <!-- Page JS -->
+    <script src="../js/results.js" defer></script>
   </head>
+
   <body class="op-page results">
-  <header class="app-header">
-  <div class="brand">
-  <a class="brand-link" href="/ui/operator/index.html">
-      <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" />
-  <div class="brand__wordmark">
-        <div class="wordmark__top">
-          <span class="wordmark__big">CHRONO</span>
-          <span class="wordmark__big">CORE</span>
-        </div>
-        <div class="wordmark__bottom">RACE SOFTWARE</div>
+    <!-- ===== Header (canonical operator header; lives in operator.css) ===== -->
+    <header class="app-header">
+      <div class="brand">
+        <a class="brand-link" href="/ui/operator/index.html">
+          <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" />
+          <div class="brand__wordmark">
+            <div class="wordmark__top">
+              <span class="wordmark__big">CHRONO</span>
+              <span class="wordmark__big">CORE</span>
+            </div>
+            <div class="wordmark__bottom">RACE SOFTWARE</div>
+          </div>
+        </a>
+        <div class="page-label">Results &amp; Exports</div>
       </div>
-    </a>
-    <div class="page-label">Results & Exports</div>
-  </div>
-  <div class="header-tools"></div>
-</header>
 
-  <main class="wrap">
-      <!-- Page content goes here -->
-  <section class="page-intro" hidden></section>
-  <section class="page-body"></section>
+      <div class="app-header__tools"></div>
+    </header>
+
+    <!-- ===== Main: fixed-canvas layout (no outer scrollbar) ===== -->
+    <main class="wrap">
+      <section class="results-layout">
+        <!-- Left rail: heats list (scrolls internally) -->
+        <aside class="rail">
+          <div class="rail__head">
+            <h2 class="rail__title">Heats</h2>
+            <button id="btnRefreshHeats" class="btn btn-small" title="Refresh heats list">
+              Refresh
+            </button>
+          </div>
+          <div id="heatList" class="rail__list">
+            <!-- populated by JS -->
+          </div>
+          <div class="rail__empty" id="railEmpty" hidden>No heats found.</div>
+        </aside>
+
+        <!-- Right / main pane -->
+        <section class="pane">
+          <!-- Top bar: name, window, chips, quick stats, freeze controls -->
+          <div class="topbar">
+            <div class="topbar__left">
+              <div class="heat-title" id="heatTitle">—</div>
+              <div class="heat-window" id="heatWindow">—</div>
+              <div class="chips">
+                <span id="chipFrozen" class="chip chip--state" hidden>Frozen</span>
+                <span id="chipLive" class="chip chip--warn" hidden>Live preview — not final</span>
+                <span id="chipGrid" class="chip chip--grid" hidden>Grid: Frozen</span>
+              </div>
+            </div>
+
+            <div class="topbar__right">
+              <div class="stats">
+                <div class="stat">
+                  <div class="stat__label">Fast Lap</div>
+                  <div class="stat__value" id="statFast">—</div>
+                </div>
+                <div class="stat">
+                  <div class="stat__label">Classified</div>
+                  <div class="stat__value" id="statCars">—</div>
+                </div>
+              </div>
+
+              <div class="freeze">
+                <!-- label removed per project preference; select title explains -->
+                <select id="freezePolicy" class="select" title="Freeze Policy">
+                  <option value="demote">demote</option>
+                  <option value="use_next_valid">use_next_valid</option>
+                  <option value="exclude">exclude</option>
+                </select>
+                <button id="btnFreeze" class="btn">Freeze Grid</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tabs -->
+          <div class="tabs">
+            <button class="tab is-active" data-tab="standings">Standings</button>
+            <button class="tab" data-tab="laps">Lap Table</button>
+          </div>
+
+          <!-- Tab panels -->
+          <div class="panel" id="panel-standings">
+            <div class="table-wrap">
+              <table id="tblStandings" class="table">
+                <thead>
+                  <tr>
+                    <th>Pos</th>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Laps</th>
+                    <th>Def</th>
+                    <th>Last</th>
+                    <th>Best</th>
+                    <th>Pace-5</th>
+                    <th>Grid</th>
+                    <th>Brake</th>
+                    <th>Pits</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyStandings"><!-- rows via JS --></tbody>
+              </table>
+              <div class="empty" id="standingsEmpty" hidden>No standings yet.</div>
+            </div>
+          </div>
+
+          <div class="panel is-hidden" id="panel-laps">
+            <div class="table-wrap">
+              <table id="tblLaps" class="table table--mono">
+                <thead>
+                  <tr>
+                    <th>#</th>
+                    <th>Name</th>
+                    <th>Lap</th>
+                    <th>Lap ms</th>
+                    <th>Lap</th>
+                    <th>Cumul ms</th>
+                    <th>Cumul</th>
+                    <th>ts_ms</th>
+                    <th>UTC</th>
+                    <th>Flag</th>
+                    <th>Src</th>
+                    <th>Loc ID</th>
+                    <th>Loc</th>
+                    <th>Inf</th>
+                  </tr>
+                </thead>
+                <tbody id="tbodyLaps"><!-- rows via JS (chunked render) --></tbody>
+              </table>
+              <div class="empty" id="lapsEmpty" hidden>No laps recorded.</div>
+            </div>
+          </div>
+
+          <!-- Exports -->
+          <div class="exports">
+            <button class="btn" id="btnStandingsCSV">Standings CSV</button>
+            <button class="btn" id="btnStandingsJSON">Standings JSON</button>
+            <button class="btn" id="btnLapsCSV">Laps CSV</button>
+            <button class="btn" id="btnLapsJSON">Laps JSON</button>
+            <button class="btn" id="btnPassesCSV" disabled>Passes CSV</button>
+          </div>
+        </section>
+      </section>
     </main>
-  <footer class="app-footer">
-  <div class="footer__inner">
-  <span id="netDot" class="net-dot"></span>
-  <span id="netMsg" class="net-msg">Offline</span>
-  </div>
-</footer>
 
+    <!-- ===== Footer ===== -->
+    <footer class="app-footer">
+      <div class="footer-left">
+        <span id="netDot" class="status-dot"></span>
+        <span id="netMsg" class="pill pill--db">DB: Offline</span>
+      </div>
+
+      <div class="footer-center"></div>
+
+      <div class="footer-right">
+        <span class="muted">Results & Exports MVP</span>
+      </div>
+    </footer>
   </body>
 </html>

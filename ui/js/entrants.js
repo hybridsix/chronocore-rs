@@ -159,8 +159,8 @@ window.normalizeEntrant = window.normalizeEntrant || function normalizeEntrant(r
   const CONFIG = {
     SCAN_MS:        window.CCRS?.CONFIG?.SCAN_MS ?? 10_000,
     MIN_TAG_LEN:    window.CCRS?.CONFIG?.MIN_TAG_LEN ?? 7,
-    SSE_URL:        window.CCRS?.CONFIG?.SSE_URL ?? '/ilap/stream',
-    POLL_URL:       window.CCRS?.CONFIG?.POLL_URL ?? '/ilap/peek',
+    SSE_URL:        window.CCRS?.CONFIG?.SSE_URL ?? '/sensors/stream',
+    POLL_URL:       window.CCRS?.CONFIG?.POLL_URL ?? '/sensors/peek',
     POLL_INTERVAL:  window.CCRS?.CONFIG?.POLL_INTERVAL ?? 200,  // ms
   };
 

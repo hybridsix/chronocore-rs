@@ -31,12 +31,12 @@ import random
 import sqlite3
 from collections import deque
 from pathlib import Path
-from typing import Any, Dict, List, Optional, cast
+from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
 import yaml
 from enum import Enum
 
 import aiosqlite
-from fastapi import FastAPI, HTTPException, Request, Response, status, Body
+from fastapi import APIRouter, Body, FastAPI, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -571,6 +571,578 @@ def build_standings_payload(
             r["position"] = i
 
     return rows
+
+
+def get_db() -> sqlite3.Connection:
+    """Create a SQLite connection with dict-style row access."""
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def ms_to_str(ms: Optional[int]) -> Optional[str]:
+    if ms is None:
+        return None
+    total_ms = int(ms)
+    minutes, rem = divmod(total_ms, 60_000)
+    return f"{minutes:02d}:{rem / 1000:06.3f}"
+
+
+def to_iso_utc(ts_ms: Optional[int]) -> Optional[str]:
+    if ts_ms is None:
+        return None
+    return datetime.datetime.fromtimestamp(ts_ms / 1000, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+JOURNALING_ENABLED = bool(
+    ((CONFIG.get("app") or {})
+     .get("engine", {})
+     .get("persistence", {})
+     .get("journal_passes", False))
+)
+
+
+results_router = APIRouter(prefix="/results", tags=["results"])
+export_router = APIRouter(prefix="/export", tags=["results-export"])
+
+
+@results_router.get("/heats")
+def list_heats() -> List[Dict[str, Any]]:
+    with get_db() as db:
+        heats = db.execute(
+            """
+            SELECT
+              h.heat_id,
+              h.event_id,
+              h.name,
+              h.status,
+              h.started_utc,
+              h.finished_utc
+            FROM heats h
+            ORDER BY COALESCE(h.finished_utc, h.started_utc) DESC
+            """
+        ).fetchall()
+
+        counts = db.execute(
+            """
+            SELECT
+              heat_id,
+              COUNT(*) AS laps_count,
+              COUNT(DISTINCT entrant_id) AS entrant_count
+            FROM lap_events
+            GROUP BY heat_id
+            """
+        ).fetchall()
+        aggregates = {row["heat_id"]: row for row in counts}
+
+        payload: List[Dict[str, Any]] = []
+        for heat in heats:
+            agg = aggregates.get(heat["heat_id"])
+            payload.append(
+                {
+                    "heat_id": heat["heat_id"],
+                    "event_id": heat["event_id"],
+                    "name": heat["name"],
+                    "status": heat["status"],
+                    "started_utc": heat["started_utc"],
+                    "finished_utc": heat["finished_utc"],
+                    "laps_count": int(agg["laps_count"]) if agg else 0,
+                    "entrant_count": int(agg["entrant_count"]) if agg else 0,
+                }
+            )
+        return payload
+
+
+def fetch_laps(db: sqlite3.Connection, heat_id: int) -> List[sqlite3.Row]:
+    return db.execute(
+        """
+        SELECT
+          le.heat_id,
+          le.entrant_id,
+          le.lap_num,
+          le.ts_ms,
+          le.inferred,
+          le.source_id,
+          le.meta_json,
+          e.number,
+          e.name,
+          e.tag,
+          e.enabled,
+          e.status
+        FROM lap_events le
+        JOIN entrants e ON e.entrant_id = le.entrant_id
+        WHERE le.heat_id = ?
+        ORDER BY le.entrant_id ASC, le.ts_ms ASC
+        """,
+        (heat_id,),
+    ).fetchall()
+
+
+def fetch_flags(db: sqlite3.Connection, heat_id: int) -> List[sqlite3.Row]:
+    try:
+        return db.execute(
+            """
+            SELECT state, ts_ms
+            FROM flags
+            WHERE heat_id = ?
+            ORDER BY ts_ms ASC
+            """,
+            (heat_id,),
+        ).fetchall()
+    except sqlite3.OperationalError:
+        return []
+
+
+def latest_flag_at(flags: List[sqlite3.Row], ts_ms: int) -> Optional[str]:
+    state = None
+    for flag in flags:
+        if flag["ts_ms"] <= ts_ms:
+            state = flag["state"]
+        else:
+            break
+    return state
+
+
+def grid_index_map(db: sqlite3.Connection, event_id: int) -> Dict[int, int]:
+    try:
+        return _grid_map_for_event(db, event_id)
+    except Exception:
+        return {}
+
+
+def compute_standings(db: sqlite3.Connection, heat_id: int) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    heat = db.execute(
+        "SELECT heat_id, event_id, name, status, started_utc, finished_utc FROM heats WHERE heat_id = ?",
+        (heat_id,),
+    ).fetchone()
+    if not heat:
+        raise HTTPException(status_code=404, detail="Heat not found")
+
+    flags = fetch_flags(db, heat_id)
+    laps = fetch_laps(db, heat_id)
+    if not laps:
+        return ({"duration_ms": 0, "fastest_ms": None, "cars_classified": 0}, [])
+
+    roster: Dict[int, Dict[str, Any]] = {}
+    for row in laps:
+        bucket = roster.setdefault(
+            int(row["entrant_id"]),
+            {
+                "entrant_id": int(row["entrant_id"]),
+                "number": row["number"],
+                "name": row["name"],
+                "enabled": bool(row["enabled"]),
+                "status": row["status"],
+                "ts": [],
+            },
+        )
+        bucket["ts"].append(int(row["ts_ms"]))
+
+    fastest_ms: Optional[int] = None
+    standings: List[Dict[str, Any]] = []
+    for entry in roster.values():
+        timestamps = entry["ts"]
+        if len(timestamps) < 2:
+            laps_done = max(0, len(timestamps) - 1)
+            standings.append(
+                {
+                    "entrant_id": entry["entrant_id"],
+                    "number": entry["number"],
+                    "name": entry["name"],
+                    "status": entry["status"],
+                    "enabled": entry["enabled"],
+                    "laps": laps_done,
+                    "last_ms": None,
+                    "best_ms": None,
+                    "pace_5_ms": None,
+                    "grid_index": None,
+                    "brake_valid": True,
+                    "pit_count": 0,
+                }
+            )
+            continue
+
+        deltas = [timestamps[i] - timestamps[i - 1] for i in range(1, len(timestamps))]
+        last_ms = deltas[-1]
+        best_ms = min(deltas)
+        pace_5_ms = sum(deltas[-5:]) // min(5, len(deltas))
+        fastest_ms = best_ms if fastest_ms is None else min(fastest_ms, best_ms)
+
+        standings.append(
+            {
+                "entrant_id": entry["entrant_id"],
+                "number": entry["number"],
+                "name": entry["name"],
+                "status": entry["status"],
+                "enabled": entry["enabled"],
+                "laps": len(deltas),
+                "last_ms": last_ms,
+                "best_ms": best_ms,
+                "pace_5_ms": pace_5_ms,
+                "grid_index": None,
+                "brake_valid": True,
+                "pit_count": 0,
+            }
+        )
+
+    leader_laps = max(row["laps"] for row in standings) if standings else 0
+    for row in standings:
+        row["lap_deficit"] = leader_laps - row["laps"]
+
+    grid_map = grid_index_map(db, int(heat["event_id"]))
+    if grid_map:
+        for row in standings:
+            row["grid_index"] = grid_map.get(row["entrant_id"])
+
+    def sort_key(row: Dict[str, Any]) -> Tuple[int, int, int, int]:
+        laps = int(row.get("laps") or 0)
+        pace_candidate = row.get("pace_5_ms")
+        if pace_candidate is None:
+            pace_candidate = row.get("best_ms")
+        pace_val = int(pace_candidate) if pace_candidate is not None else 1_000_000_000
+        grid_candidate = row.get("grid_index")
+        grid_val = int(grid_candidate) if grid_candidate is not None else 1_000_000
+        entrant_id = int(row.get("entrant_id", 0))
+        return (-laps, pace_val, grid_val, entrant_id)
+
+    standings.sort(key=sort_key)
+    for idx, row in enumerate(standings, start=1):
+        row["position"] = idx
+
+    all_ts = [int(row["ts_ms"]) for row in laps]
+    totals = {
+        "duration_ms": (max(all_ts) - min(all_ts)) if all_ts else 0,
+        "fastest_ms": fastest_ms,
+        "cars_classified": len(standings),
+    }
+    return totals, standings
+
+
+def per_lap_audit(db: sqlite3.Connection, heat_id: int) -> List[Dict[str, Any]]:
+    flags = fetch_flags(db, heat_id)
+    laps = fetch_laps(db, heat_id)
+
+    last_seen: Dict[int, Optional[int]] = {}
+    cumulative: Dict[int, int] = {}
+    audit: List[Dict[str, Any]] = []
+
+    for row in laps:
+        entrant_id = int(row["entrant_id"])
+        ts_ms = int(row["ts_ms"])
+        previous = last_seen.get(entrant_id)
+        lap_ms = ts_ms - previous if previous is not None else None
+        last_seen[entrant_id] = ts_ms
+        if lap_ms is not None:
+            cumulative[entrant_id] = cumulative.get(entrant_id, 0) + lap_ms
+
+        location_id: Optional[str] = None
+        location_label: Optional[str] = None
+        if row["meta_json"]:
+            try:
+                meta = json.loads(row["meta_json"])
+                location = meta.get("location") if isinstance(meta, dict) else None
+                if isinstance(location, dict):
+                    location_id = location.get("id")
+                    location_label = location.get("label")
+            except Exception:
+                pass
+
+        audit.append(
+            {
+                "entrant_id": entrant_id,
+                "number": row["number"],
+                "name": row["name"],
+                "tag": row["tag"],
+                "lap_num": row["lap_num"],
+                "lap_ms": lap_ms,
+                "cumulative_ms": cumulative.get(entrant_id),
+                "ts_ms": ts_ms,
+                "ts_utc": to_iso_utc(ts_ms),
+                "flag": latest_flag_at(flags, ts_ms) if flags else None,
+                "inferred": row["inferred"] or 0,
+                "source_id": row["source_id"],
+                "location_id": location_id,
+                "location_label": location_label,
+            }
+        )
+
+    return audit
+
+
+@results_router.get("/{heat_id}/summary")
+def heat_summary(heat_id: int) -> Dict[str, Any]:
+    with get_db() as db:
+        heat = db.execute("SELECT * FROM heats WHERE heat_id = ?", (heat_id,)).fetchone()
+        if not heat:
+            raise HTTPException(status_code=404, detail="Heat not found")
+
+        totals, standings = compute_standings(db, heat_id)
+
+        policy = None
+        try:
+            cfg = get_event_config(db, int(heat["event_id"])) or {}
+            policy = (cfg.get("qualifying") or {}).get("grid_policy")
+        except Exception:
+            policy = None
+
+        return {
+            "frozen": heat["status"] == "CHECKERED",
+            "policy": policy,
+            "standings": standings,
+            "totals": totals,
+        }
+
+
+@results_router.get("/{heat_id}/laps")
+def heat_laps(heat_id: int) -> List[Dict[str, Any]]:
+    with get_db() as db:
+        exists = db.execute("SELECT 1 FROM heats WHERE heat_id = ?", (heat_id,)).fetchone()
+        if not exists:
+            raise HTTPException(status_code=404, detail="Heat not found")
+        return per_lap_audit(db, heat_id)
+
+
+def csv_stream(rows: Iterable[Iterable[Any]]) -> Iterable[bytes]:
+    for row in rows:
+        cells: List[str] = []
+        for value in row:
+            if isinstance(value, str):
+                cells.append('"' + value.replace('"', '""') + '"')
+            elif value is None:
+                cells.append("")
+            else:
+                cells.append(str(value))
+        yield (",".join(cells) + "\r\n").encode("utf-8")
+
+
+@export_router.get("/standings.json")
+def export_standings_json(heat_id: int):
+    with get_db() as db:
+        heat = db.execute("SELECT * FROM heats WHERE heat_id = ?", (heat_id,)).fetchone()
+        if not heat:
+            raise HTTPException(status_code=404, detail="Heat not found")
+        totals, standings = compute_standings(db, heat_id)
+        return JSONResponse(
+            {
+                "event_id": heat["event_id"],
+                "heat_id": heat_id,
+                "heat_name": heat["name"],
+                "frozen": heat["status"] == "CHECKERED",
+                "standings": standings,
+                "totals": totals,
+            }
+        )
+
+
+@export_router.get("/standings.csv")
+def export_standings_csv(heat_id: int):
+    with get_db() as db:
+        heat = db.execute("SELECT * FROM heats WHERE heat_id = ?", (heat_id,)).fetchone()
+        if not heat:
+            raise HTTPException(status_code=404, detail="Heat not found")
+        totals, standings = compute_standings(db, heat_id)
+        audit = per_lap_audit(db, heat_id)
+
+        cumulative_by_entrant: Dict[int, int] = {}
+        for row in audit:
+            if row.get("cumulative_ms") is not None:
+                cumulative_by_entrant[int(row["entrant_id"])] = int(row["cumulative_ms"])
+
+        header = [
+            "event_id",
+            "heat_id",
+            "heat_name",
+            "entrant_id",
+            "number",
+            "name",
+            "status",
+            "enabled",
+            "grid_index",
+            "brake_valid",
+            "position",
+            "laps",
+            "lap_deficit",
+            "total_ms",
+            "total_str",
+            "best_ms",
+            "best_str",
+            "pace5_ms",
+            "pace5_str",
+        ]
+
+        def gen():
+            if heat["status"] != "CHECKERED":
+                yield from csv_stream([["# provisional"]])
+            yield from csv_stream([header])
+
+            for row in standings:
+                total_ms = cumulative_by_entrant.get(int(row["entrant_id"]))
+                yield from csv_stream(
+                    [
+                        [
+                            heat["event_id"],
+                            heat_id,
+                            heat["name"],
+                            row.get("entrant_id"),
+                            row.get("number"),
+                            row.get("name"),
+                            row.get("status"),
+                            int(bool(row.get("enabled", True))),
+                            row.get("grid_index"),
+                            1 if row.get("brake_valid") else 0,
+                            row.get("position"),
+                            row.get("laps"),
+                            row.get("lap_deficit"),
+                            total_ms if total_ms is not None else "",
+                            ms_to_str(total_ms) if total_ms is not None else "",
+                            row.get("best_ms"),
+                            ms_to_str(row.get("best_ms")),
+                            row.get("pace_5_ms"),
+                            ms_to_str(row.get("pace_5_ms")),
+                        ]
+                    ]
+                )
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="standings_{heat_id}.csv"'},
+        )
+
+
+@export_router.get("/laps.json")
+def export_laps_json(heat_id: int):
+    with get_db() as db:
+        heat = db.execute("SELECT * FROM heats WHERE heat_id = ?", (heat_id,)).fetchone()
+        if not heat:
+            raise HTTPException(status_code=404, detail="Heat not found")
+        rows = per_lap_audit(db, heat_id)
+        return JSONResponse(
+            {
+                "event_id": heat["event_id"],
+                "heat_id": heat_id,
+                "heat_name": heat["name"],
+                "frozen": heat["status"] == "CHECKERED",
+                "laps": rows,
+            }
+        )
+
+
+@export_router.get("/laps.csv")
+def export_laps_csv(heat_id: int):
+    with get_db() as db:
+        heat = db.execute("SELECT * FROM heats WHERE heat_id = ?", (heat_id,)).fetchone()
+        if not heat:
+            raise HTTPException(status_code=404, detail="Heat not found")
+        rows = per_lap_audit(db, heat_id)
+
+        header = [
+            "event_id",
+            "heat_id",
+            "heat_name",
+            "entrant_id",
+            "number",
+            "name",
+            "tag",
+            "lap_num",
+            "lap_ms",
+            "lap_str",
+            "cumulative_ms",
+            "cumulative_str",
+            "ts_ms",
+            "ts_utc",
+            "flag",
+            "source_id",
+            "location_id",
+            "location_label",
+            "inferred",
+        ]
+
+        def gen():
+            yield from csv_stream([header])
+            for row in rows:
+                ts_ms = row.get("ts_ms")
+                lap_ms = row.get("lap_ms")
+                cumulative_ms = row.get("cumulative_ms")
+                yield from csv_stream(
+                    [
+                        [
+                            heat["event_id"],
+                            heat_id,
+                            heat["name"],
+                            row.get("entrant_id"),
+                            row.get("number"),
+                            row.get("name"),
+                            row.get("tag") or "",
+                            row.get("lap_num"),
+                            lap_ms if lap_ms is not None else "",
+                            ms_to_str(lap_ms) if lap_ms is not None else "",
+                            cumulative_ms if cumulative_ms is not None else "",
+                            ms_to_str(cumulative_ms) if cumulative_ms is not None else "",
+                            f"'{ts_ms}" if ts_ms is not None else "",
+                            row.get("ts_utc") or "",
+                            row.get("flag") or "",
+                            row.get("source_id") if row.get("source_id") is not None else "",
+                            row.get("location_id") or "",
+                            row.get("location_label") or "",
+                            row.get("inferred") or 0,
+                        ]
+                    ]
+                )
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="laps_{heat_id}.csv"'},
+        )
+
+
+@export_router.get("/passes.csv")
+def export_passes_csv(heat_id: int):
+    if not JOURNALING_ENABLED:
+        raise HTTPException(status_code=403, detail="Pass journaling is disabled")
+
+    with get_db() as db:
+        def table_exists(name: str) -> bool:
+            return db.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+                (name,),
+            ).fetchone() is not None
+
+        table_name = next((name for name in ("passes_journal", "passes") if table_exists(name)), None)
+        if not table_name:
+            raise HTTPException(status_code=404, detail="Pass journal table not found")
+
+        columns = [row["name"] for row in db.execute(f"PRAGMA table_info({table_name})").fetchall()]
+        if not columns:
+            raise HTTPException(status_code=404, detail="Unable to read journal columns")
+
+        order_column = "ts_ms" if "ts_ms" in columns else columns[0]
+
+        if "heat_id" in columns:
+            rows = db.execute(
+                f"SELECT * FROM {table_name} WHERE heat_id = ? ORDER BY {order_column} ASC",
+                (heat_id,),
+            ).fetchall()
+        else:
+            rows = db.execute(
+                f"SELECT * FROM {table_name} ORDER BY {order_column} ASC",
+            ).fetchall()
+
+        def gen():
+            yield from csv_stream([columns])
+            for row in rows:
+                yield from csv_stream([[row[col] for col in columns]])
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="passes_{heat_id}.csv"'},
+        )
+
+
+app.include_router(results_router)
+app.include_router(export_router)
 
 
 async def _fetch_one(db: aiosqlite.Connection, sql: str, params: tuple = ()) -> Optional[aiosqlite.Row]:
