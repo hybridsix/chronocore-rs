@@ -259,6 +259,8 @@ main {
   justify-content: center;
   align-items: center;
   justify-self: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 
 /* DB pill scaled for footer */

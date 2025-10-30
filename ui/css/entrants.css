@@ -270,11 +270,44 @@
 .ent-table-card .ent-thead .sort-asc::after  { content: "▲"; }
 .ent-table-card .ent-thead .sort-desc::after { content: "▼"; }
 
-/* State pills & effects */
-.pill--ok      { color: #0a1b10; background: rgba(34,197,94,.28);  border: 1px solid rgba(34,197,94,.52); }
-.pill--neutral { color: #0c1418; background: rgba(154,169,180,.28); border: 1px solid rgba(154,169,180,.52); }
-.pill--warn    { color: #1f1400; background: rgba(245,158,11,.28);  border: 1px solid rgba(245,158,11,.52); }
-.pill--error   { color: #220707; background: rgba(239,68,68,.28);   border: 1px solid rgba(239,68,68,.55); }
+/* Footer readiness chips (match Race Setup styling) */
+.entrants .footer-center .pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-edge);
+  background: #101820;
+  font-size: 12px;
+  font-family: var(--mono);
+  line-height: 1;
+  color: var(--text);
+}
+
+.entrants .footer-center .pill.pill--ok {
+  background: linear-gradient(180deg, #2bbf73, #1fa35a);
+  border-color: #198842;
+  color: #05210a;
+}
+
+.entrants .footer-center .pill.pill--warn {
+  background: linear-gradient(180deg, #ffd06b, #f3b044);
+  border-color: #e69f2f;
+  color: #2b1900;
+}
+
+.entrants .footer-center .pill.pill--error {
+  background: linear-gradient(180deg, #ff6b6b, #e23a3a);
+  border-color: #c52929;
+  color: #2b0b0b;
+}
+
+.entrants .footer-center .pill.pill--neutral {
+  background: #101820;
+  border-color: var(--panel-edge);
+  color: var(--text);
+}
 
 .btn-chip.active { background: #13202a; border-color: #1f3442; box-shadow: inset 0 0 0 1px rgba(125,253,254,.18); }
 

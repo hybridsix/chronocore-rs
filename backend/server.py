@@ -469,6 +469,18 @@ log.info("Serving UI from: %s", STATIC_DIR)  # sanity print at startup
 # ------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------
+
+def _engine_running() -> bool | None:
+    for name in ("is_running", "running", "is_green"):
+        attr = getattr(ENGINE, name, None)
+        try:
+            val = attr() if callable(attr) else attr
+            if isinstance(val, bool):
+                return val
+        except Exception:
+            pass
+    return None
+
 def _grid_map_for_event(conn: sqlite3.Connection, event_id: int) -> Dict[int, int]:
     """Return a map of entrant_id -> order from the event's frozen qualifying grid.
 
@@ -2474,20 +2486,6 @@ async def sensors_peek():
     return JSONResponse(last_tag)
 
 
-@app.post("/sensors/meta")
-async def sensors_meta(req: Request):
-    """
-    External scanner heartbeat. POST small JSON like:
-    { "source": "ilap.serial", "port": "COM3", "baud": 9600,
-      "device_id": "ilap-210", "host": "race_control" }
-    """
-    try:
-        payload = await req.json()
-    except Exception:
-        payload = {}
-    _mark_scanner_heartbeat(payload if isinstance(payload, dict) else None)
-    return JSONResponse({"ok": True, "t": _SCANNER_STATUS["last_heartbeat"]})
-
 
 # ------------------------------------------------------------
 # SSE endpoint (preferred by UI)
@@ -2591,40 +2589,63 @@ class SensorPassIn(BaseModel):
 # ------------------------------------------------------------
 @app.post("/sensors/inject")
 async def sensors_inject(payload: dict):
+    """
+    Neutral ingest from any scanner bridge (HTTP).
+    - Fan-out to the one-shot scan bus (Entrants scan UI expects this).
+    - Forward to the RaceEngine (so laps/logic happen).
+    - Publish a diagnostics row to the continuous SSE feed.
+    """
     _mark_scanner_heartbeat({"via": "inject"})
+
     tag = str(payload.get("tag") or "").strip()
-    source = str(payload.get("source") or "ui").strip()
+    source = str(payload.get("source") or "track").strip()   # "track"|"pit_in"|"pit_out"|etc.
+    device_id = payload.get("device_id")
     if not tag:
         raise HTTPException(status_code=400, detail="Missing 'tag'")
 
-    def _engine_running() -> bool | None:
-        for name in ("is_running", "running", "is_green"):
-            attr = getattr(ENGINE, name, None)
-            try:
-                val = attr() if callable(attr) else attr
-                if isinstance(val, bool):
-                    return val
-            except Exception:
-                pass
-        return None
+    # 0) One-shot scan bus: wake any /sensors/stream listeners and update /sensors/peek
+    #    (This mirrors what /engine/pass already does.)
+    try:
+        publish_tag(tag)  # updates last_tag and pushes to _listeners queues
+    except Exception:
+        pass
 
-    # Always record 'seen' (even if lap is later rejected by min-lap, etc.)
+    # 1) Always record 'seen' (used by the pre-race "Seen" table)
     _note_seen(tag)
 
+    # 2) Forward into the engine so scoring/state advance
     accepted, err = None, None
     try:
         ingest = getattr(ENGINE, "ingest_pass", None)
         if callable(ingest):
-            # Most engines expect (tag, source) OR keyword args; use kwargs for clarity
-            accepted = bool(ingest(tag=tag, source=source))
+            accepted = bool(ingest(tag=tag, source=source, device_id=device_id))
         else:
             err = "ENGINE.ingest_pass not found"
     except Exception as ex:
         err = f"{type(ex).__name__}: {ex}"
 
+    # 3) Diagnostics feed (continuous SSE → diag page)
+    try:
+        ent = await resolve_tag_to_entrant(tag)  # optional nice-to-have label
+        await diag_publish({
+            "tag_id": tag,
+            "entrant": ({"name": ent["name"], "number": ent["number"]} if ent else None),
+            "source": ("Start/Finish" if source in ("sf", "track") else source),
+            "rssi": -60,  # placeholder; real RSSI not available via HTTP bridge
+        })
+    except Exception:
+        # never let diagnostics publication break ingest
+        pass
+
+    running = _engine_running()
+
     log.info(
         "[INJECT] tag=%s phase=%s accepted=%s running=%s err=%s",
-        tag, _RACE_STATE.get("phase"), accepted, _engine_running(), err or "-"
+        tag,
+        _RACE_STATE.get("phase"),
+        accepted,
+        running,
+        err or "-",
     )
 
     return {
@@ -2632,8 +2653,8 @@ async def sensors_inject(payload: dict):
         "accepted": accepted,
         "phase": _RACE_STATE.get("phase"),
         "flag": _RACE_STATE.get("flag"),
-        "engine_running": _engine_running(),
         "race_id": _RACE_STATE.get("race_id"),
+        "engine_running": running,
         "error": err,
     }
 

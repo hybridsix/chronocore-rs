@@ -8,6 +8,17 @@
 (function () {
   'use strict';
 
+  const DECODER_BYPASS_KEY = 'ccrs.decoderBypass';
+  const PILL_STATE_CLASSES = ['pill--ok', 'pill--warn', 'pill--error', 'pill--neutral'];
+
+  function getDecoderBypassFlag() {
+    try {
+      return localStorage.getItem(DECODER_BYPASS_KEY) === '1';
+    } catch (_) {
+      return false;
+    }
+  }
+
   /* --- SAFETY SHIM: guarantee a global fillForm(row) that hydrates ALL fields --- */
 (function () {
   if (typeof window.fillForm === 'function') return;  // already defined elsewhere
@@ -107,6 +118,7 @@ window.normalizeEntrant = window.normalizeEntrant || function normalizeEntrant(r
      ========================= */
   const els = {
     // header
+    decoderPill: $('#decoderPill'),
     readyPill:   $('#readyPill'),
     readyWarn:   $('#readyWarn'),
 
@@ -178,6 +190,7 @@ window.normalizeEntrant = window.normalizeEntrant || function normalizeEntrant(r
   let filterMode = 'all';       // 'all' | 'enabled' | 'disabled'
   let sortKey = 'number';       // sort column
   let sortDir = 1;              // 1 asc, -1 desc
+  let lastDecoderOnline = null; // cache last decoder heartbeat
 
   function resolveIdAndLabelFromRowEl(rowEl) {
     const idVal = Number(rowEl?.dataset?.id);
@@ -388,11 +401,35 @@ window.normalizeEntrant = window.normalizeEntrant || function normalizeEntrant(r
     els.qcMsg.className = 'form-msg ' + (kind || '');
   }
 
+  function paintPill(el, stateClass, text) {
+    if (!el) return;
+    el.textContent = text;
+    for (const cls of PILL_STATE_CLASSES) {
+      el.classList.remove(cls);
+    }
+    if (stateClass) el.classList.add(stateClass);
+  }
+
+  function applyDecoderStatus(online) {
+    lastDecoderOnline = (online === null) ? null : !!online;
+    const bypass = getDecoderBypassFlag();
+    if (bypass) {
+      paintPill(els.decoderPill, 'pill--warn', 'Decoder: Bypass');
+      return;
+    }
+    if (online === true) {
+      paintPill(els.decoderPill, 'pill--ok', 'Decoder: Online');
+    } else if (online === false) {
+      paintPill(els.decoderPill, 'pill--error', 'Decoder: Offline');
+    } else {
+      paintPill(els.decoderPill, 'pill--neutral', 'Decoder: Unknown');
+    }
+  }
+
   function setReadyUI(ready) {
     dbReady = !!ready;
     if (els.readyPill) {
-      els.readyPill.textContent = ready ? 'DB: ready' : 'DB: not ready';
-      els.readyPill.classList.toggle('bad', !ready);
+      paintPill(els.readyPill, ready ? 'pill--ok' : 'pill--error', ready ? 'DB: Ready' : 'DB: Not Ready');
     }
     if (els.readyWarn) els.readyWarn.classList.toggle('hidden', !!ready);
   }
@@ -493,6 +530,19 @@ async function deleteEntrant(id) {
     } catch {
       setReadyUI(false);
       CCRS.setNetStatus(false, 'Offline');
+    }
+
+    try {
+      const res = await fetch('/decoders/status', { cache: 'no-store' });
+      if (res.ok) {
+        const js = await res.json();
+        const online = (js?.online ?? 0) > 0;
+        applyDecoderStatus(online);
+      } else {
+        applyDecoderStatus(false);
+      }
+    } catch {
+      applyDecoderStatus(null);
     }
   }
 
@@ -1184,10 +1234,17 @@ ALL = data;
 
   }
 
+  window.addEventListener('storage', (ev) => {
+    if (ev.key === DECODER_BYPASS_KEY) {
+      applyDecoderStatus(lastDecoderOnline);
+    }
+  });
+
   // Boot
   (function start() {
     // Immediate “connecting” text; flips on data/ready events
     CCRS.setNetStatus(true, 'Connecting…');
+    applyDecoderStatus(lastDecoderOnline);
 
     // Ready poller + immediate check so pill updates fast
     const readyPoll = makePoller(pollReady, 2500, () => setReadyUI(false));

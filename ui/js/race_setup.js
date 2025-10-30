@@ -27,6 +27,8 @@
 (function () {
   'use strict';
 
+  const DECODER_BYPASS_KEY = 'ccrs.decoderBypass';
+
   // Shorthand DOM helpers
   const $  = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
@@ -96,6 +98,24 @@
 
   const CUSTOM_ID = '__custom__';
   const clamp = (n, lo, hi) => Math.max(lo, Math.min(n, hi));
+
+  function readStoredDecoderBypass() {
+    try {
+      const val = localStorage.getItem(DECODER_BYPASS_KEY);
+      if (val === null) return null;
+      return val === '1';
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function persistDecoderBypass(on) {
+    try {
+      localStorage.setItem(DECODER_BYPASS_KEY, on ? '1' : '0');
+    } catch (_) {
+      /* ignore storage failures */
+    }
+  }
 
   // Status chip helper
   function setChip(el, status, msg) {
@@ -536,7 +556,12 @@
   }
 
   function bindReadiness() {
-    els.decoderBypass?.addEventListener('change', refreshReadiness);
+    if (els.decoderBypass) {
+      els.decoderBypass.addEventListener('change', () => {
+        persistDecoderBypass(!!els.decoderBypass.checked);
+        refreshReadiness();
+      });
+    }
     setInterval(refreshReadiness, 5000);
     refreshReadiness();
   }
@@ -652,6 +677,14 @@
   async function boot() {
     MODES = await loadModes();
     paintModes(MODES);
+
+    if (els.decoderBypass) {
+      const stored = readStoredDecoderBypass();
+      if (stored !== null) {
+        els.decoderBypass.checked = stored;
+      }
+      persistDecoderBypass(!!els.decoderBypass.checked);
+    }
 
     setCustomEnabled(els.modeSelect?.value === CUSTOM_ID);
 

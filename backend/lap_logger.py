@@ -148,24 +148,27 @@ except Exception:  # pragma: no cover - failure is fine; we’ll log and fallbac
 
 @dataclass
 class ScannerSerialCfg:
-    port: str = "COM7"
-    baud: int = 9600
+    port: str
+    baud: int
     device_id: Optional[str] = None
     host: Optional[str] = None
 
 @dataclass
 class ScannerUdpCfg:
-    host: str = "0.0.0.0"
-    port: int = 5000
+    host: str
+    port: int
 
 @dataclass
 class ScannerCfg:
-    source: str = "mock"  # "ilap.serial" | "ilap.udp" | "mock"
-    serial: ScannerSerialCfg = field(default_factory=ScannerSerialCfg)
-    udp: ScannerUdpCfg = field(default_factory=ScannerUdpCfg)
-    min_tag_len: int = 7
-    duplicate_window_sec: float = 3.0
-    rate_limit_per_sec: float = 0.0  # 0 = unlimited
+    source: str
+    serial: ScannerSerialCfg
+    udp: ScannerUdpCfg
+    min_tag_len: int
+    duplicate_window_sec: float
+    rate_limit_per_sec: float
+    # NEW: how this scanner should be treated by the engine
+    #      ("track" → Start/Finish, "pit_in", "pit_out")
+    role: str = "track"
 
 @dataclass
 class PublisherHttpCfg:
@@ -179,8 +182,8 @@ class PublisherCfg:
 
 @dataclass
 class RootCfg:
-    scanner: ScannerCfg = field(default_factory=ScannerCfg)
-    publisher: PublisherCfg = field(default_factory=PublisherCfg)
+    scanner: "ScannerCfg" = field(default_factory=lambda: ScannerCfg())
+    publisher: "PublisherCfg" = field(default_factory=lambda: PublisherCfg())
     log_level: str = "INFO"
 
 
@@ -188,6 +191,8 @@ class RootCfg:
 def load_config(path: str) -> RootCfg:
     """
     Load YAML config into our dataclasses. Unknown keys are ignored.
+    - Adds scanner.role (track | pit_in | pit_out), default 'track'
+    - Normalizes a few string-y enums (publisher.mode, log level)
     """
     with open(path, "r", encoding="utf-8") as f:
         raw: Mapping[str, Any] = yaml.safe_load(f) or {}
@@ -198,9 +203,29 @@ def load_config(path: str) -> RootCfg:
             cur = (cur or {}).get(k, None)  # type: ignore[attr-defined]
         return default if cur is None else cur
 
+    # --- Normalize helpers ----------------------------------------------------
+    def _norm_lower(val: Any, default: str) -> str:
+        try:
+            s = str(val).strip().lower()
+            return s or default
+        except Exception:
+            return default
+
+    def _norm_upper(val: Any, default: str) -> str:
+        try:
+            s = str(val).strip().upper()
+            return s or default
+        except Exception:
+            return default
+
+    # scanner.role with guard-rail
+    role = _norm_lower(pick(raw, "scanner", "role", default="track"), "track")
+    if role not in ("track", "pit_in", "pit_out"):
+        role = "track"
+
     cfg = RootCfg(
         scanner=ScannerCfg(
-            source=pick(raw, "scanner", "source", default="mock"),
+            source=_norm_lower(pick(raw, "scanner", "source", default="mock"), "mock"),
             serial=ScannerSerialCfg(
                 port=pick(raw, "scanner", "serial", "port", default="COM7"),
                 baud=int(pick(raw, "scanner", "serial", "baud", default=9600)),
@@ -214,17 +239,20 @@ def load_config(path: str) -> RootCfg:
             min_tag_len=int(pick(raw, "scanner", "min_tag_len", default=7)),
             duplicate_window_sec=float(pick(raw, "scanner", "duplicate_window_sec", default=3)),
             rate_limit_per_sec=float(pick(raw, "scanner", "rate_limit_per_sec", default=0)),
+            role=role,
         ),
         publisher=PublisherCfg(
-            mode=pick(raw, "publisher", "mode", default="http"),
+            mode=_norm_lower(pick(raw, "publisher", "mode", default="http"), "http"),
             http=PublisherHttpCfg(
                 base_url=pick(raw, "publisher", "http", "base_url", default="http://127.0.0.1:8000"),
                 timeout_ms=int(pick(raw, "publisher", "http", "timeout_ms", default=500)),
-            )
+            ),
         ),
-        log_level=pick(raw, "log", "level", default=pick(raw, "log_level", default="INFO")),
+        # Accept both new `log.level` and legacy root `log_level`
+        log_level=_norm_upper(pick(raw, "log", "level", default=pick(raw, "log_level", default="INFO")), "INFO"),
     )
     return cfg
+
 
 
 # ------------------------------------------------------------
@@ -367,7 +395,8 @@ class HttpPublisher(Publisher):
             try:
                 resp = await self._client.post(
                     "/sensors/inject",
-                    json={"tag": tag, "source": "scanner"},
+                    role=(cfg.scanner.get("role") or "track").lower(),
+                    json={"tag": tag, "source": role},
                 )
                 if 200 <= resp.status_code < 300:
                     self.tags_sent += 1

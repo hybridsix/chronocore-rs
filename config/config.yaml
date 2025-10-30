@@ -266,6 +266,11 @@ scanner:
   # Helps protect UI/back end during bursts or noisy hardware.
   rate_limit_per_sec: 20
 
+  # Role of this scanner instance (used by the engine to infer pit passes).
+  # Adjust per physical location this scanner serves.
+  role: track   # track | pit_in | pit_out
+
+
 # -----------------------------------------------------------------------------
 # Publisher: where the scanner sends validated tags.
 # "http" is typical when scanner runs as a separate process or on a node.
