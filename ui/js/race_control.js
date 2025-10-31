@@ -444,6 +444,29 @@ function renderStandings(state) {
     };
   });
 
+  // Sort standings: 
+  // 1. Entrants with laps > 0 by their original position (server ordering)
+  // 2. Zero-lap entrants WITH detections (showing --:--.---) 
+  // 3. Zero-lap entrants WITHOUT detections (awaiting detection)
+  normalized.sort((a, b) => {
+    // Both have laps > 0: maintain server position ordering
+    if (a.laps > 0 && b.laps > 0) {
+      return a.position - b.position;
+    }
+    
+    // One has laps, one doesn't: lapped entrant comes first
+    if (a.laps > 0 && b.laps <= 0) return -1;
+    if (b.laps > 0 && a.laps <= 0) return 1;
+    
+    // Both have zero laps: detected ones come before non-detected
+    if (a.hasZeroLapDetection !== b.hasZeroLapDetection) {
+      return a.hasZeroLapDetection ? -1 : 1;
+    }
+    
+    // Same detection status: maintain original position
+    return a.position - b.position;
+  });
+
   // Clear padding rows before update
   const tbody = dom.tbody;
   tbody.querySelectorAll('tr.pad').forEach(tr => tr.remove());
@@ -961,6 +984,62 @@ function updateClockModeButton(st) {
   }
 
   // ----------------------------------------------------------------------
+  // Glow flash effect for mode switching (uses generic classes from base.css)
+  // ----------------------------------------------------------------------
+  function flashModeSwitch(isStandings) {
+    const targetScroll = isStandings 
+      ? document.querySelector('.standingsScroll')
+      : document.querySelector('.seenScroll');
+    
+    const targetHeader = isStandings
+      ? document.querySelector('#panelStandings .standingsHead')
+      : document.querySelector('#panelSeen .standingsHead');
+    
+    // Flash the scroll container with main glow effect
+    if (targetScroll) {
+      // Ensure element has glow-flash base class
+      targetScroll.classList.add('glow-flash');
+      
+      // Remove any existing activation class
+      targetScroll.classList.remove('glow-activate');
+      
+      // Force reflow to ensure the removal takes effect
+      void targetScroll.offsetHeight;
+      
+      // Add the activation class to trigger the glow animation
+      targetScroll.classList.add('glow-activate');
+      
+      // Remove the class after animation completes (0.8s duration)
+      setTimeout(() => {
+        targetScroll.classList.remove('glow-activate');
+      }, 800);
+    }
+    
+    // Flash the header bar with subtle glow effect
+    if (targetHeader) {
+      // Ensure element has glow-flash base class
+      targetHeader.classList.add('glow-flash');
+      
+      // Remove any existing activation class
+      targetHeader.classList.remove('glow-activate-subtle');
+      
+      // Force reflow to ensure the removal takes effect
+      void targetHeader.offsetHeight;
+      
+      // Add the activation class to trigger the glow animation
+      targetHeader.classList.add('glow-activate-subtle');
+      
+      // Remove the class after animation completes (0.8s duration)
+      setTimeout(() => {
+        targetHeader.classList.remove('glow-activate-subtle');
+      }, 800);
+    }
+  }
+
+  // Track last mode to detect changes
+  let lastModeWasStandings = null;
+
+  // ----------------------------------------------------------------------
   // Main state render
   // ----------------------------------------------------------------------
   function renderState(st) {
@@ -1045,6 +1124,15 @@ function updateClockModeButton(st) {
     const showFeed = (phaseLower === 'green' || phaseLower === 'white' || phaseLower === 'checkered');
     const seenPane = els.panelSeen || document.getElementById('panelSeen');
     const feedPane = els.panelFeed || document.getElementById('panelFeed');
+    
+    // Detect mode change for tron flash effect
+    const currentModeIsStandings = showFeed;
+    if (lastModeWasStandings !== null && lastModeWasStandings !== currentModeIsStandings) {
+      // Mode switched - trigger flash effect
+      flashModeSwitch(currentModeIsStandings);
+    }
+    lastModeWasStandings = currentModeIsStandings;
+    
     if (seenPane) seenPane.classList.toggle('hidden', showFeed);
     if (feedPane) feedPane.classList.toggle('hidden', !showFeed);
 

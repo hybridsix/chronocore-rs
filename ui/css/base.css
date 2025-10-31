@@ -540,3 +540,76 @@ body.home .brand-link       { transform: scale(1); }     /* big on Home */
 .field[data-hint-open="1"] .hint.small {
   display: block !important;
 }
+
+/* ===== GLOW FLASH EFFECTS - Reusable across application ===== */
+
+/* Base glow flash - applies to any element with .glow-flash */
+.glow-flash {
+  transition: border-color 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+/* Main glow activation effect - for larger containers/panels */
+.glow-flash.glow-activate {
+  border-color: #00d4ff;
+  box-shadow: 
+    0 0 12px rgba(0, 212, 255, 0.4),
+    0 0 24px rgba(0, 212, 255, 0.2);
+  animation: glowActivate 0.8s ease-out;
+}
+
+/* Subtle glow activation effect - for smaller elements like headers */
+.glow-flash.glow-activate-subtle {
+  border-color: #00d4ff;
+  box-shadow: 
+    0 0 8px rgba(0, 212, 255, 0.4),
+    0 0 16px rgba(0, 212, 255, 0.2);
+  animation: glowActivateSubtle 0.8s ease-out;
+}
+
+/* Main glow keyframes - bright, wide glow for containers */
+@keyframes glowActivate {
+  0% {
+    border-color: var(--panel-edge, #213243);
+    box-shadow: none;
+  }
+  15% {
+    border-color: #00d4ff;
+    box-shadow: 
+      0 0 16px rgba(0, 212, 255, 0.6),
+      0 0 32px rgba(0, 212, 255, 0.3);
+  }
+  50% {
+    border-color: #00e8ff;
+    box-shadow: 
+      0 0 20px rgba(0, 232, 255, 0.5),
+      0 0 40px rgba(0, 232, 255, 0.25);
+  }
+  100% {
+    border-color: var(--panel-edge, #213243);
+    box-shadow: none;
+  }
+}
+
+/* Subtle glow keyframes - softer glow for smaller elements */
+@keyframes glowActivateSubtle {
+  0% {
+    border-color: var(--panel-edge, #213243);
+    box-shadow: none;
+  }
+  15% {
+    border-color: #00d4ff;
+    box-shadow: 
+      0 0 12px rgba(0, 212, 255, 0.6),
+      0 0 24px rgba(0, 212, 255, 0.3);
+  }
+  50% {
+    border-color: #00e8ff;
+    box-shadow: 
+      0 0 16px rgba(0, 232, 255, 0.5),
+      0 0 32px rgba(0, 232, 255, 0.25);
+  }
+  100% {
+    border-color: var(--panel-edge, #213243);
+    box-shadow: none;
+  }
+}

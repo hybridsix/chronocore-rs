@@ -390,20 +390,32 @@ body.race-control main.rcWrap {
 
 #flagPad .flag--checkered {
   position: relative;
-  color: #fff;
+  color: #000000 !important; /* Force black text */
   border-color: #4a5664;
   background: repeating-linear-gradient(45deg, #000 0 16px, #fff 16px 32px);
-  text-shadow: 0 1px 2px rgba(0, 0, 0, .8), 0 0 2px rgba(0, 0, 0, .6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800 !important;
+  font-size: inherit !important;
+  text-indent: 0 !important;
+  text-transform: none !important;
+  opacity: 1 !important;
+  z-index: 999 !important; /* Force highest z-index */
+  text-shadow: 
+    -4px -4px 0 #fff,
+    4px -4px 0 #fff,
+    -4px 4px 0 #fff,
+    4px 4px 0 #fff,
+    0 -4px 0 #fff,
+    0 4px 0 #fff,
+    -4px 0 0 #fff,
+    4px 0 0 #fff !important; /* 4px white outline for visibility */
 }
 
-#flagPad .flag--checkered::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: rgba(0, 0, 0, .25);
-  border-radius: 8px;
-  pointer-events: none;
-}
+
+
+/* No pseudo-elements for now - keep text visible */
 
 /* active state + pulse (final authority) */
 @keyframes flagPulse {
@@ -727,6 +739,8 @@ body.race-control main.rcWrap {
   overflow: hidden;                      /* default: no scroll */
 }
 
+
+
 /* Enable internal scroll when >16 entrants */
 .standingsScroll.has-scroll,
 .standingsScroll.is-scroll,
@@ -922,6 +936,8 @@ body.race-control main.rcWrap {
   border: 1px solid var(--panel-edge);
   border-radius: 8px;
 }
+
+
 .standingsHead .title .muted { color: var(--text-muted); }
 
 /* Right-aligned summary in the Start settings row */
@@ -998,8 +1014,29 @@ body[data-flag="PRE"]       #flagPill { background: var(--flag-pre);    color:#0
 body[data-flag="CHECKERED"] #flagPill {
   background:
     repeating-linear-gradient(45deg, #fff 0 16px, #121212 16px 32px);
-  color:#0a0d10;
-  text-shadow: 0 1px 0 rgba(255,255,255,0.35);
+  color: #1a1a1a; /* Dark text for white background */
+  /* Removed text-shadow */
+  position: relative;
+}
+
+/* White text background for flag pill */
+body[data-flag="CHECKERED"] #flagPill::before {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 85%;
+  height: 70%;
+  background: #ffffff; /* Fully opaque white */
+  border-radius: 20px;
+  pointer-events: none;
+  z-index: 1;
+}
+
+body[data-flag="CHECKERED"] #flagPill #flagPillText {
+  position: relative;
+  z-index: 2; /* Text above white background */
 }
 
 /* prefer-reduced-motion: disable the loop for accessibility */
