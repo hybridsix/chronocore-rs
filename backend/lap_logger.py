@@ -180,21 +180,23 @@ except Exception:  # pragma: no cover - failure is fine; we’ll log and fallbac
 # ------------------------------------------------------------
 
 class DedupWindow:
-    """
-    De-duplicate tag events within a sliding window. Simple in-memory cache:
-    tag -> last_seen_epoch_seconds.
-    """
+    """Sliding-window de-duplication with gap reporting."""
+
     def __init__(self, window_sec: float):
         self.window = float(window_sec)
-        self._last = {}  # type: dict[str, float]
+        self._last: dict[str, float] = {}
 
-    def accept(self, tag: str) -> bool:
+    def accept(self, tag: str) -> tuple[bool, float | None]:
         now = time.time()
-        last = self._last.get(tag, 0.0)
-        if now - last < self.window:
-            return False
+        last = self._last.get(tag)
+        if last is None:
+            self._last[tag] = now
+            return True, None
+        gap = now - last
+        if gap < self.window:
+            return False, gap
         self._last[tag] = now
-        return True
+        return True, gap
 
 
 class RateLimiter:
@@ -658,16 +660,37 @@ class ScannerService:
         self.log = logging.getLogger("scanner")
 
         # Pull subtrees via the single-source-of-truth loader
-        sc  = get_scanner_cfg()        # top-level "scanner" (dict)
-        pub = get_publisher_cfg()      # top-level "publisher" (dict)
+        sc  = dict((self.cfg or {}).get("scanner") or get_scanner_cfg())
+        pub = dict((self.cfg or {}).get("publisher") or get_publisher_cfg())
         log_level = str(get_log_level("INFO") or "INFO").upper()
 
         # Normalize and store knobs as attributes (so run() can use them)
         self.source = str(sc.get("source", "mock")).lower()
         self.role   = str(sc.get("role", "track")).lower()
-        self.min_tag_len       = int(sc.get("min_tag_len", 7))
-        self.dup_window_s      = float(sc.get("duplicate_window_sec", 3))
-        self.rate_limit_per_sec= float(sc.get("rate_limit_per_sec", 0))
+
+        def _coerce_int(val: Any, default: int, key: str) -> int:
+            try:
+                return int(val)
+            except (TypeError, ValueError):
+                self.log.warning(
+                    "invalid_config_int",
+                    extra={"key": key, "value": val, "default": default},
+                )
+                return int(default)
+
+        def _coerce_float(val: Any, default: float, key: str) -> float:
+            try:
+                return float(val)
+            except (TypeError, ValueError):
+                self.log.warning(
+                    "invalid_config_float",
+                    extra={"key": key, "value": val, "default": default},
+                )
+                return float(default)
+
+        self.min_tag_len = _coerce_int(sc.get("min_tag_len", 7), 7, "scanner.min_tag_len")
+        self.dup_window_s = _coerce_float(sc.get("duplicate_window_sec", 3), 3.0, "scanner.duplicate_window_sec")
+        self.rate_limit_per_sec = _coerce_float(sc.get("rate_limit_per_sec", 0), 0.0, "scanner.rate_limit_per_sec")
         self.log_level         = log_level
 
         # Observability counters
@@ -770,14 +793,13 @@ class ScannerService:
     async def run(self, stop_evt: asyncio.Event):
         await self.publisher.start()
 
-        # startup log uses attributes (no dict dot-attr)
-        sc = get_scanner_cfg() or {}
+        # startup log uses normalized attributes for clarity
         extra_fields = {
-            "source": (sc.get("source") or "mock"),
-            "mode":   (get_publisher_cfg() or {}).get("mode", "http"),
-            "min_tag_len": int(sc.get("min_tag_len", 7)),
-            "dup_window_s": float(sc.get("duplicate_window_sec", 3)),
-            "rate_limit_per_sec": float(sc.get("rate_limit_per_sec", 0)),
+            "source": self.source,
+            "mode": self.publisher_mode,
+            "min_tag_len": self.min_tag_len,
+            "dup_window_s": self.dup_window_s,
+            "rate_limit_per_sec": self.rate_limit_per_sec,
         }
         self.log.info("scanner_start", extra=extra_fields)
 
@@ -802,11 +824,16 @@ class ScannerService:
                     continue
 
                 # de-dup window
-                if not self._dups.accept(tag_digits):
+                accepted, gap = self._dups.accept(tag_digits)
+                if not accepted:
                     self.tags_suppressed_total += 1
-                    logging.getLogger("scanner.dedup").info(
-                        "suppressed", extra={"tag": tag_digits, "window_s": self.dup_window_s}
-                    )
+                    payload = {
+                        "tag": tag_digits,
+                        "window_s": self.dup_window_s,
+                        "gap_ms": None if gap is None else round(gap * 1000, 1),
+                    }
+                    logging.getLogger("scanner.dedup").info("suppressed", extra=payload)
+                    self.log.info("dedup_suppressed", extra=payload)
                     continue
 
                 # global rate limit

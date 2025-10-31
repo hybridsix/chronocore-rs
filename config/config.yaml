@@ -254,8 +254,8 @@ scanner:
   # After parsing, only digits are kept. Enforce minimum tag length here.
   min_tag_len: 7           # I-Lap default is 7 digits
 
-  # Duplicate suppression window (seconds). Same tag within this window is dropped.
-  duplicate_window_sec: 1
+  # Duplicate suppression window (seconds). Same tag within this window is dropped. (Default 0.5)
+  duplicate_window_sec: 0.5
 
   # Optional rate cap in tags/second. 0 = unlimited.
   # Helps protect UI/back end during bursts or noisy hardware.
