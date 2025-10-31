@@ -66,6 +66,8 @@
 const DEFAULT_VISIBLE_STANDINGS_ROWS = 16;
 let cachedPlannedEntrantCount;
 
+const PRELAP_PLACEHOLDER = '--:--.---';
+
 /** Read planned entrant count from localStorage (cached). */
 function getPlannedEntrantCount() {
   if (cachedPlannedEntrantCount !== undefined) return cachedPlannedEntrantCount;
@@ -460,23 +462,22 @@ function renderStandings(state) {
 
     if (cells[2].textContent !== row.name) cells[2].textContent = row.name;
 
-    let lapsTxt = String(row.laps);
-    if (row.lapDeficit > 0) {
-      const suffix = row.lapDeficit === 1 ? '−1L' : `−${row.lapDeficit}L`;
-      lapsTxt += ` (${suffix})`;
-    }
-    if (cells[4].textContent !== lapsTxt) cells[4].textContent = lapsTxt;
+  const isPreLap = (row.laps <= 0) && (row.last != null || row.pace != null || row.best != null);
 
-    const lastTxt = fmtLapCell(row.last);
-    if (cells[5].textContent !== lastTxt) cells[5].textContent = lastTxt;
+  const lapsTxt = (row.laps != null && row.laps !== '') ? String(row.laps) : '-';
+  if (cells[4].textContent !== lapsTxt) cells[4].textContent = lapsTxt;
 
-    const paceTxt = fmtLapCell(row.pace);
-    if (cells[6].textContent !== paceTxt) cells[6].textContent = paceTxt;
+  const lastTxt = isPreLap ? PRELAP_PLACEHOLDER : fmtLapCell(row.last);
+  if (cells[5].textContent !== lastTxt) cells[5].textContent = lastTxt;
 
-    const bestTxt = fmtLapCell(row.best);
-    if (cells[7].textContent !== bestTxt) cells[7].textContent = bestTxt;
+  const paceTxt = isPreLap ? PRELAP_PLACEHOLDER : fmtLapCell(row.pace);
+  if (cells[6].textContent !== paceTxt) cells[6].textContent = paceTxt;
 
-    tr.classList.toggle('is-disabled', !row.enabled);
+  const bestTxt = isPreLap ? PRELAP_PLACEHOLDER : fmtLapCell(row.best);
+  if (cells[7].textContent !== bestTxt) cells[7].textContent = bestTxt;
+
+  tr.classList.toggle('is-disabled', !row.enabled);
+  tr.classList.toggle('is-prelap', isPreLap);
     frag.appendChild(tr);
     existing.delete(row.key);
   }
@@ -613,6 +614,7 @@ function padStandingsRows(tbody, minRows = DEFAULT_VISIBLE_STANDINGS_ROWS) {
     // Clock
     btnClockMode   : $('#btnClockMode'),
     clockDisplay   : $('#raceClock'),
+  clockActions   : document.querySelector('.clockActions'),
 
     // Panels
     panelSeen      : $('#panelSeen'),
@@ -1015,7 +1017,8 @@ function updateClockModeButton(st) {
 
     // Post-finish CTA: visible only at CHECKERED + breathe
     if (els.postFinish) {
-      const show = (phaseLower === 'checkered');
+      const flagLower = (st.flag || '').toLowerCase();
+      const show = (phaseLower === 'checkered') || (flagLower === 'checkered');
       els.postFinish.classList.toggle('hidden', !show);
       if (els.btnResults) els.btnResults.classList.toggle('btn--breathing', show);
     }
@@ -1172,12 +1175,125 @@ function updateClockModeButton(st) {
     tick();
   }
 
+  function initSensorTriggers() {
+    const cfg = window.CCRS?.CONFIG || {};
+    const sseUrl = cfg.SSE_URL || '/sensors/stream';
+    const pollUrl = cfg.POLL_URL || '/sensors/peek';
+    const pollInterval = Math.max(100, Number(cfg.POLL_INTERVAL ?? 0) || 200);
+
+    const requestImmediateRefresh = (() => {
+      let busy = false;
+      return () => {
+        if (busy) return;
+        busy = true;
+        refreshState()
+          .catch(() => {})
+          .finally(() => { busy = false; });
+      };
+    })();
+
+    const onDetection = (fromFallback = false) => {
+      burstPoll(200, 4000);
+      if (!fromFallback && fallbackStop) {
+        fallbackStop();
+        fallbackStop = null;
+      }
+      requestImmediateRefresh();
+    };
+
+    const startPeekFallback = () => {
+      let active = true;
+      let timer = null;
+      let lastToken = null;
+
+      const tick = async () => {
+        if (!active) return;
+        try {
+          const resp = await fetch(pollUrl, { cache: 'no-store' });
+          if (resp.ok) {
+            const data = await resp.json();
+            const seenAt = data?.seen_at;
+            const tag = data?.tag;
+            const token = seenAt != null ? String(seenAt) : (tag != null ? `tag:${tag}` : null);
+            if (token && token !== lastToken) {
+              lastToken = token;
+              onDetection(true);
+            }
+          }
+        } catch {
+          /* ignore */
+        }
+        if (active) {
+          timer = setTimeout(tick, pollInterval);
+        }
+      };
+
+      timer = setTimeout(tick, 0);
+      return () => {
+        active = false;
+        if (timer) clearTimeout(timer);
+      };
+    };
+
+    let fallbackStop = null;
+    const ensureFallback = () => {
+      if (!fallbackStop && typeof pollUrl === 'string') {
+        fallbackStop = startPeekFallback();
+      }
+    };
+
+    if (typeof window.EventSource === 'function' && typeof sseUrl === 'string') {
+      let es = null;
+      let reconnectTimer = null;
+
+      const scheduleReconnect = (delayMs) => {
+        if (reconnectTimer) return;
+        reconnectTimer = setTimeout(() => {
+          reconnectTimer = null;
+          connect();
+        }, delayMs);
+      };
+
+      const connect = () => {
+        if (es) {
+          es.close();
+          es = null;
+        }
+        try {
+          es = new EventSource(sseUrl, { withCredentials: false });
+        } catch {
+          ensureFallback();
+          scheduleReconnect(2000);
+          return;
+        }
+
+        es.addEventListener('tag', () => {
+          onDetection();
+        });
+
+        es.onerror = () => {
+          ensureFallback();
+          if (es) {
+            es.close();
+            es = null;
+          }
+          scheduleReconnect(1000);
+        };
+      };
+
+      connect();
+    } else {
+      ensureFallback();
+    }
+  }
+
   // ----------------------------------------------------------------------
   // Boot
   // ----------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', () => {
     bindControls();
     startPolling();
+    initSensorTriggers();
   });
 })();
 

@@ -371,6 +371,26 @@ _TAG_TO_ENTRANT: dict[str, dict] = {}   # tag -> entrant row (from setup payload
 _SEEN_COUNTS: dict[int, int] = {}       # entrant_id -> read count
 _SEEN_TOTAL: int = 0                    # entrants with reads > 0
 
+
+def _apply_session_min_lap(session_cfg: dict | None) -> None:
+    """Push session-defined min lap time into the engine if provided."""
+    if not isinstance(session_cfg, dict):
+        return
+    value = session_cfg.get("min_lap_s")
+    if value is None:
+        return
+    if isinstance(value, (int, float)):
+        ENGINE.min_lap_s = float(value)
+        return
+    if isinstance(value, str):
+        raw = value.strip()
+        if not raw:
+            return
+        try:
+            ENGINE.min_lap_s = float(raw)
+        except ValueError:
+            pass
+
 # ---- Seen helper: bump count for a tag (single source of truth) ------------
 def _note_seen(tag: str) -> None:
     """
@@ -429,6 +449,62 @@ def _state_seen_block() -> dict:
         "total": len(rows),
         "rows": rows,
     }
+
+
+def _reseed_seen_roster(entrants: Iterable[dict]) -> None:
+    """Reset seen counters + tag map from the provided entrant list."""
+    global _TAG_TO_ENTRANT, _SEEN_COUNTS, _SEEN_TOTAL
+
+    entrants_list = list(entrants or [])
+    _TAG_TO_ENTRANT.clear()
+    for item in entrants_list:
+        try:
+            tag = str(item.get("tag") or "").strip()
+        except AttributeError:
+            continue
+        if tag:
+            _TAG_TO_ENTRANT[tag] = item
+
+    _SEEN_COUNTS.clear()
+    _SEEN_TOTAL = 0
+
+
+def _reload_engine_from_cached_session() -> dict | None:
+    """Best-effort engine reload using the most recent session cache."""
+    global _CURRENT_RACE_ID, _CURRENT_SESSION, _CURRENT_ENTRANTS_ENGINE, _RACE_STATE
+    if _CURRENT_RACE_ID is None:
+        return None
+
+    race_type = (_CURRENT_SESSION.get("mode_id", "sprint") if _CURRENT_SESSION else "sprint")
+    entrants = _CURRENT_ENTRANTS_ENGINE or []
+
+    try:
+        snap = ENGINE.load(
+            race_id=int(_CURRENT_RACE_ID or 0),
+            entrants=entrants,
+            race_type=str(race_type),
+            session_config=_CURRENT_SESSION,
+        )
+    except Exception:
+        return None
+
+    # Mirror roster/config back into the UI state so summaries stay accurate
+    entrants_copy = [dict(e) for e in entrants]
+    _CURRENT_ENTRANTS_ENGINE = entrants_copy[:]
+    _RACE_STATE["entrants"] = entrants_copy
+
+    if _CURRENT_SESSION:
+        _RACE_STATE["limit"] = _CURRENT_SESSION.get("limit") or _RACE_STATE.get("limit")
+        cd = (_CURRENT_SESSION.get("countdown") or {})
+        _RACE_STATE["countdown_from_s"] = (
+            int(cd.get("start_from_s") or 0) if cd.get("start_enabled") else 0
+        )
+        if "min_lap_s" in _CURRENT_SESSION:
+            _RACE_STATE["min_lap_s"] = _CURRENT_SESSION.get("min_lap_s")
+
+    _apply_session_min_lap(_CURRENT_SESSION)
+    _reseed_seen_roster(entrants_copy)
+    return snap
 
 
 # ------------------------------------------------------------
@@ -521,6 +597,7 @@ def build_standings_payload(
     conn: sqlite3.Connection,
     event_id: int,
     phase: str | None,
+    engine_snapshot: dict | None = None,
 ) -> list[dict]:
     """
     Build the UI 'standings' array. Behavior:
@@ -532,6 +609,34 @@ def build_standings_payload(
       { entrant_id, number, name, laps, last, pace, best,
         enabled, grid_index, brake_valid }
     """
+    def _to_seconds(raw: object) -> float | None:
+        if raw is None:
+            return None
+        if isinstance(raw, (int, float)):
+            val = float(raw)
+        elif isinstance(raw, str):
+            try:
+                val = float(raw.strip())
+            except ValueError:
+                return None
+        else:
+            return None
+        # Heuristic: treat large values as milliseconds.
+        return val / 1000.0 if val > 600.0 else val
+
+    # Cache the live engine snapshot (if provided) so we reuse the computed laps/pace data.
+    snapshot_rows: dict[int, dict] = {}
+    if isinstance(engine_snapshot, dict):
+        for item in engine_snapshot.get("standings", []) or []:
+            val = item.get("entrant_id") if isinstance(item, dict) else None
+            if val is None:
+                continue
+            try:
+                sid = int(val)
+            except (TypeError, ValueError):
+                continue
+            snapshot_rows[sid] = item
+
     # 1) Snapshot the engine entrants as our baseline “roster”
     ents = getattr(ENGINE, "entrants", {}) or {}
     rows: list[dict] = []
@@ -541,27 +646,85 @@ def build_standings_payload(
         except Exception:
             continue
 
-        # Pull what we can from the engine object
+        snap_row = snapshot_rows.pop(eid_i, None)
+
         number = getattr(ent, "number", None)
-        name   = getattr(ent, "name", None)
+        name = getattr(ent, "name", None)
         enabled = bool(getattr(ent, "enabled", True))
 
-        laps = int(getattr(ent, "total_laps", 0) or 0)
-        # “last” / “pace” / “best” fields come in many dialects; be permissive
-        last = getattr(ent, "last_s", None) or getattr(ent, "last_ms", None) or getattr(ent, "last", None)
-        pace = getattr(ent, "pace_5", None) or getattr(ent, "pace_s", None) or getattr(ent, "pace_ms", None)
-        best = getattr(ent, "best_s", None) or getattr(ent, "best_ms", None) or getattr(ent, "best", None)
+        if snap_row:
+            laps = int(snap_row.get("laps") or snap_row.get("total_laps") or 0)
+            last = _to_seconds(snap_row.get("last") or snap_row.get("last_s") or snap_row.get("last_ms"))
+            pace = _to_seconds(
+                snap_row.get("pace_5")
+                or snap_row.get("pace")
+                or snap_row.get("pace_s")
+                or snap_row.get("pace_ms")
+            )
+            best = _to_seconds(snap_row.get("best") or snap_row.get("best_s") or snap_row.get("best_ms"))
+            lap_deficit = snap_row.get("lap_deficit")
+        else:
+            laps = int(getattr(ent, "laps", getattr(ent, "total_laps", 0)) or 0)
+            last = _to_seconds(
+                getattr(ent, "last_s", None)
+                or getattr(ent, "last_ms", None)
+                or getattr(ent, "last", None)
+            )
+            best = _to_seconds(
+                getattr(ent, "best_s", None)
+                or getattr(ent, "best_ms", None)
+                or getattr(ent, "best", None)
+            )
+            pace: float | None = None
+            buf = getattr(ent, "pace_buf", None)
+            if buf:
+                try:
+                    pace = _to_seconds(sum(buf[-5:]) / len(buf[-5:]))
+                except ZeroDivisionError:
+                    pace = None
+            lap_deficit = None
 
         rows.append({
             "entrant_id": eid_i,
             "number": (str(number) if number is not None else None),
             "name": (str(name) if name is not None else f"Entrant {eid_i}"),
             "laps": laps,
+            "lap_deficit": lap_deficit,
             "last": last,
             "pace": pace,
             "best": best,
             "enabled": enabled,
             # filled below
+            "grid_index": None,
+            "brake_valid": True,
+        })
+
+    # Include any remaining snapshot-only entrants (e.g., provisionals created mid-race).
+    for snap_row in snapshot_rows.values():
+        if not isinstance(snap_row, dict):
+            continue
+        value = snap_row.get("entrant_id")
+        if value is None:
+            continue
+        try:
+            eid = int(value)
+        except (TypeError, ValueError):
+            continue
+        rows.append({
+            "entrant_id": eid,
+            "number": (str(snap_row.get("number")) if snap_row.get("number") is not None else None),
+            "name": (str(snap_row.get("name")) if snap_row.get("name") else f"Entrant {eid}"),
+            "laps": int(snap_row.get("laps") or snap_row.get("total_laps") or 0),
+            "lap_deficit": snap_row.get("lap_deficit"),
+            "last": _to_seconds(snap_row.get("last") or snap_row.get("last_s") or snap_row.get("last_ms")),
+            "pace": _to_seconds(
+                snap_row.get("pace_5")
+                or snap_row.get("pace")
+                or snap_row.get("pace_s")
+                or snap_row.get("pace_ms")
+            ),
+            "best": _to_seconds(snap_row.get("best") or snap_row.get("best_s") or snap_row.get("best_ms")),
+            "enabled": bool(snap_row.get("enabled", True)),
             "grid_index": None,
             "brake_valid": True,
         })
@@ -575,6 +738,18 @@ def build_standings_payload(
         r["grid_index"] = grid_map.get(eid)
         r["brake_valid"] = brake_map.get(eid, True)
 
+    # Normalize lap deficit after we have the full roster.
+    leader_laps = max((int(r.get("laps") or 0) for r in rows), default=0)
+    for r in rows:
+        deficit_raw = r.get("lap_deficit")
+        if deficit_raw is None:
+            r["lap_deficit"] = max(0, leader_laps - int(r.get("laps") or 0))
+        else:
+            try:
+                r["lap_deficit"] = max(0, int(deficit_raw))
+            except Exception:
+                r["lap_deficit"] = max(0, leader_laps - int(r.get("laps") or 0))
+
     # 3) Ordering policy
     phase_lower = (phase or "").lower()
     if phase_lower in ("pre", "countdown"):
@@ -584,15 +759,7 @@ def build_standings_payload(
     else:
         # Racing/finished: prefer laps desc, then pace/best (smallest wins), then grid as gentle tiebreaker
         def _sec(x):
-            # normalize x to seconds if ms; tolerate None
-            if x is None:
-                return None
-            try:
-                v = float(x)
-                # Heuristic: if it looks like milliseconds in the thousands, divide
-                return (v / 1000.0) if v > 600.0 else v
-            except Exception:
-                return None
+            return _to_seconds(x)
 
         rows.sort(key=lambda r: (
             -int(r.get("laps") or 0),
@@ -1558,17 +1725,12 @@ async def race_setup(
                 "status": (e.status or "ACTIVE").upper(),
             })
 
-        _CURRENT_ENTRANTS_ENGINE = entrants_engine[:]  # keep for reset
+        entrants_copy = [dict(e) for e in entrants_engine]
+        _CURRENT_ENTRANTS_ENGINE = entrants_copy[:]  # keep for reset
 
         # Make entrants available to Seen block (and anything else that needs roster)
-        _RACE_STATE["entrants"] = entrants_engine[:]
-
-        # Build tag -> entrant map and reset live counters for a fresh session
-        _TAG_TO_ENTRANT.clear()
-        for e in entrants_engine:  # <- use the engine-ready list we just built
-            tag = str(e.get("tag") or "").strip()
-            if tag:
-                _TAG_TO_ENTRANT[tag] = e
+        _RACE_STATE["entrants"] = entrants_copy[:]
+        _reseed_seen_roster(_RACE_STATE["entrants"])
 
   
         # Pick race_type from mode id
@@ -1596,11 +1758,7 @@ async def race_setup(
             race_type=race_type,
             session_config=_CURRENT_SESSION,
         )
-
-         # Initialize Seen
-        global _SEEN_COUNTS, _SEEN_TOTAL
-        _SEEN_COUNTS = {}
-        _SEEN_TOTAL  = sum(1 for e in getattr(ENGINE, "entrants", {}).values() if getattr(e, "enabled", False))
+        _apply_session_min_lap(_CURRENT_SESSION)
 
         # Capture a minimal echo of what the engine returned (don’t spam huge payloads)
         try:
@@ -1948,7 +2106,7 @@ async def race_state():
                         event_id = int(raw_eid)
                         with sqlite3.connect(DB_PATH) as sconn:
                             snap["standings"] = build_standings_payload(
-                                sconn, event_id=event_id, phase=phase_lower
+                                sconn, event_id=event_id, phase=phase_lower, engine_snapshot=snap
                             )
                 except Exception as _ex:
                     # Don’t let standings break state responses
@@ -2072,12 +2230,15 @@ async def race_abort_reset():
 
     # Best-effort engine reset
     reset_fn = getattr(ENGINE, "reset_session", None)
+    reset_ok = False
     if callable(reset_fn):
         try:
             reset_fn()   # should stop running and zero the clock
+            reset_ok = True
         except Exception:
-            pass
-    else:
+            reset_ok = False
+
+    if not reset_ok:
         # Fallback: force-stop the clock and go to PRE
         try:
             if hasattr(ENGINE, "running"):
@@ -2094,15 +2255,20 @@ async def race_abort_reset():
         except Exception:
             pass
 
-    # Optional: clear in-memory seen counters if you keep them
-    try:
-        _SEEN_COUNTS = {}
-        # Recompute total from the current (kept) roster
-        _SEEN_TOTAL  = sum(1 for e in getattr(ENGINE, "entrants", {}).values() if getattr(e, "enabled", False))
-        return {"ok": True, "phase": _RACE_STATE["phase"]}
-    except Exception:
-        pass
+        _reload_engine_from_cached_session()
 
+    # Mirror session config back into local state
+    if _CURRENT_SESSION:
+        _RACE_STATE["limit"] = _CURRENT_SESSION.get("limit") or _RACE_STATE.get("limit")
+        cd = (_CURRENT_SESSION.get("countdown") or {})
+        _RACE_STATE["countdown_from_s"] = (
+            int(cd.get("start_from_s") or 0) if cd.get("start_enabled") else 0
+        )
+        if "min_lap_s" in _CURRENT_SESSION:
+            _RACE_STATE["min_lap_s"] = _CURRENT_SESSION.get("min_lap_s")
+
+    # Optional: clear in-memory seen counters if you keep them
+    _reseed_seen_roster(_RACE_STATE.get("entrants") or [])
     return {"ok": True, "phase": _RACE_STATE["phase"]}
 
 
@@ -2130,13 +2296,7 @@ async def reset_session():
         return JSONResponse({"ok": True, "snapshot": snap})
 
     # Fallback: re-load with cached roster + mode + race_id
-    race_type = (_CURRENT_SESSION.get("mode_id", "sprint") if _CURRENT_SESSION else "sprint")
-    snap = ENGINE.load(
-        race_id=int(_CURRENT_RACE_ID or 0),
-        entrants=_CURRENT_ENTRANTS_ENGINE or [],
-        race_type=str(race_type),
-        session_config=_CURRENT_SESSION,
-    )
+    snap = _reload_engine_from_cached_session()
 
     # Best-effort set PRE in engine
     set_flag = getattr(ENGINE, "set_flag", None)
@@ -2708,7 +2868,6 @@ async def start_scanner():
     Start the lap logger/decoder reader if enabled in config.
     (No-op if you start it elsewhere.)
     """
-    import asyncio, random  # local imports to avoid surprises during import time
 
     try:
         scan_cfg = get_scanner_cfg() or {}
@@ -2727,21 +2886,27 @@ async def start_scanner():
 
         if source != "mock":
             try:
-                from backend.lap_logger import ScannerService, load_config as ll_load
+                from backend import config_loader as _config_loader
+                from backend.lap_logger import ScannerService
 
                 cfg_path = "./config/config.yaml"
-                cfg = ll_load(cfg_path)
+                cfg_dict = _config_loader.load_config(cfg_path)
 
-                if cfg.publisher.mode != "inprocess":
-                    cfg.publisher.mode = "http"
-                    try:
-                        cfg.publisher.http.base_url = "http://127.0.0.1:8000"
-                        cfg.publisher.http.timeout_ms = 500
-                    except Exception:
-                        pass
+                # Ensure the lap logger uses the same config view we just loaded.
+                _config_loader.CONFIG = cfg_dict
+
+                publisher_cfg = cfg_dict.setdefault("publisher", {})
+                if str(publisher_cfg.get("mode", "http")).lower() != "inprocess":
+                    publisher_cfg["mode"] = "http"
+                    http_cfg = publisher_cfg.setdefault("http", {})
+                    http_cfg.setdefault("base_url", "http://127.0.0.1:8000")
+                    http_cfg.setdefault("timeout_ms", 500)
 
                 stop_evt = asyncio.Event()
-                task = asyncio.get_running_loop().create_task(ScannerService(cfg).run(stop_evt), name="scanner_service")
+                task = asyncio.get_running_loop().create_task(
+                    ScannerService(cfg_dict).run(stop_evt),
+                    name="scanner_service",
+                )
                 _track_task(task)
                 app.state.stop_evt = stop_evt
                 app.state.task = task

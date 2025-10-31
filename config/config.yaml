@@ -83,6 +83,18 @@ app:
     # Minimum lap sanity filter if a mode does not define min_lap_s explicitly.
     default_min_lap_s: 10
 
+    # -------------------------------------------------------------------------
+    # Global ingest defaults
+    # Single source of truth for de-bounce across the whole system.
+    # Diagnostics will read this to throttle beeps; RaceEngine uses it to de-dupe.
+    # -------------------------------------------------------------------------
+    ingest:
+      debounce_ms: 250
+
+      # Future-proof: per-location overrides (rare; only if a loop is chattier).
+      # Keys are stable 'location_id's (see app.track.locations below).
+      per_location_debounce_ms: { }
+
     # Behavior for unknown tags (i.e., a pass arrives with no mapped entrant).
     # If allow is true, the engine can auto-create a temp entrant so practice
     # and scrutineering are painless.
@@ -100,16 +112,11 @@ app:
       sqlite_path: "backend/db/laps.sqlite"  # server /readyz uses this path
       journal_passes: true                   # append raw pass events
       snapshot_on_checkered: true            # write a snapshot when race ends
-      recreate_on_boot: false                # dev-only: clears DB on restart
+      checkpoint_s: 15
       batch_ms: 200
       batch_max: 50
       fsync: true
-      checkpoint_s: 15
-
-    # Optional scoring extensions (future-friendly; safe to ignore if unused).
-    scoring:
-      break_ties_by_best_lap: true
-      include_pit_time_in_total: true
+      recreate_on_boot: false                # dev-only: clears DB on restart
 
     # -------------------------------------------------------------------------
     # Diagnostics & Live Stream defaults (used by diagnostics pages & SSE).
@@ -127,21 +134,14 @@ app:
 
       # UI beep behavior defaults (browser still requires a user gesture to unmute).
       beep:
-        # Beep rate is globally throttled by 'ingest.debounce_ms' (see below).
+        # Beep rate is globally throttled by 'ingest.debounce_ms' (see above).
         # This local cap prevents a 'microwave choir' during chatter bursts.
         max_per_sec: 5
 
-    # -------------------------------------------------------------------------
-    # Global ingest defaults
-    # Single source of truth for de-bounce across the whole system.
-    # Diagnostics will read this to throttle beeps; RaceEngine uses it to de-dupe.
-    # -------------------------------------------------------------------------
-    ingest:
-      debounce_ms: 250
-
-      # Future-proof: per-location overrides (rare; only if a loop is chattier).
-      # Keys are stable 'location_id's (see app.track.locations below).
-      per_location_debounce_ms: { }
+    # Optional scoring extensions (future-friendly; safe to ignore if unused).
+    scoring:
+      break_ties_by_best_lap: true
+      include_pit_time_in_total: true
 
   # ---------------------------------------------------------------------------
   # Hardware integrations (decoders & pit receivers)
@@ -153,8 +153,8 @@ app:
     decoders:
       # Preferred (I-Lap) serial reader defaults:
       ilap_serial:
-        port: "COM3"        # e.g., "/dev/ttyUSB0" on Linux
-        baudrate: 9600
+        port: &sf_serial_port "COM3"        # e.g., "/dev/ttyUSB0" on Linux
+        baudrate: &sf_serial_baud 9600
         init_7digit: true   # send '7-digit init' on connect
         min_lap_s: 10       # local filter (extra safety on the reader thread)
 
@@ -213,7 +213,7 @@ app:
     net_status_text:
       ok: "OK"
       connecting: "Connecting…"
-  disconnected: "Disconnected - retrying…"
+      disconnected: "Disconnected - retrying…"
 
 # -----------------------------------------------------------------------------
 # Client/UI preferences for the local Operator station (device-level hints).
@@ -244,31 +244,32 @@ scanner:
   #   "ilap.udp"    → listens for UDP datagrams in the same text format
   source: "ilap.serial"   # flip to "mock" for UI-only testing
 
-  # Serial settings (used only when source == "ilap.serial")
-  serial:
-    # Windows: "COM3", "COM7" ... (check Device Manager)
-    # Linux: "/dev/ttyUSB0" or "/dev/ttyACM0"
-    port: "COM3"           # set to your actual COM port
-    baud: 9600
+  # Which hardware decoder definition to borrow defaults from.
+  decoder: "ilap_serial"
 
-  # UDP listener (used only when source == "ilap.udp")
-  udp:
-    host: "0.0.0.0"        # bind on all interfaces
-    port: 5000             # match your I-Lap base’s UDP target port
+  # Role of this scanner instance (used by the engine to infer pit passes).
+  # Adjust per physical location this scanner serves.
+  role: "track"   # track | pit_in | pit_out
 
   # After parsing, only digits are kept. Enforce minimum tag length here.
   min_tag_len: 7           # I-Lap default is 7 digits
 
   # Duplicate suppression window (seconds). Same tag within this window is dropped.
-  duplicate_window_sec: 3
+  duplicate_window_sec: 1
 
   # Optional rate cap in tags/second. 0 = unlimited.
   # Helps protect UI/back end during bursts or noisy hardware.
   rate_limit_per_sec: 20
 
-  # Role of this scanner instance (used by the engine to infer pit passes).
-  # Adjust per physical location this scanner serves.
-  role: track   # track | pit_in | pit_out
+  # Serial settings (used only when source == "ilap.serial")
+  serial:
+    port: *sf_serial_port
+    baud: *sf_serial_baud
+
+  # UDP listener (used only when source == "ilap.udp")
+  udp:
+    host: "0.0.0.0"        # bind on all interfaces
+    port: 5000             # match your I-Lap base’s UDP target port
 
 
 # -----------------------------------------------------------------------------
@@ -301,8 +302,7 @@ track:
   bindings:
     - computer_id: "race_control"
       decoder_id:  "ilap-210"
-      port:        "COM3"
-      port:        "COM3"
+      port:        *sf_serial_port
       location_id: "SF"
 
     - computer_id: "t640-pit-a"
@@ -337,10 +337,10 @@ sounds:
     beeps: 1.0    # 0.0–1.0, applied to beeps/pips
   files:
     lap_indication: lap_beep.wav      # short pip when a lap reads (if enabled)
-    countdown:      countdown_beep.wav# optional "beep on last N seconds"
+    countdown:      countdown_beep.wav  # optional "beep on last N seconds"
     start:          start_horn.wav    # race start
     end:            end_horn.wav      # race end (if enabled)
     white_flag:     white_flag.wav    # white flag cue (auto/time/off per mode)
-    checkered:      checkered_flag.wav# checkered cue at finish (if enabled)
+    checkered:      checkered_flag.wav  # checkered cue at finish (if enabled)
     rank_change:    rank_change.wav   # rank-change blip (if enabled later)
     best_lap:       best_lap.wav      # best-lap arpeggio (if enabled)

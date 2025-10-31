@@ -33,14 +33,12 @@
   --table-row-alt: rgba(255,255,255,.015);
   --table-row-hover: rgba(255,255,255,.03);
   --table-row-border: rgba(255,255,255,.06);
-  --flag-green:   #1bd15a;
   --flag-green:   #1fb15b;
   --flag-yellow:  #e0b11f;
   --flag-red:     #d04747;
   --flag-blue:    #3a78e0;
   --flag-white:   #f0f3f7;
   --flag-pre:     #7b8a97;
-  --teal-2: #104C60;
   --teal-edge: #2b4a63;
 
   /* Standings sizing */
@@ -352,12 +350,6 @@ body.race-control {
   background: #26323c;
   border-color: #1d2931;
   color: #e6edf3;
-}
-
-.flag--black,
-.flag--sc,
-.flag--vsc {
-  display: none !important;
 }
 
 #flagPad .flag--green {
@@ -807,6 +799,15 @@ body.race-control {
   color: rgba(255,255,255,.28);
 }
 
+#rcStandings tbody tr.is-prelap {
+  color: var(--text-muted);
+  opacity: .72;
+}
+
+#rcStandings tbody tr.is-prelap td {
+  color: inherit;
+}
+
 /* Column alignment helpers shared by both tables */
 #rcStandings .pos,   .rcTable .pos   { width: 48px;  text-align: center; }
 #rcStandings .num,   .rcTable .num   { width: 9ch; text-align: center; }
@@ -847,25 +848,49 @@ body.race-control {
   width: 8ch;
 }
 #rcStandings .name,  .rcTable .name  { width: auto;  }
+#rcStandings th.laps,  .rcTable th.laps,
+#rcStandings th.last,  .rcTable th.last,
+#rcStandings th.pace,  .rcTable th.pace,
+#rcStandings th.best,  .rcTable th.best {
+  text-align: right;
+}
+
 #rcStandings .laps,  .rcTable .laps,
 #rcStandings .last,  .rcTable .last,
 #rcStandings .pace,  .rcTable .pace,
 #rcStandings .best,  .rcTable .best,
 .rcTable .reads {
-  width: 100px; text-align: right;
+  width: 14ch;
+  min-width: 14ch;
+  text-align: right;
 }
 
 /* Use race clock typeface for time values (body only) */
+#rcStandings td.laps,
 #rcStandings td.last,
 #rcStandings td.pace,
 #rcStandings td.best,
+.rcTable td.laps,
 .rcTable td.last,
 .rcTable td.pace,
 .rcTable td.best {
   font-family: var(--clock-font);
-  font-size: 16px;
-  font-weight: 600;
+  font-size: clamp(18px, calc(var(--rowH) * 0.6), 28px);
+  font-weight: 550;
   letter-spacing: .02em;
+  line-height: 1.05;
+}
+
+#rcStandings td.laps,
+#rcStandings td.last,
+#rcStandings td.pace,
+#rcStandings td.best,
+.rcTable td.laps,
+.rcTable td.last,
+.rcTable td.pace,
+.rcTable td.best {
+  overflow: visible;
+  text-overflow: clip;
 }
 
 /* Code-ish tag style for Seen table */
@@ -1112,8 +1137,8 @@ body[data-flag="CHECKERED"] #flagPill {
   line-height: var(--standings-row-h);
   border-bottom: var(--standings-row-divider) solid var(--table-row-border);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  overflow: visible;
+  text-overflow: clip;
   color: #f2f7ff;
 }
 
@@ -1127,14 +1152,14 @@ body[data-flag="CHECKERED"] #flagPill {
 
 .race-control #rcStandings th.pos,  .race-control #rcStandings td.pos  { width: 5ch;  text-align: center; padding-left: 8px; padding-right: 8px; }
 .race-control #rcStandings th.num,  .race-control #rcStandings td.num  { width: 11ch;  text-align: center; }
-.race-control #rcStandings th.laps, .race-control #rcStandings td.laps { width: 8ch;  text-align: right; }
-.race-control #rcStandings th.last, .race-control #rcStandings td.last { width: 10ch; text-align: right; }
-.race-control #rcStandings th.pace, .race-control #rcStandings td.pace { width: 10ch; text-align: right; }
+.race-control #rcStandings th.laps, .race-control #rcStandings td.laps { width: 12ch; text-align: right; }
+.race-control #rcStandings th.last, .race-control #rcStandings td.last { width: 16ch; text-align: right; }
+.race-control #rcStandings th.pace, .race-control #rcStandings td.pace { width: 16ch; text-align: right; }
 .race-control #rcStandings th.best,
 .race-control #rcStandings td.best {
-  width: 10ch;
+  width: 16ch;
   text-align: right;
-  padding-right: 22px;
+  padding-right: 18px;
 }
 
 .race-control #rcStandings tbody tr.pad td {

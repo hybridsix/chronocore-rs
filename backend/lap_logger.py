@@ -7,7 +7,7 @@ Purpose
 Read tag scans from an input source (I-Lap serial, I-Lap UDP, or a mock generator),
 normalize and de-duplicate them, then publish into the Operator UI's scan bus
 *either* via direct in-process call to `publish_tag(tag)` *or* via HTTP
-POST to `/ilap/inject?tag=...` on the CCRS server.
+POST to `/sensors/inject?tag=...` on the CCRS server.
 
 Supports:
   • I-Lap serial readers
@@ -17,7 +17,7 @@ Supports:
 
 Publishing modes:
   • In-process (direct call to server.publish_tag)
-  • HTTP POST /ilap/inject (external process or node)
+  • HTTP POST /sensors/inject (external process or node)
 
 Key behaviors
 -------------
@@ -36,7 +36,7 @@ Key behaviors
 
 - Publishing modes:
     * In-process: call `server.publish_tag(tag)` if importable
-    * HTTP: POST /ilap/inject?tag=... with retry/backoff and a small queue
+    * HTTP: POST /sensors/inject?tag=... with retry/backoff and a small queue
 
 - Observability (lightweight):
     * Structured log lines with fields: source, raw_line, tag, dedup_suppressed, published, latency_ms
@@ -73,7 +73,6 @@ import contextlib
 import json
 import logging
 import os
-import signal
 import sys
 import threading
 import time
@@ -86,6 +85,32 @@ from abc import ABC, abstractmethod
 # Third-party deps present in your repo
 import yaml
 import httpx
+
+# ------------------------------------------------------------
+# --- Config Loader from config_loader -----------------------
+# ------------------------------------------------------------
+try:
+    # running from repo root:  python -m uvicorn backend.server:app ...
+    import backend.config_loader as _config_module
+    from backend.config_loader import (
+        load_config as load_ccrs_config,
+        get_scanner_cfg,
+        get_publisher_cfg,
+        get_log_level,
+        get_decoder_cfg,
+    )
+except ImportError:
+    # running as a script:  python backend/lap_logger.py --config config/config.yaml
+    import config_loader as _config_module  # type: ignore
+    from config_loader import (  # type: ignore
+        load_config as load_ccrs_config,
+        get_scanner_cfg,
+        get_publisher_cfg,
+        get_log_level,
+        get_decoder_cfg,
+    )
+
+
 # ----------------------------------------------------------------------
 # Heartbeat client for CCRS - keeps /decoders/status truthful in real-time
 # ----------------------------------------------------------------------
@@ -143,115 +168,10 @@ except Exception:  # pragma: no cover - failure is fine; we’ll log and fallbac
 
 
 # ------------------------------------------------------------
-# Config model and helpers
+# Config model and helpers (deprecated in favor of config_loader)
 # ------------------------------------------------------------
 
-@dataclass
-class ScannerSerialCfg:
-    port: str
-    baud: int
-    device_id: Optional[str] = None
-    host: Optional[str] = None
 
-@dataclass
-class ScannerUdpCfg:
-    host: str
-    port: int
-
-@dataclass
-class ScannerCfg:
-    source: str
-    serial: ScannerSerialCfg
-    udp: ScannerUdpCfg
-    min_tag_len: int
-    duplicate_window_sec: float
-    rate_limit_per_sec: float
-    # NEW: how this scanner should be treated by the engine
-    #      ("track" → Start/Finish, "pit_in", "pit_out")
-    role: str = "track"
-
-@dataclass
-class PublisherHttpCfg:
-    base_url: str = "http://127.0.0.1:8000"
-    timeout_ms: int = 500
-
-@dataclass
-class PublisherCfg:
-    mode: str = "http"  # "inprocess" | "http"
-    http: PublisherHttpCfg = field(default_factory=PublisherHttpCfg)
-
-@dataclass
-class RootCfg:
-    scanner: "ScannerCfg" = field(default_factory=lambda: ScannerCfg())
-    publisher: "PublisherCfg" = field(default_factory=lambda: PublisherCfg())
-    log_level: str = "INFO"
-
-
-
-def load_config(path: str) -> RootCfg:
-    """
-    Load YAML config into our dataclasses. Unknown keys are ignored.
-    - Adds scanner.role (track | pit_in | pit_out), default 'track'
-    - Normalizes a few string-y enums (publisher.mode, log level)
-    """
-    with open(path, "r", encoding="utf-8") as f:
-        raw: Mapping[str, Any] = yaml.safe_load(f) or {}
-
-    def pick(d: Mapping[str, Any] | None, *keys: str, default: Any = None) -> Any:
-        cur: Any = d
-        for k in keys:
-            cur = (cur or {}).get(k, None)  # type: ignore[attr-defined]
-        return default if cur is None else cur
-
-    # --- Normalize helpers ----------------------------------------------------
-    def _norm_lower(val: Any, default: str) -> str:
-        try:
-            s = str(val).strip().lower()
-            return s or default
-        except Exception:
-            return default
-
-    def _norm_upper(val: Any, default: str) -> str:
-        try:
-            s = str(val).strip().upper()
-            return s or default
-        except Exception:
-            return default
-
-    # scanner.role with guard-rail
-    role = _norm_lower(pick(raw, "scanner", "role", default="track"), "track")
-    if role not in ("track", "pit_in", "pit_out"):
-        role = "track"
-
-    cfg = RootCfg(
-        scanner=ScannerCfg(
-            source=_norm_lower(pick(raw, "scanner", "source", default="mock"), "mock"),
-            serial=ScannerSerialCfg(
-                port=pick(raw, "scanner", "serial", "port", default="COM7"),
-                baud=int(pick(raw, "scanner", "serial", "baud", default=9600)),
-                device_id=pick(raw, "scanner", "serial", "device_id"),
-                host=pick(raw, "scanner", "serial", "host"),
-            ),
-            udp=ScannerUdpCfg(
-                host=pick(raw, "scanner", "udp", "host", default="0.0.0.0"),
-                port=int(pick(raw, "scanner", "udp", "port", default=5000)),
-            ),
-            min_tag_len=int(pick(raw, "scanner", "min_tag_len", default=7)),
-            duplicate_window_sec=float(pick(raw, "scanner", "duplicate_window_sec", default=3)),
-            rate_limit_per_sec=float(pick(raw, "scanner", "rate_limit_per_sec", default=0)),
-            role=role,
-        ),
-        publisher=PublisherCfg(
-            mode=_norm_lower(pick(raw, "publisher", "mode", default="http"), "http"),
-            http=PublisherHttpCfg(
-                base_url=pick(raw, "publisher", "http", "base_url", default="http://127.0.0.1:8000"),
-                timeout_ms=int(pick(raw, "publisher", "http", "timeout_ms", default=500)),
-            ),
-        ),
-        # Accept both new `log.level` and legacy root `log_level`
-        log_level=_norm_upper(pick(raw, "log", "level", default=pick(raw, "log_level", default="INFO")), "INFO"),
-    )
-    return cfg
 
 
 
@@ -338,14 +258,26 @@ class InProcessPublisher(Publisher):
 
 class HttpPublisher(Publisher):
     """
-    Posts tags to CCRS /ilap/inject over HTTP with:
+    Posts tags to CCRS /sensors/inject over HTTP with:
       - small queue to absorb bursts
       - retry with exponential backoff
       - shared AsyncClient
     """
-    def __init__(self, base_url: str, timeout_ms: int = 500, max_queue: int = 256):
+    def __init__(
+        self,
+        base_url: str,
+        role: str = "track",
+        *,
+        timeout_ms: int = 500,
+        max_queue: int = 256,
+        device_id: Optional[str] = None,
+        host: Optional[str] = None,
+    ):
         self.base_url = base_url.rstrip("/")
+        self.role = (role or "track").lower()
         self.timeout = timeout_ms / 1000.0
+        self.device_id = device_id
+        self.host = host
         self._client: Optional[httpx.AsyncClient] = None
         self._queue: asyncio.Queue[str] = asyncio.Queue(maxsize=max_queue)
         self._task: Optional[asyncio.Task] = None
@@ -379,7 +311,7 @@ class HttpPublisher(Publisher):
 
     async def _run_sender(self):
         """
-        Worker task: drains the queue and POSTs /ilap/inject?tag=...
+        Worker task: drains the queue and POSTs /sensors/inject?tag=...
         Backoff doubles on each transient error (cap 2s), resets on success.
         """
         assert self._client is not None
@@ -393,10 +325,14 @@ class HttpPublisher(Publisher):
             self.send_attempts += 1
             t0 = time.perf_counter()
             try:
+                payload = {"tag": tag, "source": self.role}
+                if self.device_id:
+                    payload["device_id"] = self.device_id
+                if self.host:
+                    payload["host"] = self.host
                 resp = await self._client.post(
                     "/sensors/inject",
-                    role=(cfg.scanner.get("role") or "track").lower(),
-                    json={"tag": tag, "source": role},
+                    json=payload,
                 )
                 if 200 <= resp.status_code < 300:
                     self.tags_sent += 1
@@ -448,7 +384,7 @@ ILAP_INIT_7DIGIT = bytes([1, 37, 13, 10])  # SOH '%', CR, LF
 # -----------------
 class Reader(ABC):
     @abstractmethod
-    def tags(self) -> AsyncIterable[str]:
+    def tags(self) -> AsyncIterator[str]:
         """
         Return an async-iterable stream of tag strings.
 
@@ -511,63 +447,88 @@ class ILapSerialReader(Reader):
                 pass
             self._heartbeat_boot_sent = True
 
-    async def tags(self) -> AsyncGenerator[str, None]:
+
+    async def tags(self) -> AsyncIterator[str]:
         backoff = 0.2
         while True:
             ser = None
+            # Lazy import so the process can still run without pyserial
             try:
-                import serial  # lazy import
-                self._log.info("open_serial", extra={"port": self.port, "baud": self.baud})
-                ser = serial.Serial(self.port, self.baud, bytesize=8, parity='N', stopbits=1, timeout=0.25)
+                import serial  # type: ignore
+            except ImportError as e:
+                logging.getLogger("scanner.serial").error(
+                    "pyserial_missing",
+                    extra={"hint": "pip install pyserial", "err": str(e)},
+                )
+                await asyncio.sleep(1.0)
+                continue
+
+            self._log.info("open_serial", extra={"port": self.port, "baud": self.baud})
+
+            try:
+                # Open the port
+                ser = serial.Serial(
+                    self.port,
+                    self.baud,
+                    bytesize=8,
+                    parity="N",
+                    stopbits=1,
+                    timeout=0.25,  # readline() returns b'' on timeout
+                )
+
+                # Start/arm heartbeat signaling for the status pill
                 self._ensure_heartbeat()
-                try:
-                    # Per I-Lap guidance: RTS low/off
+
+                # Per I-Lap guidance: RTS low/off
+                with contextlib.suppress(Exception):
+                    ser.rts = False
+
+                await asyncio.sleep(0.2)  # small settle time
+
+                # Enter 7-digit mode (and reset decoder clock)
+                ser.write(ILAP_INIT_7DIGIT)
+                ser.flush()
+                self._log.info("sent_init_7digit")
+
+                # Line-oriented read loop
+                while True:
                     try:
-                        ser.rts = False
-                    except Exception:
-                        pass
-                    await asyncio.sleep(0.2)
-                    # Enter 7-digit mode (and reset decoder clock)
-                    ser.write(ILAP_INIT_7DIGIT)
-                    ser.flush()
-                    self._log.info("sent_init_7digit")
+                        raw: bytes = await asyncio.to_thread(ser.readline)
+                    except asyncio.CancelledError:
+                        raise
 
-                    # Read loop - line oriented
-                    while True:
-                        try:
-                            # Use a thread hop so we don't block the event loop on .readline()
-                            raw: bytes = await asyncio.to_thread(ser.readline)
-                        except asyncio.CancelledError:
-                            raise
+                    if not raw:
+                        # timeout tick; keep polling
+                        continue
 
-                        if not raw:
-                            continue
+                    txt = raw.decode(errors="replace").strip()
+                    logging.getLogger("scanner.raw").debug(
+                        "serial_line", extra={"raw": repr(raw), "txt": txt}
+                    )
 
-                        # Decode safely; keep original bytes for debugging
-                        txt = raw.decode(errors="replace").strip()
-                        logging.getLogger("scanner.raw").debug("serial_line", extra={"raw": repr(raw), "txt": txt})
+                    # I-Lap pass lines start with 0x01 '@'
+                    if raw.startswith(b"\x01@"):
+                        tag = _parse_ilap_pass_and_extract_tag(txt.replace("\x01", ""))
+                        if tag is not None:
+                            yield tag
 
-                        if raw.startswith(b"\x01@"):  # SOH '@'
-                            tag = _parse_ilap_pass_and_extract_tag(txt.replace("\x01", ""))
-                            if tag is not None:
-                                yield tag
-                finally:
-                    if ser is not None:
-                        with contextlib.suppress(Exception):
-                            ser.close()
-                        ser = None
-                    self._log.info("serial_closed")
-                    self._heartbeat_gate.clear()
-                    self._heartbeat_boot_sent = False
-                    backoff = 0.2  # reset backoff after a successful session
             except asyncio.CancelledError:
                 self._log.info("serial_cancelled")
                 raise
             except Exception as e:
+                # Port error, unplug, access denied, etc. → back off and retry
                 self._log.warning("serial_error", extra={"port": self.port, "err": str(e)})
                 await asyncio.sleep(backoff)
-                backoff = min(backoff * 2.0, 5.0)  # cap backoff so we keep trying
-
+                backoff = min(backoff * 2.0, 5.0)
+            finally:
+                if ser is not None:
+                    with contextlib.suppress(Exception):
+                        ser.close()
+                self._log.info("serial_closed")
+                with contextlib.suppress(Exception):
+                    self._heartbeat_gate.clear()
+                    self._heartbeat_boot_sent = False
+                backoff = 0.2  # reset after any successful open session
 
 class ILapUDPReader(Reader):
     """
@@ -687,80 +648,139 @@ def _digits_only(s: str) -> str:
 # ------------------------------------------------------------
 # Orchestrator
 # ------------------------------------------------------------
-
 class ScannerService:
     """
     Wires: Reader → (normalize → de-dup → rate limit) → Publisher.
-
-    This service owns the reader and publisher lifecycles, logs structured events,
-    and never raises unhandled exceptions (it runs until cancelled).
     """
-    def __init__(self, cfg: RootCfg):
-        self.cfg = cfg
+    def __init__(self, cfg_dict: dict):
+        # Keep original dict if you want to inspect it later
+        self.cfg = cfg_dict
         self.log = logging.getLogger("scanner")
-        self._rl = RateLimiter(cfg.scanner.rate_limit_per_sec)
-        self._dups = DedupWindow(cfg.scanner.duplicate_window_sec)
 
-        # Simple counters for observability (logged periodically)
+        # Pull subtrees via the single-source-of-truth loader
+        sc  = get_scanner_cfg()        # top-level "scanner" (dict)
+        pub = get_publisher_cfg()      # top-level "publisher" (dict)
+        log_level = str(get_log_level("INFO") or "INFO").upper()
+
+        # Normalize and store knobs as attributes (so run() can use them)
+        self.source = str(sc.get("source", "mock")).lower()
+        self.role   = str(sc.get("role", "track")).lower()
+        self.min_tag_len       = int(sc.get("min_tag_len", 7))
+        self.dup_window_s      = float(sc.get("duplicate_window_sec", 3))
+        self.rate_limit_per_sec= float(sc.get("rate_limit_per_sec", 0))
+        self.log_level         = log_level
+
+        # Observability counters
         self.tags_seen_total = 0
         self.tags_published_total = 0
         self.tags_suppressed_total = 0
 
-        # Build reader
-        src = cfg.scanner.source
-        if src == "mock":
+        # Helpers that use the stored knobs
+        self._rl   = RateLimiter(self.rate_limit_per_sec)
+        self._dups = DedupWindow(self.dup_window_s)
+
+        scanner_device_id: Optional[str] = None
+        scanner_host: Optional[str] = None
+
+        # -------- Reader selection --------
+        if self.source == "mock":
             self.reader: Reader = MockReader()
-        elif src == "ilap.serial":
-            heartbeat_meta: dict[str, Any] = {
-                "source": "ilap.serial",
-                "port": cfg.scanner.serial.port,
-                "baud": cfg.scanner.serial.baud,
-            }
-            if cfg.scanner.serial.device_id:
-                heartbeat_meta["device_id"] = cfg.scanner.serial.device_id
-            if cfg.scanner.serial.host:
-                heartbeat_meta["host"] = cfg.scanner.serial.host
 
-            heartbeat_base_url = cfg.publisher.http.base_url
-            self.reader = ILapSerialReader(
-                cfg.scanner.serial.port,
-                cfg.scanner.serial.baud,
-                heartbeat_base_url=heartbeat_base_url,
-                heartbeat_meta=heartbeat_meta,
+        elif self.source == "ilap.serial":
+            serial_cfg = sc.get("serial", {}) or {}
+            decoder_key = sc.get("decoder") or serial_cfg.get("decoder") or "ilap_serial"
+            decoder_defaults = get_decoder_cfg(decoder_key) if decoder_key else {}
+
+            port = serial_cfg.get("port") or decoder_defaults.get("port")
+            if not port:
+                raise ValueError(
+                    f"No serial port configured. Set scanner.serial.port or app.hardware.decoders.{decoder_key}.port"
+                )
+
+            baud_value = (
+                serial_cfg.get("baud")
+                or serial_cfg.get("baudrate")
+                or decoder_defaults.get("baud")
+                or decoder_defaults.get("baudrate")
+                or 9600
             )
-        elif src == "ilap.udp":
-            self.reader = ILapUDPReader(cfg.scanner.udp.host, cfg.scanner.udp.port)
-        else:
-            raise ValueError(f"Unknown scanner.source: {src}")
+            try:
+                baud = int(baud_value)
+            except (TypeError, ValueError):
+                raise ValueError(f"Invalid baud value: {baud_value!r}") from None
 
-        # Build publisher
-        mode = cfg.publisher.mode
+            scanner_device_id = serial_cfg.get("device_id") or decoder_defaults.get("device_id")
+            scanner_host = serial_cfg.get("host") or decoder_defaults.get("host")
+
+            # Heartbeat destination = backend you are posting to
+            hb_base_url = (pub.get("http", {}) or {}).get("base_url", "http://127.0.0.1:8000")
+            hb_meta = {"source": "ilap.serial", "port": port, "baud": baud}
+            if decoder_key:
+                hb_meta["decoder"] = decoder_key
+            if scanner_device_id:
+                hb_meta["device_id"] = scanner_device_id
+            if scanner_host:
+                hb_meta["host"] = scanner_host
+
+            self.reader = ILapSerialReader(
+                port,
+                baud,
+                heartbeat_base_url=hb_base_url,
+                heartbeat_meta=hb_meta,
+            )
+
+        elif self.source == "ilap.udp":
+            udp_cfg = sc.get("udp", {}) or {}
+            host = udp_cfg.get("host", "0.0.0.0")
+            port = int(udp_cfg.get("port", 5000))
+            self.reader = ILapUDPReader(host, port)
+
+        else:
+            raise ValueError(f"Unknown scanner.source: {self.source}")
+
+        # -------- Publisher selection --------
+        mode = str(pub.get("mode", "http")).lower()
+        self.publisher_mode = mode  # store for logging
+
         if mode == "inprocess":
+            # Only valid if embedded inside FastAPI with publish_tag wired
             try:
                 self.publisher: Publisher = InProcessPublisher()
             except Exception as e:
-                # Clear message then hard-fail so ops sees the misconfiguration quickly.
                 raise RuntimeError(
                     "publisher.mode='inprocess' but in-process publish is unavailable. "
-                    "Either run inside the FastAPI process (server.publish_tag) or use publisher.mode='http'."
+                    "Use publisher.mode='http' when running lap_logger alongside the server."
                 ) from e
+
         elif mode == "http":
-            self.publisher = HttpPublisher(cfg.publisher.http.base_url, cfg.publisher.http.timeout_ms)
+            http_cfg   = pub.get("http", {}) or {}
+            base_url   = http_cfg.get("base_url", "http://127.0.0.1:8000")
+            timeout_ms = int(http_cfg.get("timeout_ms", 500))
+            self.publisher = HttpPublisher(
+                base_url,
+                role=self.role,
+                timeout_ms=timeout_ms,
+                device_id=scanner_device_id,
+                host=scanner_host,
+            )
+
         else:
             raise ValueError(f"Unknown publisher.mode: {mode}")
 
     async def run(self, stop_evt: asyncio.Event):
         await self.publisher.start()
-        self.log.info(
-            "scanner_start",
-            extra={
-                "source": self.cfg.scanner.source,
-                "mode": self.cfg.publisher.mode,
-                "min_tag_len": self.cfg.scanner.min_tag_len,
-                "dup_window_s": self.cfg.scanner.duplicate_window_sec,
-                "rate_limit_per_sec": self.cfg.scanner.rate_limit_per_sec,
-            },
-        )
+
+        # startup log uses attributes (no dict dot-attr)
+        sc = get_scanner_cfg() or {}
+        extra_fields = {
+            "source": (sc.get("source") or "mock"),
+            "mode":   (get_publisher_cfg() or {}).get("mode", "http"),
+            "min_tag_len": int(sc.get("min_tag_len", 7)),
+            "dup_window_s": float(sc.get("duplicate_window_sec", 3)),
+            "rate_limit_per_sec": float(sc.get("rate_limit_per_sec", 0)),
+        }
+        self.log.info("scanner_start", extra=extra_fields)
+
 
         hb_task = asyncio.create_task(self._heartbeat(), name="scanner_heartbeat")
 
@@ -774,22 +794,25 @@ class ScannerService:
 
                 tag_digits = _digits_only(tag_raw)
 
-                if len(tag_digits) < int(self.cfg.scanner.min_tag_len):
+                # min-length guard
+                if len(tag_digits) < self.min_tag_len:
                     logging.getLogger("scanner.parse").debug(
                         "reject_short", extra={"raw_tag": tag_raw, "digits": tag_digits}
                     )
                     continue
 
+                # de-dup window
                 if not self._dups.accept(tag_digits):
                     self.tags_suppressed_total += 1
                     logging.getLogger("scanner.dedup").info(
-                        "suppressed",
-                        extra={"tag": tag_digits, "window_s": self.cfg.scanner.duplicate_window_sec},
+                        "suppressed", extra={"tag": tag_digits, "window_s": self.dup_window_s}
                     )
                     continue
 
+                # global rate limit
                 await self._rl.wait_slot()
 
+                # publish to backend
                 published_ok = True
                 try:
                     await self.publisher.publish(tag_digits)
@@ -799,11 +822,12 @@ class ScannerService:
                         "publish_error", extra={"tag": tag_digits, "err": str(e)}
                     )
 
+                # event log (show raw line only when DEBUG)
                 logging.getLogger("scanner.event").info(
                     "scan_event",
                     extra={
-                        "source": self.cfg.scanner.source,
-                        "raw_line": tag_raw if self.cfg.log_level == "DEBUG" else None,
+                        "source": self.source,
+                        "raw_line": tag_raw if self.log_level == "DEBUG" else None,
                         "tag": tag_digits,
                         "dedup_suppressed": False,
                         "published": published_ok,
@@ -813,11 +837,14 @@ class ScannerService:
 
                 if published_ok:
                     self.tags_published_total += 1
+
         except asyncio.CancelledError:
             stop_evt.set()
             self.log.info("scanner_run_cancelled")
+
         except Exception:
             self.log.exception("scanner_run_crashed")
+
         finally:
             hb_task.cancel()
             try:
@@ -874,113 +901,42 @@ class ScannerService:
 
 
 # ------------------------------------------------------------
-# CLI
+# Entry point
 # ------------------------------------------------------------
 
-def _apply_overrides(cfg: RootCfg, args: argparse.Namespace) -> RootCfg:
-    # Scanner overrides
-    if args.source:
-        cfg.scanner.source = args.source
-    if args.min_tag_len is not None:
-        cfg.scanner.min_tag_len = int(args.min_tag_len)
-    if args.dup_win is not None:
-        cfg.scanner.duplicate_window_sec = float(args.dup_win)
-    if args.rate is not None:
-        cfg.scanner.rate_limit_per_sec = float(args.rate)
-    if args.serial_port:
-        cfg.scanner.serial.port = args.serial_port
-    if args.serial_baud:
-        cfg.scanner.serial.baud = int(args.serial_baud)
-    if args.udp_host:
-        cfg.scanner.udp.host = args.udp_host
-    if args.udp_port:
-        cfg.scanner.udp.port = int(args.udp_port)
 
-    # Publisher overrides
-    if args.mode:
-        cfg.publisher.mode = args.mode
-    if args.http_base:
-        cfg.publisher.http.base_url = args.http_base
-    if args.http_timeout_ms:
-        cfg.publisher.http.timeout_ms = int(args.http_timeout_ms)
-
-    # Log level
-    if args.log_level:
-        cfg.log_level = args.log_level
-
-    return cfg
+def _parse_args() -> argparse.Namespace:
+    ap = argparse.ArgumentParser(description="CCRS Lap Logger")
+    ap.add_argument("--config", help="Path to config/config.yaml (optional)")
+    return ap.parse_args()
 
 
-def _make_argparser() -> argparse.ArgumentParser:
-    ap = argparse.ArgumentParser(description="CCRS Scanner Publisher (I-Lap → publish_tag or HTTP)")
-    ap.add_argument("--config", default=str(Path(__file__).resolve().parents[1] / "config" / "config.yaml"),
-                    help="Path to unified CCRS YAML (default: config/config.yaml)")
+async def _amain() -> None:
+    args = _parse_args()
 
-    # Scanner overrides
-    ap.add_argument("--source", choices=["ilap.serial", "ilap.udp", "mock"])
-    ap.add_argument("--min-tag-len", dest="min_tag_len", type=int)
-    ap.add_argument("--dup-win", dest="dup_win", type=float, help="Duplicate suppression window seconds")
-    ap.add_argument("--rate", type=float, help="Max tags/sec (0 = unlimited)")
+    cfg_dict = load_ccrs_config(args.config) if args.config else load_ccrs_config(None)
+    _config_module.CONFIG = cfg_dict  # ensure helper accessors read the same config
 
-    ap.add_argument("--serial-port")
-    ap.add_argument("--serial-baud", type=int)
-    ap.add_argument("--udp-host")
-    ap.add_argument("--udp-port", type=int)
-
-    # Publisher overrides
-    ap.add_argument("--mode", choices=["inprocess", "http"])
-    ap.add_argument("--http-base")
-    ap.add_argument("--http-timeout-ms", type=int)
-
-    # Logging
-    ap.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="Override log level")
-
-    return ap
-
-
-def main():
-    ap = _make_argparser()
-    args = ap.parse_args()
-
-    cfg = load_config(args.config)
-    cfg = _apply_overrides(cfg, args)
-
-    # Configure logging early
     logging.basicConfig(
-        level=getattr(logging, cfg.log_level.upper(), logging.INFO),
+        level=getattr(logging, get_log_level("INFO"), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    # Run service with SIGINT/SIGTERM handling
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
     stop_evt = asyncio.Event()
-
-    def _stop():
-        try:
-            stop_evt.set()
-        except Exception:
-            pass
-
-    # On Windows, SIGTERM may not be present; guard carefully.
-    with contextlib.suppress(Exception):
-        loop.add_signal_handler(signal.SIGINT, _stop)
-    with contextlib.suppress(Exception):
-        loop.add_signal_handler(getattr(signal, "SIGTERM", signal.SIGINT), _stop)
-
-    svc = ScannerService(cfg)
+    svc = ScannerService(cfg_dict)
+    task = asyncio.create_task(svc.run(stop_evt))
     try:
-        loop.run_until_complete(svc.run(stop_evt))
+        await task
+    except KeyboardInterrupt:
+        stop_evt.set()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
     finally:
-        # Ensure we close the loop cleanly
-        tasks = [t for t in asyncio.all_tasks(loop) if not t.done()]
-        for t in tasks:
-            t.cancel()
-        with contextlib.suppress(Exception):
-            loop.run_until_complete(asyncio.gather(*tasks))
-        loop.close()
+        if not task.done():
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError):
+                await task
 
 
 if __name__ == "__main__":
-    # Enable `python -m lap_logger --config ...`
-    main()
+    asyncio.run(_amain())

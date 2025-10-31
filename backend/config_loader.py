@@ -180,4 +180,17 @@ def get_server_bind() -> Tuple[str, int]:
         return h, int(p)
     except Exception:
         return "127.0.0.1", 8000
+
+
+def get_decoder_cfg(name: str | None = None) -> Dict[str, Any]:
+    """Return decoder configuration by name or the full mapping when name is None."""
+    decoders = (
+        CONFIG.get("app", {})
+              .get("hardware", {})
+              .get("decoders", {})
+        or {}
+    )
+    if name is None:
+        return decoders
+    return decoders.get(name, {}) or {}
 # ---------- End of config_loader.py ----------
