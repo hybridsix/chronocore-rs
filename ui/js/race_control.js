@@ -67,6 +67,55 @@ const DEFAULT_VISIBLE_STANDINGS_ROWS = 16;
 let cachedPlannedEntrantCount;
 
 const PRELAP_PLACEHOLDER = '--:--.---';
+const DETECTION_PHASES = new Set(['green', 'white', 'yellow', 'red', 'blue', 'checkered']);
+const zeroLapDetections = new Set();
+const seenCountSnapshot = new Map();
+let lastPhaseForDetections = null;
+
+function refreshSeenBaseline(rows) {
+  seenCountSnapshot.clear();
+  if (!Array.isArray(rows)) return;
+  for (const row of rows) {
+    const id = Number(row?.entrant_id);
+    if (!Number.isFinite(id)) continue;
+    const reads = Math.max(0, Number(row?.reads ?? 0));
+    seenCountSnapshot.set(id, reads);
+  }
+}
+
+function updateZeroLapDetections(state, phaseLower) {
+  const rows = Array.isArray(state?.seen?.rows) ? state.seen.rows : [];
+  const activePhase = DETECTION_PHASES.has(phaseLower);
+
+  if (!activePhase) {
+    zeroLapDetections.clear();
+    refreshSeenBaseline(rows);
+    lastPhaseForDetections = phaseLower;
+    return;
+  }
+
+  if (!DETECTION_PHASES.has(lastPhaseForDetections)) {
+    zeroLapDetections.clear();
+    if (seenCountSnapshot.size === 0) {
+      refreshSeenBaseline(rows);
+    }
+  }
+
+  lastPhaseForDetections = phaseLower;
+
+  for (const row of rows) {
+    const id = Number(row?.entrant_id);
+    if (!Number.isFinite(id)) continue;
+    const reads = Math.max(0, Number(row?.reads ?? 0));
+    const prev = seenCountSnapshot.get(id);
+    if (prev === undefined) {
+      if (reads > 0) zeroLapDetections.add(id);
+    } else if (reads > prev) {
+      zeroLapDetections.add(id);
+    }
+    seenCountSnapshot.set(id, reads);
+  }
+}
 
 /** Read planned entrant count from localStorage (cached). */
 function getPlannedEntrantCount() {
@@ -390,7 +439,8 @@ function renderStandings(state) {
       pace: paceSeconds,
       best: src?.best ?? src?.best_s ?? src?.best_ms ?? null,
       gridIndex: Number(src?.grid_index ?? NaN),
-      enabled: src?.enabled !== false
+      enabled: src?.enabled !== false,
+      hasZeroLapDetection: Number.isFinite(entrantId) && zeroLapDetections.has(entrantId)
     };
   });
 
@@ -462,22 +512,24 @@ function renderStandings(state) {
 
     if (cells[2].textContent !== row.name) cells[2].textContent = row.name;
 
-  const isPreLap = (row.laps <= 0) && (row.last != null || row.pace != null || row.best != null);
+  const hasZeroLap = row.hasZeroLapDetection === true;
+  const awaitingDetection = (row.laps <= 0) && !hasZeroLap;
+  const showPlaceholder = (row.laps <= 0) && hasZeroLap;
 
   const lapsTxt = (row.laps != null && row.laps !== '') ? String(row.laps) : '-';
   if (cells[4].textContent !== lapsTxt) cells[4].textContent = lapsTxt;
 
-  const lastTxt = isPreLap ? PRELAP_PLACEHOLDER : fmtLapCell(row.last);
+  const lastTxt = showPlaceholder ? PRELAP_PLACEHOLDER : fmtLapCell(row.last);
   if (cells[5].textContent !== lastTxt) cells[5].textContent = lastTxt;
 
-  const paceTxt = isPreLap ? PRELAP_PLACEHOLDER : fmtLapCell(row.pace);
+  const paceTxt = showPlaceholder ? PRELAP_PLACEHOLDER : fmtLapCell(row.pace);
   if (cells[6].textContent !== paceTxt) cells[6].textContent = paceTxt;
 
-  const bestTxt = isPreLap ? PRELAP_PLACEHOLDER : fmtLapCell(row.best);
+  const bestTxt = showPlaceholder ? PRELAP_PLACEHOLDER : fmtLapCell(row.best);
   if (cells[7].textContent !== bestTxt) cells[7].textContent = bestTxt;
 
   tr.classList.toggle('is-disabled', !row.enabled);
-  tr.classList.toggle('is-prelap', isPreLap);
+  tr.classList.toggle('is-awaiting-detect', awaitingDetection);
     frag.appendChild(tr);
     existing.delete(row.key);
   }
@@ -995,6 +1047,8 @@ function updateClockModeButton(st) {
     const feedPane = els.panelFeed || document.getElementById('panelFeed');
     if (seenPane) seenPane.classList.toggle('hidden', showFeed);
     if (feedPane) feedPane.classList.toggle('hidden', !showFeed);
+
+  updateZeroLapDetections(st, phaseLower);
 
     // NEW: standings render (visible when showFeed)
     renderStandings(st);

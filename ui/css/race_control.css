@@ -104,20 +104,28 @@ body.race-control {
   --gutterX: 16px;
   min-width: 1920px;
   min-height: 1080px;
-  overflow-y: auto;
-  scrollbar-gutter: stable both-edges;
+  height: 100vh;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
 }
 
+body.race-control main.rcWrap {
+  flex: 0 0 auto;
+}
+
 .rcWrap {
   display: grid;
-  grid-template-rows: var(--toolbarH) 1fr;
-  gap: 10px;
-  padding: 12px 16px;
-  width: min(1920px, 100%);   /* instead of: width: 1920px; */
+  grid-template-rows: minmax(var(--toolbarH), auto) 1fr;
+  gap: 12px;
+  padding: 12px 16px 16px;
+  width: 1920px;
+  max-width: 1920px;
+  height: calc(100vh - var(--headerH-ops) - var(--footer-h));
   margin: 0 auto;
   box-sizing: border-box;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .rcGrid {
@@ -127,6 +135,7 @@ body.race-control {
   column-gap: 16px;
   row-gap: 12px;
   min-height: 0;
+  height: 100%;
 }
 
 #paneFlags {
@@ -192,8 +201,8 @@ body.race-control {
   align-items: center;
   gap: 10px 12px;
   padding: 10px 12px;
-  margin: 8px 0 14px;
-  min-height: 48px;
+  margin: 0;
+  min-height: var(--toolbarH);
   background: var(--panel);
   border: 1px solid var(--panel-edge);
   border-radius: 10px;
@@ -799,12 +808,12 @@ body.race-control {
   color: rgba(255,255,255,.28);
 }
 
-#rcStandings tbody tr.is-prelap {
+#rcStandings tbody tr.is-awaiting-detect {
   color: var(--text-muted);
   opacity: .72;
 }
 
-#rcStandings tbody tr.is-prelap td {
+#rcStandings tbody tr.is-awaiting-detect td {
   color: inherit;
 }
 
