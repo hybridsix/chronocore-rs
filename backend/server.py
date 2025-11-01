@@ -809,51 +809,126 @@ results_router = APIRouter(prefix="/results", tags=["results"])
 export_router = APIRouter(prefix="/export", tags=["results-export"])
 
 
-@results_router.get("/heats")
-def list_heats() -> List[Dict[str, Any]]:
-    with get_db() as db:
-        heats = db.execute(
-            """
-            SELECT
-              h.heat_id,
-              h.event_id,
-              h.name,
-                            '' AS status,
-              h.started_utc,
-              h.finished_utc
-            FROM heats h
-            ORDER BY COALESCE(h.finished_utc, h.started_utc) DESC
-            """
-        ).fetchall()
+def _table_info(cx: sqlite3.Connection, table: str) -> Dict[str, bool]:
+    """Return a mapping of column names present in a table. Tolerates missing tables."""
+    cols: Dict[str, bool] = {}
+    try:
+        for _cid, name, _coltype, _notnull, _dflt, _pk in cx.execute(f"PRAGMA table_info({table})"):
+            cols[str(name)] = True
+    except sqlite3.OperationalError:
+        pass
+    return cols
 
-        counts = db.execute(
-            """
-            SELECT
-              heat_id,
-              COUNT(*) AS laps_count,
-              COUNT(DISTINCT entrant_id) AS entrant_count
-            FROM lap_events
-            GROUP BY heat_id
-            """
-        ).fetchall()
-        aggregates = {row["heat_id"]: row for row in counts}
 
-        payload: List[Dict[str, Any]] = []
-        for heat in heats:
-            agg = aggregates.get(heat["heat_id"])
-            payload.append(
-                {
-                    "heat_id": heat["heat_id"],
-                    "event_id": heat["event_id"],
-                    "name": heat["name"],
-                    "status": heat["status"],
-                    "started_utc": heat["started_utc"],
-                    "finished_utc": heat["finished_utc"],
-                    "laps_count": int(agg["laps_count"]) if agg else 0,
-                    "entrant_count": int(agg["entrant_count"]) if agg else 0,
-                }
+def _choose_table(cx: sqlite3.Connection) -> str:
+    """Prefer 'heats', fallback to 'races'. Raise if neither exists."""
+    if _table_info(cx, "heats"):
+        return "heats"
+    if _table_info(cx, "races"):
+        return "races"
+    raise RuntimeError("Neither 'heats' nor 'races' table exists.")
+
+
+@results_router.get("/heats", response_model=None)
+def list_heats(limit: int = 100) -> List[Dict[str, Any]]:
+    """Schema-aware heats list.
+
+    - Works with either 'heats' or 'races' table.
+    - Only selects columns that actually exist (avoids OperationalError).
+    - Returns a flat list (back-compat with UI expects an array), not wrapped in a dict.
+    """
+    with sqlite3.connect(str(get_db_path())) as db:
+        db.row_factory = sqlite3.Row
+
+        table = _choose_table(db)
+        cols = _table_info(db, table)
+
+        # Identify key columns
+        id_col = (
+            "heat_id" if "heat_id" in cols else (
+                "race_id" if "race_id" in cols else (
+                    "id" if "id" in cols else None
+                )
             )
-        return payload
+        )
+        if not id_col:
+            raise RuntimeError(f"'{table}' is missing an id column (heat_id/race_id/id)")
+
+        event_col = "event_id" if "event_id" in cols else None
+
+        # Build SELECT field list with safe aliases expected by the UI
+        fields: List[str] = [f"h.{id_col} AS heat_id"]
+        if event_col:
+            fields.append(f"h.{event_col} AS event_id")
+        if "name" in cols:
+            fields.append("h.name")
+        if "status" in cols:
+            fields.append("h.status")
+        else:
+            fields.append("'' AS status")
+
+        # time columns – prefer finished_utc/started_utc; alias common variants
+        if "started_utc" in cols:
+            fields.append("h.started_utc")
+        elif "started_at" in cols:
+            fields.append("h.started_at AS started_utc")
+
+        if "finished_utc" in cols:
+            fields.append("h.finished_utc")
+        elif "ended_utc" in cols:
+            fields.append("h.ended_utc AS finished_utc")
+
+        select_list = ", ".join(fields)
+
+        # Order by newest first using finished/start time when available else id
+        if "finished_utc" in cols or "started_utc" in cols or "ended_utc" in cols or "started_at" in cols:
+            order_expr = "COALESCE(h.finished_utc, h.started_utc, h.ended_utc, h.started_at) DESC"
+        else:
+            order_expr = f"h.{id_col} DESC"
+
+        heats = db.execute(
+            f"""
+            SELECT {select_list}
+            FROM {table} h
+            ORDER BY {order_expr}
+            LIMIT ?
+            """,
+            (int(limit),),
+        ).fetchall()
+
+        # Aggregate counts if lap_events table exists
+        try:
+            counts = db.execute(
+                """
+                SELECT
+                  heat_id,
+                  COUNT(*) AS laps_count,
+                  COUNT(DISTINCT entrant_id) AS entrant_count
+                FROM lap_events
+                GROUP BY heat_id
+                """
+            ).fetchall()
+            aggregates = {int(row["heat_id"]): row for row in counts}
+        except sqlite3.OperationalError:
+            aggregates = {}
+
+        out: List[Dict[str, Any]] = []
+        for r in heats:
+            keys = set(r.keys())
+            hid = int(r["heat_id"]) if "heat_id" in keys else None
+            agg = aggregates.get(hid) if hid is not None else None
+            out.append({
+                "heat_id": hid,
+                "event_id": (int(r["event_id"]) if "event_id" in keys and r["event_id"] is not None else None),
+                "name": r["name"] if "name" in keys else None,
+                "status": r["status"] if "status" in keys else "",
+                "started_utc": r["started_utc"] if "started_utc" in keys else None,
+                "finished_utc": r["finished_utc"] if "finished_utc" in keys else None,
+                "laps_count": int(agg["laps_count"]) if agg else 0,
+                "entrant_count": int(agg["entrant_count"]) if agg else 0,
+            })
+
+        return out
 
 
 def fetch_laps(db: sqlite3.Connection, heat_id: int) -> List[sqlite3.Row]:
