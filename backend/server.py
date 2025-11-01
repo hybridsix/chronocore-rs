@@ -818,7 +818,7 @@ def list_heats() -> List[Dict[str, Any]]:
               h.heat_id,
               h.event_id,
               h.name,
-              h.status,
+                            '' AS status,
               h.started_utc,
               h.finished_utc
             FROM heats h
