@@ -109,21 +109,55 @@
     await refreshHeats();
   }
 
-  // Heats
-  async function refreshHeats() {
+// -----------------------------------------------------------------------------
+// Heats list loader (robust):
+// - Tries /heats first; falls back to /results/heats (or API.heats if set).
+// - Accepts either {heats:[…]} or […] payload shapes.
+// - Keeps selection if the previously selected heat still exists.
+// - Shows/hides the empty-rail state safely.
+// -----------------------------------------------------------------------------
+async function refreshHeats() {
+  try {
+    // Attempt primary path (/heats), then fallback
+    let payload;
     try {
-      heats = await getJSON(API.heats);
-      renderHeats(heats);
-      railEmpty.hidden = heats.length > 0;
-      if (!selectedHeat || !heats.find(h => h.heat_id === selectedHeat.heat_id)) {
-        if (heats[0]) selectHeat(heats[0]);
-      }
-    } catch (err) {
-      railEmpty.hidden = false;
-      heatListEl.innerHTML = '';
-      toast(err.message || 'Failed to load heats.');
+      payload = await getJSON('/heats');
+    } catch (e1) {
+      // Use configured API.heats if provided, else hard fallback to /results/heats
+      const fallbackPath = (typeof API !== 'undefined' && API.heats) ? API.heats : '/results/heats';
+      payload = await getJSON(fallbackPath);
     }
+
+    // Normalize payload shape → always an array
+    const list = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload?.heats) ? payload.heats : []);
+
+    // Persist to the module/global expected by the rest of the UI
+    heats = list;
+
+    // Render and toggle empty-state UI
+    renderHeats(heats);
+    railEmpty.hidden = heats.length > 0;
+
+    // Maintain or choose selection
+    const hadSelection = !!selectedHeat;
+    const stillExists = hadSelection && heats.some(h => String(h.heat_id) === String(selectedHeat.heat_id));
+    if (!stillExists) {
+      if (heats[0]) {
+        selectHeat(heats[0]);           // auto-select newest/first item
+      } else {
+        selectedHeat = null;            // nothing to select
+      }
+    }
+  } catch (err) {
+    // Graceful failure: show empty state, clear list UI, toast the error
+    railEmpty.hidden = false;
+    heatListEl.innerHTML = '';
+    toast((err && err.message) ? err.message : 'Failed to load heats.');
   }
+}
+
 
   function renderHeats(list) {
     heatListEl.innerHTML = '';

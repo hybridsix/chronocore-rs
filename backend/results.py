@@ -81,13 +81,17 @@ def persist_results(DB_PATH: str, race_id: int, race_type: str, snapshot: Dict[s
         for pos, e in enumerate(standings, start=1):
             cur.execute(
                 """INSERT INTO result_standings
-                   (race_id, position, entrant_id, number, name, laps, last_ms, best_ms, gap_ms, lap_deficit, pit_count, status)
-                   VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (race_id, position, entrant_id, number, name, laps, last_ms, best_ms, gap_ms, lap_deficit, pit_count, status)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     race_id, pos, e["entrant_id"], e.get("number"), e.get("name"),
-                    e["laps"], _ms(e.get("last"), seconds=True), _ms(e.get("best")),
-                    _ms(e.get("gap_s"), seconds=True),  # convert to ms if the snapshot has seconds
-                    e.get("lap_deficit", 0), e.get("pit_count", 0), e.get("status", "ACTIVE"),
+                    e["laps"],
+                    _ms(e.get("last"), seconds=True),         # seconds → ms
+                    _ms(e.get("best"), seconds=True),         # <-- add seconds=True
+                    _ms(e.get("gap_s"), seconds=True),        # seconds → ms
+                    e.get("lap_deficit", 0),
+                    e.get("pit_count", 0),
+                    e.get("status", "ACTIVE"),
                 ),
             )
 

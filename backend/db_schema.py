@@ -246,6 +246,37 @@ JOIN heats     h ON h.heat_id = le.heat_id
 JOIN entrants  e ON e.entrant_id = le.entrant_id
 LEFT JOIN sources   s ON s.source_id = le.source_id
 LEFT JOIN locations l ON l.location_id = s.location_id;
+
+-- Heats summary with derived timing/status aggregates.
+CREATE VIEW IF NOT EXISTS v_heats_summary AS
+SELECT
+    h.heat_id,
+    h.event_id,
+    h.name,
+    -- first GREEN/WHITE is a practical "start" (works for qualifying too)
+    (SELECT MIN(f.ts_ms)
+         FROM flags f
+         WHERE f.heat_id = h.heat_id
+             AND f.state IN ('GREEN','WHITE')) AS started_ms,
+    -- last CHECKERED is the "finish" (NULL if never thrown)
+    (SELECT MAX(f.ts_ms)
+         FROM flags f
+         WHERE f.heat_id = h.heat_id
+             AND f.state = 'CHECKERED') AS finished_ms,
+    -- the latest flag is the current status (NULL if no flags yet)
+    (SELECT f2.state
+         FROM flags f2
+         WHERE f2.heat_id = h.heat_id
+         ORDER BY f2.ts_ms DESC
+         LIMIT 1) AS status,
+    -- aggregates
+    (SELECT COUNT(*)
+         FROM lap_events le
+         WHERE le.heat_id = h.heat_id) AS laps_count,
+    (SELECT COUNT(DISTINCT le.entrant_id)
+         FROM lap_events le
+         WHERE le.heat_id = h.heat_id) AS entrant_count
+FROM heats h;
 """
 
 # ------------------------

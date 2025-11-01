@@ -30,11 +30,14 @@ import logging
 import time
 import random
 import sqlite3
+import pathlib
 from collections import deque
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple, cast
 import yaml
 from enum import Enum
+from datetime import timezone
+import datetime as dt
 
 import aiosqlite
 from fastapi import APIRouter, Body, FastAPI, HTTPException, Request, Response, status
@@ -69,6 +72,58 @@ app = FastAPI(title="CCRS Backend", version="0.2.1")
 # Register auxiliary routers
 app.include_router(qual)
 app.include_router(results_router)
+
+# ======================================================================
+# Heats listing (schema-aware, no required params, stable JSON shape)
+# Path: GET /heats
+# Returns: {"heats": [ {heat_id, event_id?, name?, status?, started_utc?, finished_utc?, laps_count, entrant_count}, ... ]}
+# ======================================================================
+#from typing import Any, Dict, List
+#import sqlite3
+#import pathlib
+
+@app.get("/heats", response_model=None)
+def list_heats(limit: int = 100) -> Dict[str, Any]:
+    db_abs = str(pathlib.Path(get_db_path()).resolve())
+    with sqlite3.connect(db_abs) as db:
+        db.row_factory = sqlite3.Row
+
+        # Prefer the view; if it doesn't exist yet, return empty (keeps UI happy)
+        try:
+            rows = db.execute(
+                """
+                SELECT heat_id, event_id, name, started_ms, finished_ms, status, laps_count, entrant_count
+                FROM v_heats_summary
+                ORDER BY COALESCE(finished_ms, started_ms, heat_id) DESC
+                LIMIT ?
+                """,
+                (int(limit),),
+            ).fetchall()
+        except sqlite3.OperationalError:
+            return {"heats": []}
+
+        def ms_to_iso(ms: Optional[int]) -> Optional[str]:
+            if ms is None:
+                return None
+            return (
+                dt.datetime.fromtimestamp(ms / 1000.0, tz=dt.timezone.utc)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z")
+            )
+
+        out: List[Dict[str, Any]] = []
+        for r in rows:
+            out.append({
+                "heat_id":        int(r["heat_id"]),
+                "event_id":       int(r["event_id"]) if r["event_id"] is not None else None,
+                "name":           r["name"],
+                "status":         r["status"] or "",
+                "started_utc":    ms_to_iso(r["started_ms"]),
+                "finished_utc":   ms_to_iso(r["finished_ms"]),
+                "laps_count":     int(r["laps_count"] or 0),
+                "entrant_count":  int(r["entrant_count"] or 0),
+            })
+        return {"heats": out}
 
 # ------------------------------------------------------------
 # Simple scan bus state
@@ -797,7 +852,8 @@ def ms_to_str(ms: Optional[int]) -> Optional[str]:
 def to_iso_utc(ts_ms: Optional[int]) -> Optional[str]:
     if ts_ms is None:
         return None
-    return datetime.datetime.fromtimestamp(ts_ms / 1000, tz=datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # Refer to the module explicitly (dt.datetime, dt.timezone.utc)
+    return dt.datetime.fromtimestamp(ts_ms / 1000.0, tz=dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 JOURNALING_ENABLED = bool(
@@ -834,7 +890,7 @@ def _choose_table(cx: sqlite3.Connection) -> str:
 # Heats listing (GET /heats); schema-aware and returns a stable {"heats": [...]} payload
 
 @results_router.get("/heats", response_model=None)
-def list_heats(limit: int = 100) -> Dict[str, Any]:
+def list_heats_old(limit: int = 100) -> Dict[str, Any]:
     """
     Works with either 'heats' or 'races' table.
     Only selects columns that actually exist (avoids OperationalError).
