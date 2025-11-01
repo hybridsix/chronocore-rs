@@ -309,3 +309,138 @@ function msToStr(ms) {
     alert(msg); // minimal MVP toast; replace with your toast util when ready
   }
 })();
+
+/* ----------------------------------------------------------------------------
+   Final Results view (race freeze + exports)
+   ---------------------------------------------------------------------------- */
+(async function () {
+  'use strict';
+
+  const tableResults = document.querySelector('#tblResults');
+  if (!tableResults) {
+    return; // Page does not host the final-results layout; skip wiring.
+  }
+
+  const raceId = getRaceIdFromQuery();
+  if (!raceId) {
+    console.warn('[Results] race_id missing in query params.');
+    return;
+  }
+
+  const els = {
+    badge: document.querySelector('#resultsBadge'),
+    table: tableResults.querySelector('tbody'),
+    laps:  document.querySelector('#tblLaps tbody'),
+    btnCSV: document.querySelector('#btnCSVResults'),
+    btnCSVlaps: document.querySelector('#btnCSVlaps'),
+  };
+
+  async function fetchJSON(url) {
+    const r = await fetch(url, { cache: 'no-store', credentials: 'same-origin' });
+    if (!r.ok) throw new Error(`${r.status}`);
+    return r.json();
+  }
+
+  function ms(v) {
+    if (v == null || Number.isNaN(v)) return '';
+    return (v / 1000).toFixed(3);
+  }
+
+  function getRaceIdFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    const val = params.get('race_id') || params.get('raceId');
+    if (val) {
+      const parsed = parseInt(val, 10);
+      if (!Number.isNaN(parsed) && parsed > 0) {
+        return parsed;
+      }
+    }
+    const el = document.querySelector('[data-race-id]');
+    if (el) {
+      const viaAttr = parseInt(el.getAttribute('data-race-id') || '', 10);
+      if (!Number.isNaN(viaAttr) && viaAttr > 0) {
+        return viaAttr;
+      }
+    }
+    return null;
+  }
+
+  async function init() {
+    let data;
+    let laps;
+    try {
+      data = await fetchJSON(`/results/${raceId}`);
+      laps = await fetchJSON(`/results/${raceId}/laps`);
+      if (els.badge) {
+        els.badge.textContent = 'Final Results';
+        els.badge.classList.add('badge-final');
+      }
+    } catch (err) {
+      console.warn('[Results] Frozen results unavailable, falling back to live preview.', err);
+      data = await fetchJSON(`/race/state?race_id=${raceId}`);
+      if (els.badge) {
+        els.badge.textContent = 'Live Preview (Not Final)';
+        els.badge.classList.add('badge-live');
+      }
+    }
+
+    renderStandings(data);
+    if (laps) renderLaps(laps);
+
+    if (els.btnCSV) {
+      els.btnCSV.onclick = () => {
+        window.location.href = `/export/results_csv?race_id=${raceId}`;
+      };
+    }
+    if (els.btnCSVlaps) {
+      els.btnCSVlaps.onclick = () => {
+        window.location.href = `/export/laps_csv?race_id=${raceId}`;
+      };
+    }
+  }
+
+  function renderStandings(data) {
+    if (!els.table) return;
+    const rows = (data.entrants || data.standings || []);
+    els.table.innerHTML = rows.map((e) => `
+      <tr>
+        <td>${e.position ?? ''}</td>
+        <td>${e.number ?? ''}</td>
+        <td>${e.name ?? ''}</td>
+        <td>${e.laps ?? ''}</td>
+        <td>${ms(normalizeMs(e.best_ms, e.best))}</td>
+        <td>${ms(normalizeMs(e.last_ms, e.last))}</td>
+        <td>${ms(normalizeMs(e.gap_ms, e.gap_s))}</td>
+        <td>${e.lap_deficit ?? 0}</td>
+        <td>${e.pit_count ?? 0}</td>
+        <td>${e.status ?? 'ACTIVE'}</td>
+      </tr>
+    `).join('');
+  }
+
+  function renderLaps(payload) {
+    if (!els.laps || !payload || !payload.laps) {
+      return;
+    }
+    const out = [];
+    Object.entries(payload.laps).forEach(([entrantId, arr]) => {
+      arr.forEach((lapMs, i) => {
+        out.push(`<tr><td>${entrantId}</td><td>${i + 1}</td><td>${ms(lapMs)}</td></tr>`);
+      });
+    });
+    els.laps.innerHTML = out.join('');
+  }
+
+  function normalizeMs(msValue, secondsValue) {
+    if (msValue != null) return msValue;
+    if (secondsValue != null) {
+      const num = Number(secondsValue);
+      if (!Number.isNaN(num)) {
+        return num * 1000;
+      }
+    }
+    return null;
+  }
+
+  init();
+})();

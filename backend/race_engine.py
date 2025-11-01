@@ -1,8 +1,9 @@
 from __future__ import annotations
-import time, json, threading, sqlite3, os
-from typing import Dict, List, Optional, Tuple
+import time, json, threading, sqlite3, os, logging
+from typing import Any, Dict, List, Optional, Tuple
 from pathlib import Path
 from backend.db_schema import ensure_schema
+from backend.results import persist_results
 
 try:
     # Prefer the merged loader (config/app.yaml + race_modes.yaml + event.yaml)
@@ -11,6 +12,8 @@ except Exception:
     CONFIG = {}
 
 UTC_MS = lambda: int(time.time() * 1000)
+
+log = logging.getLogger("ccrs.engine")
 
 ALLOWED_FLAGS = {"pre","green","yellow","red","blue","white","checkered"}
 ALLOWED_STATUS = {"ACTIVE","DISABLED","DNF","DQ"}
@@ -181,6 +184,7 @@ class RaceEngine:
         db_path = Path(pcfg["sqlite_path"])  # explicit, no legacy/default paths
         ensure_schema(db_path, recreate=bool(pcfg.get("recreate_on_boot", False)))
 
+        self._db_path = str(db_path)
         self.journal = Journal(
             db_path=str(db_path),
             enabled=bool(pcfg.get("enabled", False)),
@@ -207,6 +211,7 @@ class RaceEngine:
             self.clock_ms: int = 0
             self.clock_start_monotonic: Optional[float] = None  # when green started
             self.running: bool = False
+            self.clock_ms_frozen: Optional[int] = None
 
             # active limit (from mode): type: "time"|"laps"
             self._limit = None          # {"type":"time"|"laps","value":...}
@@ -227,6 +232,7 @@ class RaceEngine:
 
             self.entrants: Dict[int, Entrant] = {}
             self.tag_to_eid: Dict[str, int] = {}
+            self._lap_history: Dict[int, List[int]] = {}
             self._next_provisional_id = 1
             self._provisional_cap = 50
 
@@ -316,6 +322,7 @@ class RaceEngine:
                     name=str(e.get("name") or f"Entrant {entrant_id}"),
                 )
                 self.entrants[ent.entrant_id] = ent
+                self._lap_history[ent.entrant_id] = []
                 if ent.enabled and ent.tag:
                     self.tag_to_eid[ent.tag] = ent.entrant_id
 
@@ -374,6 +381,9 @@ class RaceEngine:
         if f_lower not in ALLOWED_FLAGS:
             raise ValueError(f"Invalid flag '{flag}'")
 
+        persist_needed = False
+        lap_history_copy: Dict[int, List[int]] = {}
+
         with self._lock:
             prev = (self.flag or "").lower()
 
@@ -408,12 +418,19 @@ class RaceEngine:
                 self._update_clock()
                 self.running = False
                 self.clock_start_monotonic = None
+                self.clock_ms_frozen = self.clock_ms
+                self._limit_reached = True
+                lap_history_copy = {eid: list(laps) for eid, laps in self._lap_history.items()}
+                persist_needed = True
             else:
                 # pre/yellow/red/white/blue → no change to running
                 pass
 
             self._emit_flag_change(self.flag)
-            return self.snapshot()
+        snapshot = self.snapshot()
+        if persist_needed:
+            self._persist_results(snapshot, lap_history_copy)
+        return snapshot
 
         
     # ---------- simulator indicator  ----------
@@ -487,6 +504,7 @@ class RaceEngine:
                     ent = Entrant(new_id, enabled=True, status="ACTIVE", tag=tag, number=None, name=f"Unknown {suffix}")
                     self.entrants[new_id] = ent
                     self.tag_to_eid[tag] = new_id
+                    self._lap_history[new_id] = []
                     eid = new_id
                 else:
                     # ignore unknown
@@ -539,6 +557,8 @@ class RaceEngine:
                 ent.pace_buf.append(delta_s)
                 if len(ent.pace_buf) > 5:
                     ent.pace_buf = ent.pace_buf[-5:]
+                lap_ms = max(0, self.clock_ms - prev_mark)
+                self._lap_history.setdefault(eid, []).append(int(lap_ms))
                 self._maybe_auto_white_lap()
                 lap_added = True
                 lap_time_s = round(delta_s, 3)
@@ -560,14 +580,39 @@ class RaceEngine:
         """Finish the race due to limit; assumes caller holds the lock."""
         if self.flag == "checkered" or self._limit_reached:
             return
-        # freeze clock
-        self._update_clock()
-        self.running = False
-        self.clock_start_monotonic = None
-        self.flag = "checkered"
         self._limit_reached = True
-        # emit event for journal/debug
-        self._emit_flag_change("checkered")
+        try:
+            self.set_flag("CHECKERED")
+            log.info("auto_checkered", extra={"reason": reason, "race_id": self.race_id})
+        except Exception:
+            log.exception("auto_checkered_failed", extra={"reason": reason, "race_id": self.race_id})
+
+    def _persist_results(self, snapshot: Dict[str, Any], lap_history: Dict[int, List[int]]) -> None:
+        """Write the frozen snapshot to SQLite (best-effort, idempotent)."""
+        db_path = getattr(self, "_db_path", None)
+        if not db_path or self.race_id is None:
+            return
+
+        freeze_snapshot = dict(snapshot)
+        if freeze_snapshot.get("clock_ms_frozen") is None:
+            freeze_snapshot["clock_ms_frozen"] = self.clock_ms_frozen or freeze_snapshot.get("clock_ms", 0)
+
+        lap_map: Dict[int, List[int]] = {
+            int(eid): [int(ms) for ms in laps]
+            for eid, laps in lap_history.items()
+            if laps
+        }
+
+        try:
+            persist_results(
+                db_path,
+                int(self.race_id),
+                str(self.race_type or "sprint"),
+                freeze_snapshot,
+                lap_map,
+            )
+        except Exception:
+            log.exception("results_persist_failed", extra={"race_id": self.race_id})
 
     # ---------- internal helpers ----------
     def _elapsed_s(self) -> float:
@@ -798,6 +843,8 @@ class RaceEngine:
                 if self._limit_ms is not None:
                     lim["remaining_ms"] = max(0, self._limit_ms - self.clock_ms)
                 snap["limit"] = lim
+
+            snap["clock_ms_frozen"] = self.clock_ms_frozen
 
             return snap
 

@@ -32,7 +32,7 @@ import sqlite3
 from typing import Optional
 
 # Bump when DDL changes in a way worth tracking (for future migrations).
-LOCKED_USER_VERSION = 5
+LOCKED_USER_VERSION = 6
 
 # ------------------------
 # DDL: Core roster
@@ -160,6 +160,46 @@ CREATE INDEX IF NOT EXISTS idx_flags_heat_time ON flags(heat_id, ts_ms);
 """
 
 # ------------------------
+# DDL: Frozen results snapshots
+# ------------------------
+RESULTS_DDL = """
+-- Frozen standings by race, position-sorted for operator exports.
+CREATE TABLE IF NOT EXISTS result_standings (
+    race_id        INTEGER NOT NULL,
+    position       INTEGER NOT NULL,
+    entrant_id     INTEGER NOT NULL,
+    number         TEXT,
+    name           TEXT,
+    laps           INTEGER NOT NULL,
+    last_ms        INTEGER,
+    best_ms        INTEGER,
+    gap_ms         INTEGER,
+    lap_deficit    INTEGER,
+    pit_count      INTEGER DEFAULT 0,
+    status         TEXT DEFAULT 'ACTIVE',
+    PRIMARY KEY (race_id, position)
+);
+
+-- Frozen lap-by-lap history for results exports.
+CREATE TABLE IF NOT EXISTS result_laps (
+    race_id        INTEGER NOT NULL,
+    entrant_id     INTEGER NOT NULL,
+    lap_no         INTEGER NOT NULL,     -- 1-based index
+    lap_ms         INTEGER NOT NULL,
+    pass_ts_ns     INTEGER,              -- optional original pass timestamp (nanoseconds)
+    PRIMARY KEY (race_id, entrant_id, lap_no)
+);
+
+-- Metadata describing the frozen snapshot (type, duration, capture time).
+CREATE TABLE IF NOT EXISTS result_meta (
+    race_id        INTEGER PRIMARY KEY,
+    race_type      TEXT,
+    frozen_utc     TEXT NOT NULL,        -- ISO8601 timestamp when snapshot was frozen
+    duration_ms    INTEGER NOT NULL      -- total race duration in milliseconds
+);
+"""
+
+# ------------------------
 # DDL: Convenience views (for UI-friendly reads)
 # ------------------------
 VIEWS_DDL = """
@@ -222,6 +262,9 @@ def _drop_everything(conn: sqlite3.Connection) -> None:
     cur.execute("DROP VIEW IF EXISTS v_lap_events_enriched")
     cur.execute("DROP VIEW IF EXISTS v_passes_enriched")
     # Then tables (children before parents)
+    cur.execute("DROP TABLE IF EXISTS result_meta")
+    cur.execute("DROP TABLE IF EXISTS result_laps")
+    cur.execute("DROP TABLE IF EXISTS result_standings")
     cur.execute("DROP TABLE IF EXISTS flags")
     cur.execute("DROP TABLE IF EXISTS lap_events")
     cur.execute("DROP TABLE IF EXISTS heats")
@@ -282,6 +325,7 @@ def ensure_schema(
             _exec_script(conn, HEATS_DDL)
             _exec_script(conn, LAP_EVENTS_DDL)
             _exec_script(conn, FLAGS_DDL)
+            _exec_script(conn, RESULTS_DDL)
 
         # Convenience views for UI.
         _exec_script(conn, VIEWS_DDL)
