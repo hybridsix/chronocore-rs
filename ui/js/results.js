@@ -1,5 +1,5 @@
 /* ============================================================================
-  Results & Exports - Frontend logic (no framework, no ARIA)
+  Results - Frontend logic (no framework, no ARIA)
   ============================================================================ */
 (() => {
   'use strict';

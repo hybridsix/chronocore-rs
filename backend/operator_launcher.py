@@ -109,7 +109,7 @@ SCREENS = {
     "splash": (UI_DIR / "splash.html"),      # Small frameless splash while services warm up
     "home":   (UI_DIR / "index.html"),       # Main Operator UI entrypoint
     "about":  (UI_DIR / "about.html"),
-    "results": (UI_DIR / "results_exports.html"),
+    "results": (UI_DIR / "results.html"),
     "entrants": (UI_DIR / "entrants.html"),
     "race_setup": (UI_DIR / "race_setup.html"),
     "race_control": (UI_DIR / "race_control.html"),

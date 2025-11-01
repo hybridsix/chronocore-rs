@@ -36,11 +36,7 @@
           // Fallback: load target page directly. Some screen IDs map to
           // filenames that don't match the ID (historical names). Handle
           // those special cases here so the plain-browser fallback works.
-          if (screenId === 'results') {
-            location.href = 'results_exports.html';
-          } else {
-            location.href = screenId + '.html';
-          }
+          location.href = screenId + '.html';
         }
       }
 
@@ -112,7 +108,7 @@
             <button class="btn btn-primary" onclick="goto('race_setup')">Race Setup</button>
             <button class="btn" onclick="goto('race_control')">Race Control</button>
             <button class="btn" onclick="goto('entrants')">Entrants & Tags</button>
-            <button class="btn" onclick="goto('results')">Results & Exports</button>
+            <button class="btn" onclick="goto('results')">Results</button>
             <button class="btn" onclick="goto('diag')">Diagnostics / Live Sensors</button>
             <button class="btn" onclick="goto('settings')">Setup & Devices</button>
             <!-- Separator between operator tools and spectator link -->
