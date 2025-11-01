@@ -1,4 +1,5 @@
 from __future__ import annotations
+import pathlib
 
 """
 ChronoCore RS - backend/server.py (drop-in)
@@ -47,12 +48,13 @@ from .race_engine import ENGINE
 from .db_schema import ensure_schema, tag_conflicts, get_event_config
 from .config_loader import get_db_path, get_scanner_cfg, CONFIG
 from backend.qualifying import qual
-from .app_results_api import router as app_results_router
+from .app_results_api import router as results_router
 
 
 # log = logging.getLogger("uvicorn.error")
 # log = logging.getLogger("race")
 log = logging.getLogger("ccrs")
+log.setLevel(logging.INFO)
 
 
 # Resolve DB path from config and ensure schema on boot.
@@ -66,6 +68,7 @@ app = FastAPI(title="CCRS Backend", version="0.2.1")
 
 # Register auxiliary routers
 app.include_router(qual)
+app.include_router(results_router)
 
 # ------------------------------------------------------------
 # Simple scan bus state
@@ -828,46 +831,74 @@ def _choose_table(cx: sqlite3.Connection) -> str:
         return "races"
     raise RuntimeError("Neither 'heats' nor 'races' table exists.")
 
+# Heats listing (GET /heats); schema-aware and returns a stable {"heats": [...]} payload
 
 @results_router.get("/heats", response_model=None)
-def list_heats(limit: int = 100) -> List[Dict[str, Any]]:
-    """Schema-aware heats list.
-
-    - Works with either 'heats' or 'races' table.
-    - Only selects columns that actually exist (avoids OperationalError).
-    - Returns a flat list (back-compat with UI expects an array), not wrapped in a dict.
+def list_heats(limit: int = 100) -> Dict[str, Any]:
     """
-    with sqlite3.connect(str(get_db_path())) as db:
+    Works with either 'heats' or 'races' table.
+    Only selects columns that actually exist (avoids OperationalError).
+    Returns a dict with "heats": [] so the UI can read a stable shape.
+    """
+
+    def _abs_db() -> str:
+        # Always resolve to an absolute path to avoid Path/WD issues
+        return str(Path(get_db_path()).resolve())
+
+    def _table_exists(db: sqlite3.Connection, name: str) -> bool:
+        row = db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?", (name,)
+        ).fetchone()
+        return row is not None
+
+    def _columns(db: sqlite3.Connection, name: str) -> Dict[str, bool]:
+        cols: Dict[str, bool] = {}
+        try:
+            for _cid, cname, _ctype, _notnull, _dflt, _pk in db.execute(f"PRAGMA table_info({name})"):
+                cols[cname] = True
+        except sqlite3.OperationalError:
+            pass
+        return cols
+
+    db_path = _abs_db()
+    with sqlite3.connect(db_path) as db:
         db.row_factory = sqlite3.Row
 
-        table = _choose_table(db)
-        cols = _table_info(db, table)
+        # Prefer 'heats' if present; else 'races'; else return empty list.
+        if _table_exists(db, "heats"):
+            table = "heats"
+        elif _table_exists(db, "races"):
+            table = "races"
+        else:
+            return {"heats": []}
 
-        # Identify key columns
+        cols = _columns(db, table)
+
+        # Identify primary key column and alias to heat_id for UI
         id_col = (
-            "heat_id" if "heat_id" in cols else (
-                "race_id" if "race_id" in cols else (
-                    "id" if "id" in cols else None
-                )
-            )
+            "heat_id" if "heat_id" in cols else
+            ("race_id" if "race_id" in cols else ("id" if "id" in cols else None))
         )
         if not id_col:
-            raise RuntimeError(f"'{table}' is missing an id column (heat_id/race_id/id)")
+            # Table is unusable for listing — return empty instead of 500
+            return {"heats": []}
 
+        # Optional columns
         event_col = "event_id" if "event_id" in cols else None
 
-        # Build SELECT field list with safe aliases expected by the UI
+        # Build SELECT list with safe aliases
         fields: List[str] = [f"h.{id_col} AS heat_id"]
         if event_col:
             fields.append(f"h.{event_col} AS event_id")
         if "name" in cols:
             fields.append("h.name")
+        # Prefer 'status' if exists; otherwise synthesize an empty string for shape stability
         if "status" in cols:
             fields.append("h.status")
         else:
             fields.append("'' AS status")
 
-        # time columns – prefer finished_utc/started_utc; alias common variants
+        # Time columns: alias common variants to started_utc/finished_utc
         if "started_utc" in cols:
             fields.append("h.started_utc")
         elif "started_at" in cols:
@@ -880,13 +911,13 @@ def list_heats(limit: int = 100) -> List[Dict[str, Any]]:
 
         select_list = ", ".join(fields)
 
-        # Order by newest first using finished/start time when available else id
-        if "finished_utc" in cols or "started_utc" in cols or "ended_utc" in cols or "started_at" in cols:
+        # Order newest first using finished/start time when available; else by id
+        if any(c in cols for c in ("finished_utc", "started_utc", "ended_utc", "started_at")):
             order_expr = "COALESCE(h.finished_utc, h.started_utc, h.ended_utc, h.started_at) DESC"
         else:
             order_expr = f"h.{id_col} DESC"
 
-        heats = db.execute(
+        rows = db.execute(
             f"""
             SELECT {select_list}
             FROM {table} h
@@ -896,26 +927,29 @@ def list_heats(limit: int = 100) -> List[Dict[str, Any]]:
             (int(limit),),
         ).fetchall()
 
-        # Aggregate counts if lap_events table exists
+        # Aggregate counts if a lap_events table exists (optional)
+        aggregates: Dict[int, sqlite3.Row] = {}
         try:
-            counts = db.execute(
-                """
-                SELECT
-                  heat_id,
-                  COUNT(*) AS laps_count,
-                  COUNT(DISTINCT entrant_id) AS entrant_count
-                FROM lap_events
-                GROUP BY heat_id
-                """
-            ).fetchall()
-            aggregates = {int(row["heat_id"]): row for row in counts}
+            if _table_exists(db, "lap_events"):
+                agg_rows = db.execute(
+                    """
+                    SELECT
+                      heat_id,
+                      COUNT(*) AS laps_count,
+                      COUNT(DISTINCT entrant_id) AS entrant_count
+                    FROM lap_events
+                    GROUP BY heat_id
+                    """
+                ).fetchall()
+                aggregates = {int(r["heat_id"]): r for r in agg_rows if r["heat_id"] is not None}
         except sqlite3.OperationalError:
+            # If lap_events doesn't exist or has a different schema, just skip aggregates
             aggregates = {}
 
         out: List[Dict[str, Any]] = []
-        for r in heats:
+        for r in rows:
             keys = set(r.keys())
-            hid = int(r["heat_id"]) if "heat_id" in keys else None
+            hid = int(r["heat_id"]) if "heat_id" in keys and r["heat_id"] is not None else None
             agg = aggregates.get(hid) if hid is not None else None
             out.append({
                 "heat_id": hid,
@@ -928,7 +962,8 @@ def list_heats(limit: int = 100) -> List[Dict[str, Any]]:
                 "entrant_count": int(agg["entrant_count"]) if agg else 0,
             })
 
-        return out
+        return {"heats": out}
+
 
 
 def fetch_laps(db: sqlite3.Connection, heat_id: int) -> List[sqlite3.Row]:
@@ -1419,8 +1454,7 @@ def export_passes_csv(heat_id: int):
         )
 
 
-app.include_router(results_router)
-app.include_router(app_results_router)
+
 app.include_router(export_router)
 
 
@@ -2938,6 +2972,18 @@ def _track_task(t: asyncio.Task) -> None:
     """Remember a task and auto-untrack when it finishes."""
     _SCANNER_TASKS.add(t)
     t.add_done_callback(lambda tt: _SCANNER_TASKS.discard(tt))
+
+
+@app.on_event("startup")
+async def announce_db_path() -> None:
+    """Emit the configured database path once logging is fully initialized."""
+    try:
+        resolved = Path(get_db_path()).resolve()
+        message = f"db_path={resolved}"
+        log.info(message)
+        logging.getLogger("uvicorn.error").info(message)
+    except Exception:
+        log.exception("Unable to report db_path during startup")
 
 @app.on_event("startup")
 async def start_scanner():

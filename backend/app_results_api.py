@@ -11,6 +11,8 @@ Responsibilities
 """
 
 from fastapi import APIRouter, HTTPException, Response
+from fastapi import Path as PathParam
+import pathlib
 import sqlite3
 import csv
 import io
@@ -21,8 +23,9 @@ from .config_loader import get_db_path
 router = APIRouter()
 
 # Unified config drives the SQLite location so exports stay in lockstep with the engine.
-def _conn() -> sqlite3.Connection:
-    return sqlite3.connect(str(get_db_path()))
+def _conn():
+    # Always resolve to an absolute path; avoids relative/WD issues and the Path name clash
+    return sqlite3.connect(str(pathlib.Path(get_db_path()).resolve()))
 
 @router.get("/results/{race_id}")
 def get_results(race_id: int) -> Dict[str, Any]:
@@ -57,20 +60,32 @@ def get_results(race_id: int) -> Dict[str, Any]:
             "entrants": entrants,
         }
 
-@router.get("/results/{race_id}/laps")
+@router.get("/results/{race_id}/laps", response_model=None)
 def get_results_laps(race_id: int) -> Dict[str, Any]:
-    """Return lap-by-lap breakdown for entrants in the frozen snapshot."""
     with _conn() as cx:
-        row = cx.execute("SELECT 1 FROM result_meta WHERE race_id=?", (race_id,)).fetchone()
-        if not row:
-            raise HTTPException(status_code=404, detail="No frozen results for this race_id")
+        cx.row_factory = sqlite3.Row
 
-        laps_map: Dict[str, List[int]] = {}
-        for entrant_id, lap_no, lap_ms in cx.execute(
-            "SELECT entrant_id, lap_no, lap_ms FROM result_laps WHERE race_id=? ORDER BY entrant_id, lap_no",
+        # If meta doesn't exist, return empty payload instead of 404
+        exists = cx.execute(
+            "SELECT 1 FROM result_meta WHERE race_id=?",
             (race_id,)
-        ):
-            laps_map.setdefault(str(entrant_id), []).append(lap_ms)
+        ).fetchone()
+        if not exists:
+            return {"race_id": race_id, "laps": {}}
+
+        rows = cx.execute(
+            """SELECT entrant_id, lap_no, lap_ms
+               FROM result_laps
+               WHERE race_id=?
+               ORDER BY entrant_id, lap_no""",
+            (race_id,)
+        ).fetchall()
+
+        laps_map: Dict[str, list] = {}
+        for r in rows:
+            k = str(r["entrant_id"])
+            laps_map.setdefault(k, []).append(r["lap_ms"])
+
         return {"race_id": race_id, "laps": laps_map}
 
 @router.get("/export/results_csv")

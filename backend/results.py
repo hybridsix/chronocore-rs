@@ -11,18 +11,25 @@ Responsibilities
 """
 
 import logging
+from pathlib import Path
 from datetime import datetime, timezone
 import sqlite3
 from typing import Any, Dict, List
 
+from .db_schema import ensure_schema
+from .config_loader import get_db_path
+
+DB_PATH = get_db_path()
+ensure_schema(DB_PATH, recreate=False, include_passes=True)
+
 log = logging.getLogger("ccrs.results")
 
-def persist_results(db_path: str, race_id: int, race_type: str, snapshot: Dict[str, Any], laps_map: Dict[int, List[int]]) -> None:
+def persist_results(DB_PATH: str, race_id: int, race_type: str, snapshot: Dict[str, Any], laps_map: Dict[int, List[int]]) -> None:
     """Persist a frozen snapshot into the results tables.
 
     Parameters
     ----------
-    db_path:
+    DB_PATH:
         Absolute path to the SQLite database (engine + results share the same file).
     race_id:
         Identifier for the race session being frozen.
@@ -36,11 +43,19 @@ def persist_results(db_path: str, race_id: int, race_type: str, snapshot: Dict[s
 
     Returns quietly when results for race_id already exist.
     """
+    try:
+        resolved = Path(DB_PATH).resolve()
+        message = f"persist_results_db={resolved} race_id={race_id}"
+        log.info(message)
+        logging.getLogger("uvicorn.error").info(message)
+    except Exception:
+        log.exception("Unable to report persist_results db_path", extra={"race_id": race_id})
+
     now_utc = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     standings: List[Dict[str, Any]] = snapshot["standings"]
     duration_ms: int = snapshot["clock_ms_frozen"]  # set by engine at freeze time
 
-    with sqlite3.connect(db_path) as cx:
+    with sqlite3.connect(DB_PATH) as cx:
         cx.execute("PRAGMA journal_mode=WAL;")
         cur = cx.cursor()
         log_ctx = {"race_id": race_id}
@@ -52,6 +67,15 @@ def persist_results(db_path: str, race_id: int, race_type: str, snapshot: Dict[s
         if cur.rowcount == 0:
             log.info("persist_results: already exists; skipping", extra=log_ctx)
             return
+
+        log.info(
+            "persist_results_counts",
+            extra={
+                "race_id": race_id,
+                "entrants_with_laps": len(laps_map or {}),
+                "total_laps": sum(len(v) for v in (laps_map or {}).values()),
+            },
+        )
 
         # Standings
         for pos, e in enumerate(standings, start=1):
