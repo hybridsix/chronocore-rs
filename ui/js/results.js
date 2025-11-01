@@ -346,24 +346,46 @@ function msToStr(ms) {
     return (v / 1000).toFixed(3);
   }
 
+  // Resolve race_id from query → DOM fallback → hash → localStorage.
   function getRaceIdFromQuery() {
-    const params = new URLSearchParams(window.location.search);
-    const val = params.get('race_id') || params.get('raceId');
-    if (val) {
-      const parsed = parseInt(val, 10);
-      if (!Number.isNaN(parsed) && parsed > 0) {
-        return parsed;
-      }
+    // Helper: parse a candidate value into a positive integer or null
+    function toId(val) {
+      if (val == null) return null;
+      const n = parseInt(String(val).trim(), 10);
+      return Number.isFinite(n) && n > 0 ? n : null;
     }
+
+    // 1) Query string (handle all legacy/new keys)
+    const qs = new URLSearchParams(window.location.search);
+    const fromQuery =
+        toId(qs.get('race')) ||
+        toId(qs.get('race_id')) ||
+        toId(qs.get('raceId'));
+    if (fromQuery) return fromQuery;
+
+    // 2) data-race-id attribute (works with server-side templating)
     const el = document.querySelector('[data-race-id]');
-    if (el) {
-      const viaAttr = parseInt(el.getAttribute('data-race-id') || '', 10);
-      if (!Number.isNaN(viaAttr) && viaAttr > 0) {
-        return viaAttr;
-      }
+    const fromAttr = el ? toId(el.getAttribute('data-race-id')) : null;
+    if (fromAttr) return fromAttr;
+
+    // 3) Hash fragment (#race=123) — useful for copy/paste links from some UIs
+    if (window.location.hash && window.location.hash.includes('=')) {
+      const hs = new URLSearchParams(window.location.hash.slice(1)); // drop '#'
+      const fromHash =
+          toId(hs.get('race')) ||
+          toId(hs.get('race_id')) ||
+          toId(hs.get('raceId'));
+      if (fromHash) return fromHash;
     }
+
+    // 4) Last-resort: whatever Race Control saved locally
+    const fromLS = toId(localStorage.getItem('rc.race_id'));
+    if (fromLS) return fromLS;
+
+    // No luck
     return null;
   }
+
 
   async function init() {
     let data;

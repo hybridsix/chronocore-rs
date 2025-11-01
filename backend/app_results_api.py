@@ -21,15 +21,13 @@ from .config_loader import get_db_path
 router = APIRouter()
 
 # Unified config drives the SQLite location so exports stay in lockstep with the engine.
-DB_PATH = str(get_db_path())
-
-def _db(cx_path: str):
-    return sqlite3.connect(cx_path)
+def _conn() -> sqlite3.Connection:
+    return sqlite3.connect(str(get_db_path()))
 
 @router.get("/results/{race_id}")
 def get_results(race_id: int) -> Dict[str, Any]:
     """Return frozen standings for the given race_id."""
-    with _db(DB_PATH) as cx:
+    with _conn() as cx:
         meta = cx.execute("SELECT race_type, frozen_utc, duration_ms FROM result_meta WHERE race_id=?", (race_id,)).fetchone()
         if not meta:
             raise HTTPException(status_code=404, detail="No frozen results for this race_id")
@@ -62,7 +60,7 @@ def get_results(race_id: int) -> Dict[str, Any]:
 @router.get("/results/{race_id}/laps")
 def get_results_laps(race_id: int) -> Dict[str, Any]:
     """Return lap-by-lap breakdown for entrants in the frozen snapshot."""
-    with _db(DB_PATH) as cx:
+    with _conn() as cx:
         row = cx.execute("SELECT 1 FROM result_meta WHERE race_id=?", (race_id,)).fetchone()
         if not row:
             raise HTTPException(status_code=404, detail="No frozen results for this race_id")
@@ -78,7 +76,7 @@ def get_results_laps(race_id: int) -> Dict[str, Any]:
 @router.get("/export/results_csv")
 def export_results_csv(race_id: int):
     """Generate a CSV export of standings (ordered by position)."""
-    with _db(DB_PATH) as cx:
+    with _conn() as cx:
         cur = cx.execute(
             """SELECT position, entrant_id, number, name, laps, last_ms, best_ms, gap_ms, lap_deficit, pit_count, status
                FROM result_standings WHERE race_id=? ORDER BY position""",
@@ -94,7 +92,7 @@ def export_results_csv(race_id: int):
 @router.get("/export/laps_csv")
 def export_laps_csv(race_id: int):
     """Generate lap history CSV (per entrant, ordered by race position)."""
-    with _db(DB_PATH) as cx:
+    with _conn() as cx:
         rows = cx.execute(
             """SELECT s.position, s.entrant_id, s.number, s.name, l.lap_no, l.lap_ms
                FROM result_standings s

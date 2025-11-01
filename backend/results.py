@@ -10,9 +10,12 @@ Responsibilities
 - Remain idempotent so repeated freeze attempts do not duplicate rows.
 """
 
+import logging
 from datetime import datetime, timezone
 import sqlite3
 from typing import Any, Dict, List
+
+log = logging.getLogger("ccrs.results")
 
 def persist_results(db_path: str, race_id: int, race_type: str, snapshot: Dict[str, Any], laps_map: Dict[int, List[int]]) -> None:
     """Persist a frozen snapshot into the results tables.
@@ -40,17 +43,15 @@ def persist_results(db_path: str, race_id: int, race_type: str, snapshot: Dict[s
     with sqlite3.connect(db_path) as cx:
         cx.execute("PRAGMA journal_mode=WAL;")
         cur = cx.cursor()
+        log_ctx = {"race_id": race_id}
 
-        # Guard: skip inserts if this race was already frozen earlier.
-        row = cur.execute("SELECT 1 FROM result_meta WHERE race_id = ?", (race_id,)).fetchone()
-        if row:
-            return
-
-        # Meta
         cur.execute(
-            "INSERT INTO result_meta (race_id, race_type, frozen_utc, duration_ms) VALUES (?,?,?,?)",
+            "INSERT OR IGNORE INTO result_meta (race_id, race_type, frozen_utc, duration_ms) VALUES (?,?,?,?)",
             (race_id, race_type, now_utc, duration_ms),
         )
+        if cur.rowcount == 0:
+            log.info("persist_results: already exists; skipping", extra=log_ctx)
+            return
 
         # Standings
         for pos, e in enumerate(standings, start=1):
@@ -60,7 +61,7 @@ def persist_results(db_path: str, race_id: int, race_type: str, snapshot: Dict[s
                    VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     race_id, pos, e["entrant_id"], e.get("number"), e.get("name"),
-                    e["laps"], _ms(e.get("last")), _ms(e.get("best")),
+                    e["laps"], _ms(e.get("last"), seconds=True), _ms(e.get("best")),
                     _ms(e.get("gap_s"), seconds=True),  # convert to ms if the snapshot has seconds
                     e.get("lap_deficit", 0), e.get("pit_count", 0), e.get("status", "ACTIVE"),
                 ),
