@@ -71,7 +71,7 @@ app = FastAPI(title="CCRS Backend", version="0.2.1")
 
 # Register auxiliary routers
 app.include_router(qual)
-app.include_router(results_router)
+app.include_router(results_router)   # no prefix; paths mount exactly as declared
 
 # ======================================================================
 # Heats listing (schema-aware, no required params, stable JSON shape)
