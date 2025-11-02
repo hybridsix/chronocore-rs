@@ -14,7 +14,7 @@ import logging
 from pathlib import Path
 from datetime import datetime, timezone
 import sqlite3
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from .db_schema import ensure_schema
 from .config_loader import get_db_path
@@ -168,14 +168,28 @@ def persist_results(DB_PATH: str, race_id: int, race_type: str, snapshot: Dict[s
             },
         )
 
+        # Capture entrant tags before writing standings so we can freeze them with results.
+        tags_by_id: Dict[int, Optional[str]] = {}
+        try:
+            rows = cur.execute("SELECT entrant_id, tag FROM entrants").fetchall()
+            tags_by_id = {
+                int(row[0]): (row[1] if row[1] else None)
+                for row in rows
+            }
+        except Exception:
+            # Some dev/test databases may not have an entrants table; fall back to snapshot tags only.
+            tags_by_id = {}
+
         # Standings
         for pos, e in enumerate(standings, start=1):
+            entrant_id = int(e["entrant_id"])
+            entrant_tag = e.get("tag") or tags_by_id.get(entrant_id)
             cur.execute(
                 """INSERT INTO result_standings
-                (race_id, position, entrant_id, number, name, laps, last_ms, best_ms, gap_ms, lap_deficit, pit_count, status)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (race_id, position, entrant_id, number, name, tag, laps, last_ms, best_ms, gap_ms, lap_deficit, pit_count, status)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
-                    race_id, pos, e["entrant_id"], e.get("number"), e.get("name"),
+                    race_id, pos, entrant_id, e.get("number"), e.get("name"), entrant_tag,
                     e["laps"],
                     _ms(e.get("last"), seconds=True),         # seconds → ms
                     _ms(e.get("best"), seconds=True),         # <-- add seconds=True

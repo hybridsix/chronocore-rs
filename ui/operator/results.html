@@ -74,6 +74,16 @@
           </div>
           <div id="heatList" class="rail__list"><!-- populated by JS --></div>
           <div class="rail__empty" id="railEmpty" hidden>No heats found.</div>
+
+          <!-- NEW: admin actions pinned in the rail -->
+          <div id="railAdmin" class="rail-admin">
+            <div class="rail-admin__group">
+              <button id="btnCopyLinks"  type="button" class="btn btn--secondary">Copy Links</button>
+              <button id="btnDeleteHeat" type="button" class="btn btn--danger">Delete Heat</button>
+              <button id="btnPurgeAll"   type="button" class="btn btn--danger-outline">Delete ALL</button>
+            </div>
+            <small class="rail-admin__hint">Actions affect frozen results only — not live race data.</small>
+          </div>
         </aside>
 
         <!-- Right / main pane -->

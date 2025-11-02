@@ -7,251 +7,13 @@
    ========================================================================== */
 
 /* ----- Layout shell: header/footer height come from operator.css/base.css ----- */
-/* ----- Layout shell: header/footer height come from operator.css/base.css ----- */
 .op-page.results main.wrap {
-  /* Prevent an accidental outer scrollbar:
-     we clamp the main area and handle all scrolling inside sub-panes. */
-  height: calc(100vh - var(--headerH-ops) - var(--footer-h));
-  overflow: hidden;
   /* Prevent an accidental outer scrollbar:
      we clamp the main area and handle all scrolling inside sub-panes. */
   height: calc(100vh - var(--headerH-ops) - var(--footer-h));
   overflow: hidden;
   padding: 16px;
 }
-
-/* Grid: left rail (fixed) + right pane (fills) */
-.results-layout {
-  display: grid;
-  grid-template-columns: 360px 1fr; /* left fixed, right fluid */
-  gap: 16px;
-  height: 100%;
-}
-
-/* ===== Left rail ===== */
-.rail {
-  display: grid;
-  grid-template-rows: auto 1fr auto; /* head / list / empty */
-  border: 1px solid #0b0f13;
-  border-radius: 12px;
-  background: #0f141a;
-  box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
-}
-
-.rail__head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 10px 12px;
-  background: linear-gradient(180deg, rgba(0,180,255,0.12), rgba(0,180,255,0.04));
-  border-bottom: 1px solid #0b2230;
-}
-
-.rail__title {
-  margin: 0;
-  font-size: 16px;
-  color: #bfefff;
-  letter-spacing: 0.4px;
-}
-
-.btn.btn-small {
-  padding: 6px 10px;
-  font-size: 14px;
-  border-radius: 8px;
-}
-
-.rail__list {
-  overflow: auto;           /* internal scroll only */
-  max-height: 100%;
-  padding: 6px;
-  display: grid;
-  gap: 6px;
-}
-
-/* Individual heat rows act like selectable pills */
-.heat {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 6px 10px;
-  padding: 10px;
-  border: 1px solid #0b2230;
-  border-radius: 10px;
-  cursor: pointer;
-  background: #12171c;
-}
-.heat:hover { filter: brightness(1.06); }
-.heat.is-selected {
-  background: rgba(0,180,255,0.14);
-  border-color: rgba(0,180,255,0.45);
-}
-.heat__name { font-weight: 700; }
-.heat__meta { color: #aac4d6; font-size: 14px; }
-.heat__count { font-family: var(--mono); opacity: 0.9; }
-
-/* Empty state below list (rarely shown) */
-.rail__empty {
-  padding: 10px;
-  text-align: center;
-  color: #b7cbdc;
-  border-top: 1px solid #0b2230;
-}
-
-/* ===== Right pane ===== */
-.pane {
-  display: grid;
-  grid-template-rows: auto auto 1fr auto; /* topbar / tabs / panel / exports */
-  gap: 12px;
-  min-width: 0;   /* enables child overflow to work in grid */
-}
-
-/* Top bar: name, chips, stats, freeze action */
-.topbar {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 12px;
-  border: 1px solid #0b0f13;
-  border-radius: 12px;
-  background: #0f141a;
-  box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0,0,0,.35);
-}
-
-.topbar__left { display: grid; gap: 6px; }
-.heat-title   { font-weight: 800; font-size: 22px; letter-spacing: .3px; }
-.heat-window  { color: #b5cfe4; font-size: 14px; }
-
-.chips { display: flex; gap: 8px; flex-wrap: wrap; }
-.chip {
-  padding: 4px 10px;
-  border-radius: 999px;
-  border: 1px solid #0b2230;
-  background: rgba(0,180,255,.08);
-  color: #d9f3ff;
-  font-size: 13px;
-  line-height: 1.2;
-}
-.chip--state { background: rgba(34,197,94,.14); border-color: rgba(34,197,94,.35); }
-.chip--warn  { background: rgba(234,179,8,.14); border-color: rgba(234,179,8,.35); }
-.chip--grid  { background: rgba(147,197,253,.12); border-color: rgba(147,197,253,.35); }
-
-.topbar__right { display: flex; align-items: center; gap: 16px; }
-.stats { display: flex; gap: 14px; }
-.stat { display: grid; gap: 2px; text-align: right; }
-.stat__label { font-size: 12px; color: #a7c2d7; }
-.stat__value { font-family: var(--mono); font-weight: 700; }
-
-/* Freeze controls */
-.freeze { display: flex; align-items: center; gap: 8px; }
-.select {
-  background: #12171c;
-  border: 1px solid #0b2230;
-  border-radius: 8px;
-  color: #e6ebf0;
-  padding: 6px 8px;
-}
-
-/* Tabs */
-.tabs {
-  display: flex;
-  gap: 8px;
-}
-.tab {
-  appearance: none;
-  border: 1px solid #0b2230;
-  background: #12171c;
-  color: #e6ebf0;
-  padding: 8px 12px;
-  border-radius: 10px;
-  cursor: pointer;
-}
-.tab.is-active {
-  background: rgba(0,180,255,.14);
-  border-color: rgba(0,180,255,.45);
-}
-
-/* Panels share a wrapper with an inner scrollable table container */
-.panel {
-  min-height: 0;          /* allow child to define the scroll area */
-}
-.panel.is-hidden { display: none; }
-
-.table-wrap {
-  height: 100%;
-  border: 1px solid #0b0f13;
-  border-radius: 12px;
-  background: #0f141a;
-  box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0, 0, 0, 0.35);
-  overflow: hidden;       /* clip sticky header sheen */
-  display: grid;
-  grid-template-rows: auto 1fr;
-}
-
-/* Tables: sticky thead + inner scroll for tbody */
-.table {
-  width: 100%;
-  border-collapse: separate; /* needed for sticky header shadow to look clean */
-  border-spacing: 0;
-}
-.table thead th {
-  position: sticky;
-  top: 0;
-  background: linear-gradient(180deg, rgba(0,180,255,.12), rgba(0,180,255,.04));
-  border-bottom: 1px solid #0b2230;
-  z-index: 2;
-  text-align: left;
-  padding: 8px 10px;
-  font-size: 14px;
-  color: #bfefff;
-}
-.table tbody {
-  display: block;          /* tbody scroll container */
-  overflow: auto;
-  max-height: calc(100vh - var(--headerH-ops) - var(--footer-h) - 240px); /* stable inner scroll */
-}
-.table thead,
-.table tbody tr {
-  display: table;          /* keep column sizing consistent */
-  width: 100%;
-  table-layout: fixed;
-}
-
-.table tbody td {
-  padding: 8px 10px;
-  border-bottom: 1px solid #0b0f13;
-}
-.table--mono td { font-family: var(--mono); }
-
-/* Empty states inside panels */
-.empty {
-  padding: 10px;
-  text-align: center;
-  color: #b7cbdc;
-  border-top: 1px solid #0b2230;
-}
-
-/* Exports row (bottom) */
-.exports {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-.exports .btn {
-  padding: 10px 12px;
-  border-radius: 10px;
-  border: 1px solid #0b2230;
-  background: #12171c;
-  color: #e6ebf0;
-  cursor: pointer;
-}
-.exports .btn[disabled] {
-  opacity: 0.55;
-  cursor: not-allowed;
-}
-
-/* Subtle zebra striping for dense tables */
-.table tbody tr:nth-child(odd) td { background: rgba(255,255,255,.02); }
 
 /* ==========================================================================
    Results layout glue — fixed canvas, single inner scroll
@@ -318,7 +80,7 @@
   height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 4px;           /* small gap between cards */
   padding-right: 4px; /* room for scrollbar */
 }
 
@@ -349,9 +111,9 @@
    ========================================================================== */
 
 #heatList {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 8px;               /* tight vertical spacing */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;               /* gap between cards for selection glow */
   padding-right: 4px;     /* clears scrollbar */
 }
 
@@ -361,6 +123,7 @@
   row-gap: 4px;
 
   width: 100%;
+  max-height: 70px;         /* prevent cards from growing beyond this */
   padding: 8px 10px;
 
   border-radius: 10px;
@@ -602,12 +365,13 @@
 /* ===== Left rail ===== */
 .rail {
   display: grid;
-  grid-template-rows: auto 1fr auto; /* head / list / empty */
+  grid-template-rows: auto 1fr auto; /* head / list / admin */
   border: 1px solid #0b0f13;
   border-radius: 12px;
   background: #0f141a;
   box-shadow: 0 0 0 1px #0c1116, 0 10px 24px rgba(0, 0, 0, 0.35);
   overflow: hidden;
+  max-height: 100%;
 }
 
 .rail__head {
@@ -617,6 +381,7 @@
   padding: 10px 12px;
   background: linear-gradient(180deg, rgba(0,180,255,0.12), rgba(0,180,255,0.04));
   border-bottom: 1px solid #0b2230;
+  flex-shrink: 0;
 }
 
 .rail__title {
@@ -633,11 +398,33 @@
 }
 
 .rail__list {
-  overflow: auto;           /* internal scroll only */
-  max-height: 100%;
+  overflow-y: auto;         /* enable vertical scrolling */
+  overflow-x: hidden;       /* prevent horizontal scroll */
   padding: 6px;
-  display: grid;
-  gap: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;                 /* small gap between cards */
+  /* Let the grid row sizing handle the height */
+  min-height: 0;            /* allow it to shrink below content size */
+}
+
+/* Scrollbar styling for webkit browsers */
+.rail__list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.rail__list::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 4px;
+}
+
+.rail__list::-webkit-scrollbar-thumb {
+  background: rgba(125, 253, 254, 0.3);
+  border-radius: 4px;
+}
+
+.rail__list::-webkit-scrollbar-thumb:hover {
+  background: rgba(125, 253, 254, 0.5);
 }
 
 /* Individual heat rows act like selectable pills */
@@ -650,6 +437,7 @@
   border-radius: 10px;
   cursor: pointer;
   background: #12171c;
+  flex-shrink: 0;           /* prevent cards from shrinking */
 }
 .heat:hover { filter: brightness(1.06); }
 .heat.is-selected {
@@ -847,13 +635,6 @@
   box-shadow: none !important;
 }
 
-/* Keep actual content surfaces visible */
-.op-page.results .table-wrap,
-.op-page.results .rail,
-.op-page.results .heat-card {
-  /* these keep their normal surfaces for contrast */
-  /* no change needed to backgrounds here */
-}
 
 /* In case a theme sets an inner gradient on the center column,
    this kills any pseudo-element fill that might be the culprit */
@@ -862,3 +643,91 @@
   content: none !important;
   display: none !important;
 }
+
+/* ==========================================================================
+   Results — add subtle outlines only (no color/style changes)
+   ========================================================================== */
+
+/* Race data band (top area above the table) */
+.op-page.results .topbar {
+  border: 1px solid var(--rc-line, rgba(125, 253, 254, 0.18));
+  border-radius: var(--rc-radius, 12px);
+  box-shadow: 0 0 0 1px var(--rc-line-weak, rgba(125, 253, 254, 0.10)) inset;
+  /* no background/padding changes here */
+}
+
+/* Standings/Lap Table container — border only */
+.op-page.results .table-wrap {
+  border: 1px solid var(--rc-line, rgba(125, 253, 254, 0.18));
+  border-radius: var(--rc-radius, 12px);
+  box-shadow: 0 0 0 1px var(--rc-line-weak, rgba(125, 253, 254, 0.10)) inset;
+  /* do not touch background or table colors */
+}
+
+/* Optional: keep heat cards’ look consistent without changing their fill */
+.op-page.results .heat-card {
+  border: 1px solid var(--rc-line, rgba(125, 253, 254, 0.18));
+  box-shadow: 0 0 0 1px var(--rc-line-weak, rgba(125, 253, 254, 0.10)) inset;
+  border-radius: var(--rc-radius, 12px);
+}
+/* ==========================================================================
+   Results — Heats rail frame + softer non-selected cards
+   ========================================================================== */
+
+/* Rail frame: same outline recipe as tables/topbar, no fill */
+.op-page.results .rail {
+  border: 1px solid var(--rc-line, rgba(125, 253, 254, 0.18));
+  border-radius: var(--rc-radius, 12px);
+  box-shadow: 0 0 0 1px var(--rc-line-weak, rgba(125, 253, 254, 0.10)) inset;
+  background: transparent;                 /* keep background consistent */
+  padding: 8px;                             /* space so cards don’t hug the frame */
+}
+
+/* Default (non-selected) heat cards: lighter border */
+.op-page.results .heat-card {
+  border-color: var(--rail-line, rgba(125, 253, 254, 0.10));  /* softer than tables */
+}
+
+/* Hover: a bit more visible, still subtle */
+.op-page.results .heat-card:hover {
+  border-color: var(--rc-line, rgba(125, 253, 254, 0.18));
+}
+
+/* Selected: keep the strong accent treatment */
+.op-page.results .heat-card.is-active,
+.op-page.results .heat-card[aria-current="true"] {
+  border-color: var(--accent, #7dfdfe);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+/* ---- Heats rail admin block ---- */
+.rail-admin{
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  margin-top: 10px;
+  border-top: 1px solid rgba(125,253,254,0.22); /* subtle Tron border */
+  background: rgba(0,0,0,0.20);                  /* blends with rail */
+  backdrop-filter: blur(2px);
+}
+.rail-admin__group{
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 6px;
+}
+.rail-admin .btn{ 
+  padding: 6px 8px; 
+  border-radius: 8px; 
+  border: 1px solid transparent; 
+}
+.btn--secondary{ border-color: rgba(255,255,255,0.2); background: rgba(255,255,255,0.06); }
+.btn--danger{ border-color: rgba(255,64,64,0.7); background: rgba(255,64,64,0.14); }
+.btn--danger-outline{ 
+  border-color: rgba(255,64,64,0.9); 
+  background: transparent; 
+  box-shadow: 0 0 0 1px rgba(255,64,64,0.4) inset, 0 0 4px rgba(255,64,64,0.25);
+}
+.rail-admin__hint{ opacity: 0.8; font-size: 12px; }
