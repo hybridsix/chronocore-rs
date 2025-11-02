@@ -1,502 +1,495 @@
 /* ============================================================================
-  Results - Frontend logic (no framework, no ARIA)
-  ============================================================================ */
+   CCRS Results & Exports — Robust Frontend
+   ----------------------------------------------------------------------------
+   What this file does:
+   1) Loads a left-rail list of races (prefers /results/recent; falls back to /heats).
+   2) Renders final results if available (/results/{id}); otherwise a live preview (/race/state).
+   3) Wires CSV/JSON export buttons to backend endpoints.
+   4) Never crashes if optional DOM nodes are missing — all selectors are guarded.
+
+   Contract assumptions (backend):
+   - /results/recent             -> {heats:[{heat_id, name, finished_utc, ...}, ...]}
+   - /heats  OR /results/heats   -> {heats:[{heat_id, name, started_utc?, finished_utc?, status?}, ...]}
+   - /results/{race_id}          -> { race_id, race_type, frozen_utc, duration_ms, entrants:[...] }
+   - /results/{race_id}/laps     -> { race_id, laps: { "<entrant_id>": [ms,...], ... } }
+   - /export/results_csv?race_id=ID
+   - /export/laps_csv?race_id=ID
+   ============================================================================ */
+
 (() => {
   'use strict';
 
-  // ----- DOM helpers ---------------------------------------------------------
+  // ---------------------------------------------------------------------------
+  // Lightweight DOM helpers (all null-safe by design)
+  // ---------------------------------------------------------------------------
   const $  = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
-  const API = {
-    heats:               '/results/heats',
-    summary:   (hid) =>  `/results/${hid}/summary`,
-    laps:      (hid) =>  `/results/${hid}/laps`,
-    export: {
-      standingsCSV: (hid) => `/export/standings.csv?heat_id=${hid}`,
-      standingsJSON:(hid) => `/export/standings.json?heat_id=${hid}`,
-      lapsCSV:      (hid) => `/export/laps.csv?heat_id=${hid}`,
-      lapsJSON:     (hid) => `/export/laps.json?heat_id=${hid}`,
-      passesCSV:    (hid) => `/export/passes.csv?heat_id=${hid}`,
-    },
-    grid: {
-      get:   (eid) => `/event/${eid}/qual`,
-      freeze:(eid) => `/event/${eid}/qual/freeze`,
-    },
-    runtime: '/setup/runtime',
-  };
+  // References (optional: these may be missing in early stubs)
+  const railEmpty      = $('#railEmpty');
+  const heatListEl     = $('#heatList');
+  const btnRefresh     = $('#btnRefreshHeats');
 
-  const heatListEl = $('#heatList');
-  const railEmpty  = $('#railEmpty');
+  const heatTitleEl    = $('#heatTitle');
+  const heatWindowEl   = $('#heatWindow');
+  const chipFrozenEl   = $('#chipFrozen');
+  const chipLiveEl     = $('#chipLive');
+  const chipGridEl     = $('#chipGrid');
 
-  const heatTitle  = $('#heatTitle');
-  const heatWindow = $('#heatWindow');
+  const statFastEl     = $('#statFast');
+  const statCarsEl     = $('#statCars');
 
-  const chipFrozen = $('#chipFrozen');
-  const chipLive   = $('#chipLive');
-  const chipGrid   = $('#chipGrid');
-
-  const statFast   = $('#statFast');
-  const statCars   = $('#statCars');
-
-  const freezePolicy = $('#freezePolicy');
-  const btnFreeze    = $('#btnFreeze');
-
-  const tabsButtons  = $$('.tab');
-  const panelStand   = $('#panel-standings');
-  const panelLaps    = $('#panel-laps');
-
-  const tbodyStand   = $('#tbodyStandings');
-  const tbodyLaps    = $('#tbodyLaps');
+  const tabsEl         = $('#tabs');
+  const tbodyStandings = $('#tbodyStandings');
   const standingsEmpty = $('#standingsEmpty');
+  const tbodyLaps      = $('#tbodyLaps');
   const lapsEmpty      = $('#lapsEmpty');
 
-  let heats = [];
-  let selectedHeat = null;
-  let journaling = false;
+  const btnStandingsCSV  = $('#btnStandingsCSV');
+  const btnStandingsJSON = $('#btnStandingsJSON');
+  const btnLapsCSV       = $('#btnLapsCSV');
+  const btnLapsJSON      = $('#btnLapsJSON');
+  const btnPassesCSV     = $('#btnPassesCSV'); // kept disabled unless journaling is on
 
-  // Buttons
-  $('#btnStandingsCSV').addEventListener('click', () => openExport('standingsCSV'));
-  $('#btnStandingsJSON').addEventListener('click', () => openExport('standingsJSON'));
-  $('#btnLapsCSV').addEventListener('click', () => openExport('lapsCSV'));
-  $('#btnLapsJSON').addEventListener('click', () => openExport('lapsJSON'));
-  $('#btnPassesCSV').addEventListener('click', () => openExport('passesCSV'));
-  $('#btnRefreshHeats').addEventListener('click', refreshHeats);
+  // State
+  let heats = [];                // normalized heats list for the rail
+  let selectedRaceId = null;     // currently viewed race id (heat_id)
 
-  // Tabs
-  tabsButtons.forEach(btn => {
-    btn.addEventListener('click', () => {
-      tabsButtons.forEach(b => b.classList.toggle('is-active', b === btn));
-      const tab = btn.dataset.tab;
-      panelStand.classList.toggle('is-hidden', tab !== 'standings');
-      panelLaps.classList.toggle('is-hidden', tab !== 'laps');
-      if (tab === 'laps' && selectedHeat) ensureLapsLoaded(selectedHeat.heat_id);
-    });
-  });
-
-  // Freeze action
-  btnFreeze.addEventListener('click', async () => {
-    if (!selectedHeat) return;
-    try {
-      const body = JSON.stringify({
-        source_heat_id: selectedHeat.heat_id,
-        policy: freezePolicy.value || 'demote',
-      });
-      const res = await fetch(API.grid.freeze(selectedHeat.event_id), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body,
-      });
-      if (!res.ok) throw new Error(`Freeze failed ${res.status}`);
-      await loadSummary(selectedHeat);
-      toast('Grid frozen.');
-    } catch (err) {
-      toast(err.message || 'Freeze failed.');
-    }
-  });
-
-  // Init
-  init();
-  async function init() {
-    try {
-      const rt = await getJSON(API.runtime);
-      journaling = !!(rt && (rt.journaling_enabled || rt.journal_enabled));
-      $('#btnPassesCSV').disabled = !journaling;
-    } catch {
-      journaling = false;
-      $('#btnPassesCSV').disabled = true;
-    }
-    await refreshHeats();
-  }
-
-// -----------------------------------------------------------------------------
-// Heats list loader (robust):
-// - Tries /heats first; falls back to /results/heats (or API.heats if set).
-// - Accepts either {heats:[…]} or […] payload shapes.
-// - Keeps selection if the previously selected heat still exists.
-// - Shows/hides the empty-rail state safely.
-// -----------------------------------------------------------------------------
-async function refreshHeats() {
-  try {
-    // Attempt primary path (/heats), then fallback
-    let payload;
-    try {
-      payload = await getJSON('/heats');
-    } catch (e1) {
-      // Use configured API.heats if provided, else hard fallback to /results/heats
-      const fallbackPath = (typeof API !== 'undefined' && API.heats) ? API.heats : '/results/heats';
-      payload = await getJSON(fallbackPath);
-    }
-
-    // Normalize payload shape → always an array
-    const list = Array.isArray(payload)
-      ? payload
-      : (Array.isArray(payload?.heats) ? payload.heats : []);
-
-    // Persist to the module/global expected by the rest of the UI
-    heats = list;
-
-    // Render and toggle empty-state UI
-    renderHeats(heats);
-    railEmpty.hidden = heats.length > 0;
-
-    // Maintain or choose selection
-    const hadSelection = !!selectedHeat;
-    const stillExists = hadSelection && heats.some(h => String(h.heat_id) === String(selectedHeat.heat_id));
-    if (!stillExists) {
-      if (heats[0]) {
-        selectHeat(heats[0]);           // auto-select newest/first item
-      } else {
-        selectedHeat = null;            // nothing to select
-      }
-    }
-  } catch (err) {
-    // Graceful failure: show empty state, clear list UI, toast the error
-    railEmpty.hidden = false;
-    heatListEl.innerHTML = '';
-    toast((err && err.message) ? err.message : 'Failed to load heats.');
-  }
-}
-
-
-  function renderHeats(list) {
-    heatListEl.innerHTML = '';
-    for (const h of list) {
-      const item = document.createElement('button');
-      item.className = 'heat';
-      if (selectedHeat && selectedHeat.heat_id === h.heat_id) item.classList.add('is-selected');
-      item.innerHTML = `
-  <div class="heat__name">${escapeHtml(h.name || '-')}</div>
-    <div class="heat__name">${escapeHtml(h.name || '-')}</div>
-        <div class="heat__count">${(h.laps_count ?? 0)} laps • ${(h.entrant_count ?? 0)} cars</div>
-        <div class="heat__meta">${escapeHtml(h.status || '')}</div>
-      `;
-      item.addEventListener('click', () => selectHeat(h));
-      heatListEl.appendChild(item);
-    }
-  }
-
-  function selectHeat(h) {
-    selectedHeat = h;
-    $$('.heat', heatListEl).forEach(btn => btn.classList.remove('is-selected'));
-    const idx = heats.findIndex(x => x.heat_id === h.heat_id);
-    if (idx >= 0) {
-      const btn = $$('.heat', heatListEl)[idx];
-      if (btn) btn.classList.add('is-selected');
-    }
-
-  heatTitle.textContent = `${h.name || '-'}  (ID ${h.heat_id})`;
-    heatTitle.textContent = `${h.name || '-'}  (ID ${h.heat_id})`;
-    heatWindow.textContent = formatWindow(h.started_utc, h.finished_utc);
-
-    tabsButtons.forEach(b => b.classList.toggle('is-active', b.dataset.tab === 'standings'));
-    panelStand.classList.remove('is-hidden');
-    panelLaps.classList.add('is-hidden');
-
-    loadSummary(h);
-    tbodyLaps.innerHTML = '';
-    lapsEmpty.hidden = true;
-  }
-
-  // Summary
-  async function loadSummary(h) {
-    try {
-      const summary = await getJSON(API.summary(h.heat_id));
-      let grid = null;
-      try { grid = await getJSON(API.grid.get(h.event_id)); } catch {}
-
-      chipFrozen.hidden = !summary.frozen;
-      chipLive.hidden   = !!summary.frozen;
-
-      if (grid && grid.frozen && grid.policy) {
-        chipGrid.hidden = false;
-        chipGrid.textContent = `Grid: Frozen (${grid.policy})`;
-        btnFreeze.textContent = 'Re-freeze Grid';
-        if (['demote','use_next_valid','exclude'].includes(grid.policy)) {
-          freezePolicy.value = grid.policy;
-        }
-      } else {
-        chipGrid.hidden = true;
-        btnFreeze.textContent = 'Freeze Grid';
-      }
-
-      statFast.textContent = msToStr(summary.totals?.fastest_ms);
-  statCars.textContent = String(summary.totals?.cars_classified ?? '-')
-    statCars.textContent = String(summary.totals?.cars_classified ?? '-');
-
-      renderStandings(summary.standings || []);
-      standingsEmpty.hidden = (summary.standings || []).length > 0;
-    } catch (err) {
-      renderStandings([]);
-      standingsEmpty.hidden = false;
-      toast(err.message || 'Failed to load summary.');
-    }
-  }
-
-  function renderStandings(rows) {
-    let html = '';
-    for (const r of rows) {
-      html += `
-        <tr>
-          <td>${r.position ?? ''}</td>
-          <td>${escapeHtml(r.number ?? '')}</td>
-          <td>${escapeHtml(r.name ?? '')}</td>
-          <td>${r.laps ?? 0}</td>
-          <td>${r.lap_deficit ?? 0}</td>
-          <td>${msToStr(r.last_ms)}</td>
-          <td>${msToStr(r.best_ms)}</td>
-          <td>${msToStr(r.pace_5_ms ?? r.best_ms)}</td>
-          <td>${r.grid_index ?? ''}</td>
-          <td>${r.brake_valid === false ? '✗' : '✓'}</td>
-          <td>${r.pit_count ?? 0}</td>
-        </tr>
-      `;
-    }
-    tbodyStand.innerHTML = html;
-  }
-
-  // Laps
-  let lapsLoadedFor = null;
-  async function ensureLapsLoaded(heatId) {
-    if (lapsLoadedFor === heatId) return;
-    try {
-      const rows = await getJSON(API.laps(heatId));
-      lapsEmpty.hidden = rows.length > 0;
-      tbodyLaps.innerHTML = '';
-
-      const CHUNK = 400;
-      let i = 0;
-      (function appendChunk() {
-        const end = Math.min(i + CHUNK, rows.length);
-        let html = '';
-        for (; i < end; i++) {
-          const r = rows[i];
-          html += `
-            <tr>
-              <td>${escapeHtml(r.number ?? '')}</td>
-              <td>${escapeHtml(r.name ?? '')}</td>
-              <td>${r.lap_num ?? ''}</td>
-              <td>${r.lap_ms ?? ''}</td>
-              <td>${msToStr(r.lap_ms)}</td>
-              <td>${r.cumulative_ms ?? ''}</td>
-              <td>${msToStr(r.cumulative_ms ?? null)}</td>
-              <td>${r.ts_ms ?? ''}</td>
-              <td>${r.ts_utc ? escapeHtml(r.ts_utc) : ''}</td>
-              <td>${r.flag ?? ''}</td>
-              <td>${r.source_id ?? ''}</td>
-              <td>${escapeHtml(r.location_id ?? '')}</td>
-              <td>${escapeHtml(r.location_label ?? '')}</td>
-              <td>${r.inferred ?? 0}</td>
-            </tr>
-          `;
-        }
-        tbodyLaps.insertAdjacentHTML('beforeend', html);
-        if (i < rows.length) requestAnimationFrame(appendChunk);
-      })();
-
-      lapsLoadedFor = heatId;
-    } catch (err) {
-      tbodyLaps.innerHTML = '';
-      lapsEmpty.hidden = false;
-      toast(err.message || 'Failed to load laps.');
-    }
-  }
-
-  // Utilities
-  async function getJSON(url, opts = {}) {
-    const res = await fetch(url, { credentials: 'same-origin', ...opts });
-    if (!res.ok) throw new Error(`Request failed ${res.status}`);
+  // ---------------------------------------------------------------------------
+  // Fetch JSON helper with explicit errors (no silent failures).
+  // ---------------------------------------------------------------------------
+  async function getJSON(url) {
+    const res = await fetch(url, { cache: 'no-store' });
+    if (!res.ok) throw new Error(`Request failed ${res.status} for ${url}`);
     return res.json();
   }
 
-function msToStr(ms) {
-  if (ms == null || isNaN(ms)) return '-';
-    if (ms == null || isNaN(ms)) return '-';
-  const m = Math.floor(ms / 60000);
-  const s = ((ms % 60000) / 1000).toFixed(3).padStart(6, '0');
-  return `${String(m).padStart(2, '0')}:${s}`;
-}
-
-
-  function escapeHtml(s) {
-    return String(s ?? '').replace(/[&<>"']/g, c => (
-      { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-    ));
+  // ---------------------------------------------------------------------------
+  // ID parsers
+  // ---------------------------------------------------------------------------
+  function toId(v) {
+    if (v == null) return null;
+    const n = parseInt(String(v).trim(), 10);
+    return Number.isFinite(n) && n > 0 ? n : null;
   }
 
-  function formatWindow(startIso, endIso) {
-    const s = startIso ? new Date(startIso) : null;
-    const e = endIso ? new Date(endIso) : null;
-  if (!s && !e) return '-';
-    if (!s && !e) return '-';
-    const fmt = (d) => d.toLocaleString();
-    return e ? `${fmt(s)} → ${fmt(e)}` : `${fmt(s)} → (running)`;
-  }
+  function getRaceIdFromPage() {
+    // Query params first (?race= / ?race_id= / ?raceId=)
+    const params = new URLSearchParams(window.location.search);
+    const direct =
+      toId(params.get('race')) ||
+      toId(params.get('race_id')) ||
+      toId(params.get('raceId'));
+    if (direct) return direct;
 
-  function openExport(kind) {
-    if (!selectedHeat) return;
-    window.open(API.export[kind](selectedHeat.heat_id), '_blank', 'noopener');
-  }
-
-  function toast(msg) {
-    console.log('[Results]', msg);
-    alert(msg); // minimal MVP toast; replace with your toast util when ready
-  }
-})();
-
-/* ----------------------------------------------------------------------------
-   Final Results view (race freeze + exports)
-   ---------------------------------------------------------------------------- */
-(async function () {
-  'use strict';
-
-  const tableResults = document.querySelector('#tblResults');
-  if (!tableResults) {
-    return; // Page does not host the final-results layout; skip wiring.
-  }
-
-  const raceId = getRaceIdFromQuery();
-  if (!raceId) {
-    console.warn('[Results] race_id missing in query params.');
-    return;
-  }
-
-  const els = {
-    badge: document.querySelector('#resultsBadge'),
-    table: tableResults.querySelector('tbody'),
-    laps:  document.querySelector('#tblLaps tbody'),
-    btnCSV: document.querySelector('#btnCSVResults'),
-    btnCSVlaps: document.querySelector('#btnCSVlaps'),
-  };
-
-  async function fetchJSON(url) {
-    const r = await fetch(url, { cache: 'no-store', credentials: 'same-origin' });
-    if (!r.ok) throw new Error(`${r.status}`);
-    return r.json();
-  }
-
-  function ms(v) {
-    if (v == null || Number.isNaN(v)) return '';
-    return (v / 1000).toFixed(3);
-  }
-
-  // Resolve race_id from query → DOM fallback → hash → localStorage.
-  function getRaceIdFromQuery() {
-    // Helper: parse a candidate value into a positive integer or null
-    function toId(val) {
-      if (val == null) return null;
-      const n = parseInt(String(val).trim(), 10);
-      return Number.isFinite(n) && n > 0 ? n : null;
-    }
-
-    // 1) Query string (handle all legacy/new keys)
-    const qs = new URLSearchParams(window.location.search);
-    const fromQuery =
-        toId(qs.get('race')) ||
-        toId(qs.get('race_id')) ||
-        toId(qs.get('raceId'));
-    if (fromQuery) return fromQuery;
-
-    // 2) data-race-id attribute (works with server-side templating)
+    // data-race-id on any element
     const el = document.querySelector('[data-race-id]');
-    const fromAttr = el ? toId(el.getAttribute('data-race-id')) : null;
-    if (fromAttr) return fromAttr;
-
-    // 3) Hash fragment (#race=123) — useful for copy/paste links from some UIs
-    if (window.location.hash && window.location.hash.includes('=')) {
-      const hs = new URLSearchParams(window.location.hash.slice(1)); // drop '#'
-      const fromHash =
-          toId(hs.get('race')) ||
-          toId(hs.get('race_id')) ||
-          toId(hs.get('raceId'));
-      if (fromHash) return fromHash;
+    if (el) {
+      const viaAttr = toId(el.getAttribute('data-race-id'));
+      if (viaAttr) return viaAttr;
     }
 
-    // 4) Last-resort: whatever Race Control saved locally
-    const fromLS = toId(localStorage.getItem('rc.race_id'));
-    if (fromLS) return fromLS;
+    // Hash fallback (#race=…)
+    if (location.hash && location.hash.includes('=')) {
+      const hs = new URLSearchParams(location.hash.slice(1));
+      const viaHash =
+        toId(hs.get('race')) ||
+        toId(hs.get('race_id')) ||
+        toId(hs.get('raceId'));
+      if (viaHash) return viaHash;
+    }
 
-    // No luck
-    return null;
+    // Last selection
+    const ls = toId(localStorage.getItem('rc.race_id'));
+    return ls || null;
   }
 
+  // ---------------------------------------------------------------------------
+  // Utilities: ms → "s.mmm" text; ISO trimming
+  // ---------------------------------------------------------------------------
+  const fmtSec = (ms) => (ms == null ? '' : (Number(ms) / 1000).toFixed(3));
 
-  async function init() {
-    let data;
-    let laps;
-    try {
-      data = await fetchJSON(`/results/${raceId}`);
-      laps = await fetchJSON(`/results/${raceId}/laps`);
-      if (els.badge) {
-        els.badge.textContent = 'Final Results';
-        els.badge.classList.add('badge-final');
-      }
-    } catch (err) {
-      console.warn('[Results] Frozen results unavailable, falling back to live preview.', err);
-      data = await fetchJSON(`/race/state?race_id=${raceId}`);
-      if (els.badge) {
-        els.badge.textContent = 'Live Preview (Not Final)';
-        els.badge.classList.add('badge-live');
-      }
-    }
-
-    renderStandings(data);
-    if (laps) renderLaps(laps);
-
-    if (els.btnCSV) {
-      els.btnCSV.onclick = () => {
-        window.location.href = `/export/results_csv?race_id=${raceId}`;
-      };
-    }
-    if (els.btnCSVlaps) {
-      els.btnCSVlaps.onclick = () => {
-        window.location.href = `/export/laps_csv?race_id=${raceId}`;
-      };
-    }
+  // ---------------------------------------------------------------------------
+  // Helpers for rail text formatting
+  // ---------------------------------------------------------------------------
+  function orDash(v) {
+    return (v === null || v === undefined || v === '') ? '-' : v;
   }
 
-  function renderStandings(data) {
-    if (!els.table) return;
-    const rows = (data.entrants || data.standings || []);
-    els.table.innerHTML = rows.map((e) => `
-      <tr>
-        <td>${e.position ?? ''}</td>
-        <td>${e.number ?? ''}</td>
-        <td>${e.name ?? ''}</td>
-        <td>${e.laps ?? ''}</td>
-        <td>${ms(normalizeMs(e.best_ms, e.best))}</td>
-        <td>${ms(normalizeMs(e.last_ms, e.last))}</td>
-        <td>${ms(normalizeMs(e.gap_ms, e.gap_s))}</td>
-        <td>${e.lap_deficit ?? 0}</td>
-        <td>${e.pit_count ?? 0}</td>
-        <td>${e.status ?? 'ACTIVE'}</td>
-      </tr>
-    `).join('');
+  function compactIso(iso) {
+    // "2025-11-01T01:45:41-04:00" → "2025-11-01 01:45:41 -04:00"
+    if (!iso) return '-';
+    const str = String(iso);
+    const parts = str.split('T');
+    if (parts.length !== 2) return str;
+    const timePart = parts[1];
+    const offsetMatch = timePart.match(/^([0-9:.]+)([+-].+|Z)$/);
+    if (offsetMatch) {
+      const time = offsetMatch[1];
+      const offset = offsetMatch[2] === 'Z' ? ' Z' : ` ${offsetMatch[2]}`;
+      return `${parts[0]} ${time}${offset}`;
+    }
+    return `${parts[0]} ${timePart}`;
   }
 
-  function renderLaps(payload) {
-    if (!els.laps || !payload || !payload.laps) {
-      return;
-    }
-    const out = [];
-    Object.entries(payload.laps).forEach(([entrantId, arr]) => {
-      arr.forEach((lapMs, i) => {
-        out.push(`<tr><td>${entrantId}</td><td>${i + 1}</td><td>${ms(lapMs)}</td></tr>`);
+  // ---------------------------------------------------------------------------
+  // Rail rendering (click-to-load). Accepts either recent or heats payloads.
+  // ---------------------------------------------------------------------------
+  function renderHeats(list) {
+  const listEl = heatListEl;
+  if (!listEl) return;
+
+    heats = (Array.isArray(list) ? list : [])
+      .map(h => ({
+        heat_id:     toId(h?.heat_id ?? h?.race_id ?? h?.id),
+        name:        h?.name || h?.race_type || `Race ${h?.heat_id ?? h?.race_id ?? h?.id ?? ''}`,
+        event_label: h?.event_label ?? null,
+        session_label: h?.session_label ?? null,
+        race_mode:   h?.race_mode ?? h?.name ?? h?.race_type ?? null,
+        frozen_iso_local: h?.frozen_iso_local ?? null,
+        finished_utc:     h?.finished_utc ?? h?.frozen_iso_utc ?? null,
+      }))
+      .filter(h => !!h.heat_id);
+
+    listEl.innerHTML = heats.map(h => {
+      const isSelected = String(h.heat_id) === String(selectedRaceId);
+      const eventLabel = orDash(h.event_label);
+      const sessionLabel = orDash(h.session_label);
+      const raceMode = orDash(h.race_mode || h.name);
+      const when = compactIso(h.frozen_iso_local || h.finished_utc);
+
+      return `
+        <button class="heat-card${isSelected ? ' heat-card--selected' : ''}" data-heat-id="${h.heat_id}" title="${raceMode}" aria-current="${isSelected ? 'true' : 'false'}">
+          <div class="heat-card__top">
+            <span class="heat-card__event">${eventLabel}</span>
+            <span class="heat-card__session">${sessionLabel}</span>
+          </div>
+          <div class="heat-card__mid">
+            <span class="heat-card__mode">${raceMode}</span>
+          </div>
+          <div class="heat-card__bottom">
+            <span class="heat-card__time">${when}</span>
+          </div>
+        </button>
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('.heat-card').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const id = toId(btn.getAttribute('data-heat-id'));
+        if (!id) return;
+        const heat = heats.find(x => x.heat_id === id);
+        if (heat) selectHeat(heat);
       });
     });
-    els.laps.innerHTML = out.join('');
+
+    if (railEmpty) railEmpty.hidden = heats.length > 0;
   }
 
-  function normalizeMs(msValue, secondsValue) {
-    if (msValue != null) return msValue;
-    if (secondsValue != null) {
-      const num = Number(secondsValue);
-      if (!Number.isNaN(num)) {
-        return num * 1000;
+  function selectHeat(heat) {
+    const id = heat ? toId(heat.heat_id ?? heat.race_id ?? heat.id) : null;
+    if (!id) return;
+
+    selectedRaceId = id;
+    try { localStorage.setItem('rc.race_id', String(id)); } catch {}
+
+    if (heatListEl) {
+      heatListEl.querySelectorAll('.heat-card').forEach(btn => {
+        const btnId = toId(btn.getAttribute('data-heat-id'));
+        const match = btnId === id;
+        btn.classList.toggle('heat-card--selected', match);
+        btn.setAttribute('aria-current', match ? 'true' : 'false');
+      });
+    }
+
+    renderFinalOrLive(id).catch(err => console.warn(err));
+    wireExports(id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Heats loader preference order: /results/recent → /heats → /results/heats
+  // ---------------------------------------------------------------------------
+  async function refreshHeats() {
+    let payload;
+    try {
+      payload = await getJSON('/results/recent');
+    } catch (eRecent) {
+      try {
+        payload = await getJSON('/heats');
+      } catch (eHeats) {
+        try {
+          payload = await getJSON('/results/heats');
+        } catch (ePrefixed) {
+          if (railEmpty) railEmpty.hidden = false;
+          if (heatListEl) heatListEl.innerHTML = '';
+          console.warn('[Results] heats unavailable', eRecent, eHeats, ePrefixed);
+          return;
+        }
       }
     }
-    return null;
+
+    const list = Array.isArray(payload) ? payload
+      : (Array.isArray(payload?.heats) ? payload.heats : []);
+    renderHeats(list);
+
+    // Auto-select newest if nothing is selected
+    if (!selectedRaceId && heats[0]) {
+      selectHeat(heats[0]);
+    }
   }
 
-  init();
+  // ---------------------------------------------------------------------------
+  // Right pane: Final-first, Live-fallback
+  // ---------------------------------------------------------------------------
+  async function renderFinalOrLive(raceId) {
+    // Clear chips first
+    if (chipFrozenEl) chipFrozenEl.hidden = true;
+    if (chipLiveEl)   chipLiveEl.hidden   = true;
+
+    // Try frozen results
+    try {
+      const finalData = await getJSON(`/results/${raceId}`);
+      if (chipFrozenEl) chipFrozenEl.hidden = false;
+
+      // Title + window info
+      setTitle(finalData?.race_type || `Race ${raceId}`);
+      setWindow(`Frozen ${finalData?.frozen_utc || ''} • Duration ${fmtDuration(finalData?.duration_ms)}`);
+
+      renderStandings(finalData);
+      await renderLaps(raceId); // tolerant: empty if none persisted
+      calcQuickStatsFromFinal(finalData);
+      return;
+    } catch {
+      // Fall through to live preview
+    }
+
+    // Live preview
+    try {
+      const live = await getJSON(`/race/state?race_id=${raceId}`);
+      if (chipLiveEl) chipLiveEl.hidden = false;
+
+      setTitle(live?.race_type || `Race ${raceId}`);
+  setWindow('Live preview - not final');
+
+      renderStandings(live);
+      clearLapsTable();
+      calcQuickStatsFromLive(live);
+    } catch (err) {
+      console.warn('[Results] Unable to render final or live state', err);
+      // Clear UI softly
+      setTitle(`Race ${raceId}`);
+      setWindow('Unavailable');
+      clearStandingsTable();
+      clearLapsTable();
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Standings rendering (accepts frozen {entrants:[...]} or live {standings:[...]})
+  // ---------------------------------------------------------------------------
+  function renderStandings(payload) {
+    if (!tbodyStandings) return;
+
+    const rows = payload?.entrants || payload?.standings || [];
+    if (standingsEmpty) standingsEmpty.hidden = rows.length > 0;
+
+    const html = rows.map((e, i) => {
+      // Normalize ms fields: prefer *_ms; else convert seconds.
+      const bestMs = e.best_ms ?? (e.best != null ? Math.round(Number(e.best) * 1000) : null);
+      const lastMs = e.last_ms ?? (e.last != null ? Math.round(Number(e.last) * 1000) : null);
+      const gapMs  = e.gap_ms  ?? (e.gap_s != null ? Math.round(Number(e.gap_s) * 1000) : null);
+
+      return `
+        <tr>
+          <td>${e.position ?? (i + 1)}</td>
+          <td>${e.number ?? ''}</td>
+          <td>${e.name ?? ''}</td>
+          <td>${e.laps ?? 0}</td>
+          <td>${e.lap_deficit ?? 0}</td>
+          <td>${fmtSec(lastMs)}</td>
+          <td>${fmtSec(bestMs)}</td>
+          <td>${fmtSec(null) /* Pace-5 not yet computed */}</td>
+          <td>${'' /* Grid placeholder */}</td>
+          <td>${'' /* Brake placeholder */}</td>
+          <td>${e.pit_count ?? 0}</td>
+        </tr>
+      `;
+    }).join('');
+
+    tbodyStandings.innerHTML = html;
+  }
+
+  function clearStandingsTable() {
+    if (tbodyStandings) tbodyStandings.innerHTML = '';
+    if (standingsEmpty) standingsEmpty.hidden = false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Laps rendering (frozen only)
+  // ---------------------------------------------------------------------------
+  async function renderLaps(raceId) {
+    if (!tbodyLaps) return;
+    try {
+      const data = await getJSON(`/results/${raceId}/laps`);
+      const map = data?.laps || {};
+      const rows = [];
+
+      // Render by entrant, in ascending lap order, with simple cumulative.
+      Object.entries(map).forEach(([entrantId, arr]) => {
+        let cumul = 0;
+        (arr || []).forEach((lapMs, idx) => {
+          cumul += Number(lapMs) || 0;
+          rows.push(`
+            <tr>
+              <td>${entrantId}</td>
+              <td>${'' /* Name not present in this endpoint */}</td>
+              <td>${idx + 1}</td>
+              <td>${lapMs}</td>
+              <td>${fmtSec(lapMs)}</td>
+              <td>${cumul}</td>
+              <td>${fmtSec(cumul)}</td>
+              <td>${'' /* ts_ms not in frozen laps */}</td>
+              <td>${'' /* UTC not in frozen laps */}</td>
+              <td>${'' /* Flag */}</td>
+              <td>${'' /* Src */}</td>
+              <td>${'' /* Loc ID */}</td>
+              <td>${'' /* Loc */}</td>
+              <td>${'' /* Inf */}</td>
+            </tr>
+          `);
+        });
+      });
+
+      tbodyLaps.innerHTML = rows.join('');
+      if (lapsEmpty) lapsEmpty.hidden = rows.length > 0;
+    } catch {
+      clearLapsTable();
+    }
+  }
+
+  function clearLapsTable() {
+    if (tbodyLaps) tbodyLaps.innerHTML = '';
+    if (lapsEmpty) lapsEmpty.hidden = false;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Quick stats
+  // ---------------------------------------------------------------------------
+  function calcQuickStatsFromFinal(finalData) {
+    const rows = finalData?.entrants || [];
+    // Fast lap: min best_ms > 0
+    const bests = rows.map(r => r.best_ms).filter(v => v != null && Number(v) > 0);
+    const minBest = bests.length ? Math.min(...bests) : null;
+    if (statFastEl) statFastEl.textContent = minBest != null ? `${fmtSec(minBest)}s` : '-';
+
+    // Classified: entrants with laps > 0
+    const total = rows.length;
+    const classified = rows.filter(r => Number(r.laps) > 0).length;
+    if (statCarsEl) statCarsEl.textContent = total ? `${classified}/${total}` : '-';
+  }
+
+  function calcQuickStatsFromLive(liveData) {
+    const rows = liveData?.standings || [];
+    const total = rows.length;
+    const classified = rows.filter(r => Number(r.laps) > 0).length;
+    if (statCarsEl) statCarsEl.textContent = total ? `${classified}/${total}` : '-';
+
+    // Fast lap (live): best or best_ms
+    const bests = rows.map(r => (r.best_ms ?? (r.best != null ? Math.round(Number(r.best) * 1000) : null)))
+                      .filter(v => v != null && Number(v) > 0);
+    const minBest = bests.length ? Math.min(...bests) : null;
+    if (statFastEl) statFastEl.textContent = minBest != null ? `${fmtSec(minBest)}s` : '-';
+  }
+
+  // ---------------------------------------------------------------------------
+  // Header helpers
+  // ---------------------------------------------------------------------------
+  function setTitle(text)   { if (heatTitleEl)  heatTitleEl.textContent  = text || '-'; }
+  function setWindow(text)  { if (heatWindowEl) heatWindowEl.textContent = text || '-'; }
+
+  function fmtDuration(ms) {
+    if (!Number.isFinite(ms)) return '-';
+    const s = Math.floor(ms / 1000);
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Tabs (simple toggle)
+  // ---------------------------------------------------------------------------
+  function wireTabs() {
+    if (!tabsEl) return;
+    tabsEl.addEventListener('click', (ev) => {
+      const btn = ev.target.closest('.tab');
+      if (!btn) return;
+      const tab = btn.getAttribute('data-tab');
+      if (!tab) return;
+
+      // Toggle active class on buttons
+      $$('.tab', tabsEl).forEach(b => b.classList.toggle('is-active', b === btn));
+
+      // Show/hide panels by ID
+      $('#panel-standings')?.classList.toggle('is-hidden', tab !== 'standings');
+      $('#panel-laps')?.classList.toggle('is-hidden', tab !== 'laps');
+    });
+  }
+
+  // ---------------------------------------------------------------------------
+  // Exports
+  // ---------------------------------------------------------------------------
+  function wireExports(raceId) {
+    const bust = () => `&_=${Date.now()}`;
+
+    if (btnStandingsCSV) {
+      btnStandingsCSV.onclick = () => {
+        if (!raceId) return;
+        window.location.href = `/export/results_csv?race_id=${raceId}${bust()}`;
+      };
+    }
+    if (btnLapsCSV) {
+      btnLapsCSV.onclick = () => {
+        if (!raceId) return;
+        window.location.href = `/export/laps_csv?race_id=${raceId}${bust()}`;
+      };
+    }
+    if (btnStandingsJSON) {
+      btnStandingsJSON.onclick = () => {
+        if (!raceId) return;
+        window.open(`/results/${raceId}`, '_blank');
+      };
+    }
+    if (btnLapsJSON) {
+      btnLapsJSON.onclick = () => {
+        if (!raceId) return;
+        window.open(`/results/${raceId}/laps`, '_blank');
+      };
+    }
+    // btnPassesCSV remains disabled unless you wire /passes.csv?heat_id=
+  }
+
+  // ---------------------------------------------------------------------------
+  // Bootstrap
+  // ---------------------------------------------------------------------------
+  document.addEventListener('DOMContentLoaded', async () => {
+    wireTabs();
+
+    // Pull a race id from the URL (or last selection)
+    selectedRaceId = getRaceIdFromPage();
+
+    // Fill rail (non-blocking)
+    refreshHeats().catch(() => { /* rail is optional */ });
+
+    // If we have a race id, render it immediately, even if the rail is empty.
+    if (selectedRaceId) {
+      try { localStorage.setItem('rc.race_id', String(selectedRaceId)); } catch {}
+      await renderFinalOrLive(selectedRaceId);
+    }
+
+    // CSV/JSON buttons track the current selection
+    wireExports(selectedRaceId);
+
+    // Manual refresh button on the rail
+    if (btnRefresh) btnRefresh.addEventListener('click', () => refreshHeats());
+  });
 })();

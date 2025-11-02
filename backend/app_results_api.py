@@ -1,258 +1,228 @@
 """
-backend/app_results_api.py
---------------------------
-FastAPI router exposing frozen-results JSON and CSV exports.
+app_results_api.py
+------------------
+FastAPI router exposing frozen race results from SQLite.
 
-Design goals
-------------
-- Read ONLY from the frozen artifacts written at CHECKERED:
-  result_meta, result_standings, result_laps
-- No recomputation here; the engine is the source of truth.
-- Absolute DB path resolution so API and engine hit the same SQLite file.
-- Tolerant laps endpoint: returns {} (not 404) when laps weren’t persisted.
-- "Recent results" listing to populate the left rail even if heats/races are empty.
+This module stays read-only: it upgrades historical `result_meta` tables to
+include the new human context fields and serves REST responses for UI rails
+and exports. Connections are short-lived and created per request to avoid
+holding locks on the results database.
 """
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, Response
-import pathlib
+import json
 import sqlite3
-import csv
-import io
-from typing import Dict, Any, List
+from pathlib import Path
+from typing import Any, Dict, List, Optional, Tuple
 
-from .config_loader import get_db_path
+from fastapi import APIRouter, HTTPException
+
+# ---------------------------------------------------------------------------
+# DB helpers (use your existing get_db_path if you have one)
+# ---------------------------------------------------------------------------
+
+def get_db_path() -> Path:
+    # Keep your existing logic if different
+    return Path("backend/db/laps.sqlite")
+
+def _connect() -> sqlite3.Connection:
+    cx = sqlite3.connect(str(get_db_path()))
+    cx.row_factory = sqlite3.Row
+    return cx
+
+def _table_has_col(db: sqlite3.Connection, table: str, col: str) -> bool:
+    for row in db.execute(f"PRAGMA table_info({table})").fetchall():
+        if row["name"] == col:
+            return True
+    return False
+
+def _ensure_result_schema(db: sqlite3.Connection) -> None:
+    # Ensure result tables exist (lightweight, safe if they already do)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS result_meta (
+            race_id          INTEGER PRIMARY KEY,
+            race_type        TEXT,
+            frozen_utc       INTEGER,
+            duration_ms      INTEGER,
+            clock_ms_frozen  INTEGER
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS result_standings (
+            race_id     INTEGER,
+            position    INTEGER,
+            entrant_id  INTEGER,
+            number      TEXT,
+            name        TEXT,
+            laps        INTEGER,
+            last_ms     INTEGER,
+            best_ms     INTEGER,
+            gap_ms      INTEGER,
+            lap_deficit INTEGER,
+            pit_count   INTEGER,
+            status      TEXT,
+            PRIMARY KEY(race_id, position)
+        )
+    """)
+    db.execute("""
+        CREATE TABLE IF NOT EXISTS result_laps (
+            race_id    INTEGER,
+            entrant_id INTEGER,
+            lap_no     INTEGER,
+            lap_ms     INTEGER,
+            PRIMARY KEY(race_id, entrant_id, lap_no)
+        )
+    """)
+
+    # NEW columns on result_meta (idempotent ALTERs) to support richer exports
+    new_cols = [
+        ("event_label",      "TEXT"),
+        ("session_label",    "TEXT"),
+        ("race_mode",        "TEXT"),
+        ("frozen_iso_utc",   "TEXT"),
+        ("frozen_iso_local", "TEXT"),
+    ]
+    for col, typ in new_cols:
+        if not _table_has_col(db, "result_meta", col):
+            # Each ALTER executes at most once; safe to run on every request.
+            db.execute(f"ALTER TABLE result_meta ADD COLUMN {col} {typ}")
+
+    db.commit()
 
 # ---------------------------------------------------------------------------
 # Router
 # ---------------------------------------------------------------------------
-router = APIRouter()
 
+router = APIRouter(prefix="/results", tags=["results"])
 
-# ---------------------------------------------------------------------------
-# SQLite helpers
-# ---------------------------------------------------------------------------
-def _conn() -> sqlite3.Connection:
-    """
-    Open a SQLite connection to the configured database.
-    Always resolve to an absolute path to avoid CWD-related surprises.
-    """
-    db_abs = str(pathlib.Path(get_db_path()).resolve())
-    cx = sqlite3.connect(db_abs)
-    return cx
+def _meta_row_to_dict(r: sqlite3.Row) -> Dict[str, Any]:
+    # Always include new keys; None if the column was missing on legacy DBs.
+    return {
+        "race_id":          int(r["race_id"]),
+        "race_type":        r["race_type"],
+        "frozen_utc":       int(r["frozen_utc"]) if r["frozen_utc"] is not None else None,
+        "duration_ms":      int(r["duration_ms"]) if r["duration_ms"] is not None else None,
+        "clock_ms_frozen":  int(r["clock_ms_frozen"]) if r["clock_ms_frozen"] is not None else None,
+        "event_label":      r["event_label"] if "event_label" in r.keys() else None,
+        "session_label":    r["session_label"] if "session_label" in r.keys() else None,
+        "race_mode":        r["race_mode"] if "race_mode" in r.keys() else None,
+        "frozen_iso_utc":   r["frozen_iso_utc"] if "frozen_iso_utc" in r.keys() else None,
+        "frozen_iso_local": r["frozen_iso_local"] if "frozen_iso_local" in r.keys() else None,
+    }
 
-
-# ---------------------------------------------------------------------------
-# Recent frozen results (for left-rail population)
-#   GET /results/recent?limit=50
-# Returns: {"heats": [{heat_id, name, status, finished_utc, started_utc?, laps_count?, entrant_count?}, ...]}
-# ---------------------------------------------------------------------------
-@router.get("/results/recent", response_model=None)
-def results_recent(limit: int = 50) -> Dict[str, Any]:
-    with _conn() as cx:
-        cx.row_factory = sqlite3.Row
-        rows = cx.execute(
+@router.get("/recent")
+def list_recent(limit: int = 12) -> Dict[str, Any]:
+    with _connect() as db:
+        _ensure_result_schema(db)
+        rows = db.execute(
             """
-            SELECT race_id, race_type, frozen_utc, duration_ms
+            SELECT race_id, race_type, frozen_utc, duration_ms, clock_ms_frozen,
+                   event_label, session_label, race_mode, frozen_iso_utc, frozen_iso_local
             FROM result_meta
-            ORDER BY COALESCE(frozen_utc, race_id) DESC
+            ORDER BY COALESCE(frozen_utc, 0) DESC, race_id DESC
             LIMIT ?
             """,
             (int(limit),),
         ).fetchall()
-
-        heats: List[Dict[str, Any]] = []
+        heats = []
         for r in rows:
-            heats.append(
-                {
-                    # Keep "heat_id" naming for UI compatibility
-                    "heat_id": int(r["race_id"]),
-                    "name": r["race_type"],
-                    "status": "CHECKERED",
-                    "finished_utc": r["frozen_utc"],
-                    # Not stored for frozen meta today; present for shape compatibility
-                    "started_utc": None,
-                    "laps_count": None,
-                    "entrant_count": None,
-                }
-            )
+            meta = _meta_row_to_dict(r)
+            # Operator results rail expects a compact summary per frozen heat.
+            heats.append({
+                "heat_id":       meta["race_id"],
+                "name":          meta["race_type"] or "-",
+                "status":        "CHECKERED",  # frozen set implies finalized
+                "finished_utc":  meta["frozen_iso_utc"],   # ISO string (UTC)
+                "started_utc":   None,                      # unknown at freeze
+                "laps_count":    None,                      # optional aggregate
+                "entrant_count": None,                      # optional aggregate
+                # NEW rail ornaments
+                "event_label":      meta["event_label"],
+                "session_label":    meta["session_label"],
+                "race_mode":        meta["race_mode"] or meta["race_type"],
+                "frozen_iso_local": meta["frozen_iso_local"],
+            })
         return {"heats": heats}
 
-
-# ---------------------------------------------------------------------------
-# Frozen standings for a race
-#   GET /results/{race_id}
-# ---------------------------------------------------------------------------
-@router.get("/results/{race_id}", response_model=None)
+@router.get("/{race_id}")
 def get_results(race_id: int) -> Dict[str, Any]:
-    """Return frozen standings for the given race_id."""
-    with _conn() as cx:
-        cx.row_factory = sqlite3.Row
+    with _connect() as db:
+        _ensure_result_schema(db)
 
-        meta = cx.execute(
-            "SELECT race_type, frozen_utc, duration_ms FROM result_meta WHERE race_id=?",
+        meta = db.execute(
+            """
+            SELECT *
+            FROM result_meta
+            WHERE race_id = ?
+            """,
             (race_id,),
         ).fetchone()
         if not meta:
-            raise HTTPException(status_code=404, detail="No frozen results for this race_id")
+            raise HTTPException(status_code=404, detail="Heat not found")
 
-        rows = cx.execute(
+        st_rows = db.execute(
             """
             SELECT position, entrant_id, number, name, laps, last_ms, best_ms, gap_ms, lap_deficit, pit_count, status
             FROM result_standings
-            WHERE race_id=?
+            WHERE race_id = ?
             ORDER BY position ASC
             """,
             (race_id,),
         ).fetchall()
 
-        entrants: List[Dict[str, Any]] = []
-        for r in rows:
-            entrants.append(
-                {
-                    "position": int(r["position"]),
-                    "entrant_id": int(r["entrant_id"]),
-                    "number": r["number"],
-                    "name": r["name"],
-                    "laps": int(r["laps"]),
-                    "last_ms": r["last_ms"],
-                    "best_ms": r["best_ms"],
-                    "gap_ms": r["gap_ms"],
-                    "lap_deficit": int(r["lap_deficit"]),
-                    "pit_count": int(r["pit_count"]),
-                    "status": r["status"],
-                }
-            )
+        standings = []
+        for r in st_rows:
+            # Keep numeric fields as ints; UI formats into s.ms
+            standings.append({
+                "position":     int(r["position"]),
+                "entrant_id":   int(r["entrant_id"]),
+                "number":       r["number"],
+                "name":         r["name"],
+                "laps":         int(r["laps"]),
+                "last_ms":      None if r["last_ms"] is None else int(r["last_ms"]),
+                "best_ms":      None if r["best_ms"] is None else int(r["best_ms"]),
+                "gap_ms":       None if r["gap_ms"]  is None else int(r["gap_ms"]),
+                "lap_deficit":  int(r["lap_deficit"]) if r["lap_deficit"] is not None else 0,
+                "pit_count":    int(r["pit_count"])   if r["pit_count"]   is not None else 0,
+                "status":       r["status"] or "ACTIVE",
+            })
 
+        meta_d = _meta_row_to_dict(meta)
         return {
-            "race_id": race_id,
-            "race_type": meta["race_type"],
-            "frozen_utc": meta["frozen_utc"],
-            "duration_ms": meta["duration_ms"],
-            "entrants": entrants,
+            "race_id":     meta_d["race_id"],
+            "race_type":   meta_d["race_type"],
+            "frozen_utc":  meta_d["frozen_iso_utc"] or None,   # ISO UTC string if available
+            "duration_ms": meta_d["duration_ms"],
+            # For completeness, also echo the new meta (UI may show in header later)
+            "event_label":      meta_d["event_label"],
+            "session_label":    meta_d["session_label"],
+            "race_mode":        meta_d["race_mode"] or meta_d["race_type"],
+            "frozen_iso_local": meta_d["frozen_iso_local"],
+            "entrants":   standings,
         }
 
-
-# ---------------------------------------------------------------------------
-# Frozen lap history for a race (tolerant when no laps were saved)
-#   GET /results/{race_id}/laps
-# Returns: {"race_id": <id>, "laps": { "<entrant_id>": [lap_ms,...], ... }}
-# ---------------------------------------------------------------------------
-@router.get("/results/{race_id}/laps", response_model=None)
-def get_results_laps(race_id: int) -> Dict[str, Any]:
-    with _conn() as cx:
-        cx.row_factory = sqlite3.Row
-
-        exists = cx.execute(
-            "SELECT 1 FROM result_meta WHERE race_id=?",
-            (race_id,),
-        ).fetchone()
-        if not exists:
-            # No frozen artifact yet — return empty, not a 404
-            return {"race_id": race_id, "laps": {}}
-
-        rows = cx.execute(
+@router.get("/{race_id}/laps")
+def get_laps(race_id: int) -> Dict[str, Any]:
+    with _connect() as db:
+        _ensure_result_schema(db)
+        # laps as entrant_id → [lap_ms...]
+        rows = db.execute(
             """
             SELECT entrant_id, lap_no, lap_ms
             FROM result_laps
-            WHERE race_id=?
-            ORDER BY entrant_id, lap_no
+            WHERE race_id = ?
+            ORDER BY entrant_id ASC, lap_no ASC
             """,
             (race_id,),
         ).fetchall()
-
-        laps_map: Dict[str, List[int]] = {}
+        if not rows:
+            # Keep behavior: 404 if no heat, empty if no laps? We’ll be strict: 404 only when no meta.
+            meta = db.execute("SELECT 1 FROM result_meta WHERE race_id=?", (race_id,)).fetchone()
+            if not meta:
+                raise HTTPException(status_code=404, detail="Heat not found")
+        laps: Dict[str, List[int]] = {}
         for r in rows:
-            k = str(r["entrant_id"])  # keys as strings to keep UI stable
-            laps_map.setdefault(k, []).append(int(r["lap_ms"]))
-
-        return {"race_id": race_id, "laps": laps_map}
-
-
-# ---------------------------------------------------------------------------
-# CSV exports
-# ---------------------------------------------------------------------------
-@router.get("/export/results_csv", response_model=None)
-def export_results_csv(race_id: int) -> Response:
-    """Download standings CSV (ordered by position)."""
-    with _conn() as cx:
-        cx.row_factory = sqlite3.Row
-        cur = cx.execute(
-            """
-            SELECT position, entrant_id, number, name, laps, last_ms, best_ms, gap_ms, lap_deficit, pit_count, status
-            FROM result_standings
-            WHERE race_id=?
-            ORDER BY position
-            """,
-            (race_id,),
-        )
-
-        buf = io.StringIO(newline="")
-        w = csv.writer(buf)
-        w.writerow(
-            [
-                "Position",
-                "Entrant ID",
-                "Number",
-                "Name",
-                "Laps",
-                "Last (ms)",
-                "Best (ms)",
-                "Gap (ms)",
-                "Lap Deficit",
-                "Pits",
-                "Status",
-            ]
-        )
-        for r in cur.fetchall():
-            w.writerow(
-                [
-                    r["position"],
-                    r["entrant_id"],
-                    r["number"],
-                    r["name"],
-                    r["laps"],
-                    r["last_ms"],
-                    r["best_ms"],
-                    r["gap_ms"],
-                    r["lap_deficit"],
-                    r["pit_count"],
-                    r["status"],
-                ]
-            )
-
-        return Response(
-            content=buf.getvalue(),
-            media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="results_{race_id}.csv"'},
-        )
-
-
-@router.get("/export/laps_csv", response_model=None)
-def export_laps_csv(race_id: int) -> Response:
-    """Download per-entrant lap history CSV (ordered by race position, then lap #)."""
-    with _conn() as cx:
-        cx.row_factory = sqlite3.Row
-        rows = cx.execute(
-            """
-            SELECT s.position, s.entrant_id, s.number, s.name, l.lap_no, l.lap_ms
-            FROM result_standings s
-            JOIN result_laps l USING (race_id, entrant_id)
-            WHERE s.race_id=?
-            ORDER BY s.position, l.lap_no
-            """,
-            (race_id,),
-        ).fetchall()
-
-        buf = io.StringIO(newline="")
-        w = csv.writer(buf)
-        w.writerow(["Position", "Entrant ID", "Number", "Name", "Lap #", "Lap (ms)"])
-        for r in rows:
-            w.writerow([r["position"], r["entrant_id"], r["number"], r["name"], r["lap_no"], r["lap_ms"]])
-
-        return Response(
-            content=buf.getvalue(),
-            media_type="text/csv; charset=utf-8",
-            headers={"Content-Disposition": f'attachment; filename="laps_{race_id}.csv"'},
-        )
+            eid = str(int(r["entrant_id"]))
+            laps.setdefault(eid, []).append(int(r["lap_ms"]))
+        return {"race_id": race_id, "laps": laps}

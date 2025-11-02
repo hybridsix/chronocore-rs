@@ -51,7 +51,7 @@ from .race_engine import ENGINE
 from .db_schema import ensure_schema, tag_conflicts, get_event_config
 from .config_loader import get_db_path, get_scanner_cfg, CONFIG
 from backend.qualifying import qual
-from .app_results_api import router as results_router
+from .app_results_api import router as app_results_router
 
 
 # log = logging.getLogger("uvicorn.error")
@@ -71,7 +71,7 @@ app = FastAPI(title="CCRS Backend", version="0.2.1")
 
 # Register auxiliary routers
 app.include_router(qual)
-app.include_router(results_router)   # no prefix; paths mount exactly as declared
+app.include_router(app_results_router)   # no prefix; paths mount exactly as declared
 
 # ======================================================================
 # Heats listing (schema-aware, no required params, stable JSON shape)

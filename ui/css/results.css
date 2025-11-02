@@ -253,6 +253,344 @@
 /* Subtle zebra striping for dense tables */
 .table tbody tr:nth-child(odd) td { background: rgba(255,255,255,.02); }
 
+/* ==========================================================================
+   Results layout glue — fixed canvas, single inner scroll
+   ========================================================================== */
+
+/* Color tokens (tweak to your palette) */
+:root {
+  --accent: #7DFDFE; /* Tron blue */
+  --surface-0: #071218; /* page bg */
+  --surface-1: #0C1A22; /* card bg */
+  --surface-2: #10232F; /* header/sticky row bg */
+  --surface-3: #1A2D3A; /* borders */
+  --text: #E6F2F5;
+  --muted: #9AB6BF;
+}
+
+/* Canvas sizing:
+   Total page height = 100vh
+   We reserve header/footer heights so the main area never overflows the window.
+   Only the table pane and rail lists will scroll internally. */
+.op-page.results main.wrap {
+  --header-h: 88px;
+  --footer-h: 40px;
+  height: calc(100vh - var(--header-h) - var(--footer-h));
+  overflow: hidden; /* prevent outer scrollbars */
+  background: var(--surface-0);
+  color: var(--text);
+}
+
+/* Two-column layout: left rail + main pane */
+.results-layout {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 320px 1fr; /* rail width + flexible pane */
+  gap: 20px;
+  padding: 16px 24px;
+  box-sizing: border-box;
+}
+
+/* ---------------- Rail ---------------- */
+.rail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+
+.rail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 2px 10px 2px;
+}
+
+.rail__title {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+}
+
+.rail__list {
+  /* Single scroll region for the rail */
+  overflow: auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-right: 4px; /* room for scrollbar */
+}
+
+.rail__empty {
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+/* Heat card button */
+.heat {
+  border: 1px solid var(--surface-3);
+  background: var(--surface-1);
+  border-radius: 14px;
+  padding: 4px;
+}
+
+.heat.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+/* ==========================================================================
+   Results – Heat Rail
+   Small, readable cards with three rows:
+   [Event | Session]
+   [Race Mode]
+   [Local ISO w/ timezone]
+   ========================================================================== */
+
+#heatList {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;               /* tight vertical spacing */
+  padding-right: 4px;     /* clears scrollbar */
+}
+
+.heat-card {
+  display: grid;
+  grid-template-rows: auto auto auto;
+  row-gap: 4px;
+
+  width: 100%;
+  padding: 8px 10px;
+
+  border-radius: 10px;
+  border: 1px solid var(--line-weak, rgba(125, 253, 254, 0.15));
+  background: var(--panel, #0c1920);
+
+  text-align: left;
+  cursor: pointer;
+
+  box-sizing: border-box;
+  transition: border-color 120ms ease, background 120ms ease;
+}
+
+.heat-card:hover {
+  border-color: var(--line, rgba(125, 253, 254, 0.35));
+  background: var(--panel-strong, #0f1f28);
+}
+
+.heat-card__top {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--text-dim, #9fb7c2);
+  min-width: 0;
+  align-items: center;
+}
+
+.heat-card__event {
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heat-card__session {
+  opacity: 0.9;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heat-card__mid {
+  font-size: 12px;
+  line-height: 1.2;
+  color: var(--text, #dfeff3);
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.heat-card__bottom {
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--text-dim, #9fb7c2);
+  opacity: 0.9;
+  white-space: nowrap;           /* keep ISO on one line */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+/* Selected state */
+.heat-card[aria-current="true"],
+.heat-card.is-active,
+.heat-card.heat-card--selected {
+  border-color: var(--accent, #7dfdfe);
+  background: linear-gradient(
+    180deg,
+    rgba(125, 253, 254, 0.08) 0%,
+    rgba(125, 253, 254, 0.02) 100%
+  );
+}
+
+.heat-btn {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 10px 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.heat-name {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.muted { color: var(--muted); }
+
+/* ---------------- Pane ---------------- */
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* allow children to shrink */
+  height: 100%;
+}
+
+/* Top bar with chips & quick stats */
+.topbar {
+  --topbar-h: 68px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--topbar-h);
+  height: auto;
+  padding: 6px 0 10px 0;
+}
+
+.topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  flex: 1 1 60%;
+  min-width: 220px;
+}
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex: 1 1 30%;
+  justify-content: flex-end;
+}
+
+.heat-title { font-size: 20px; font-weight: 700; }
+.heat-window { color: var(--muted); font-size: 13px; }
+
+/* Chips (Frozen / Live) */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  background: var(--surface-2);
+  border: 1px solid var(--surface-3);
+}
+.chip--state { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.chip--warn { border-color: #ffae42; box-shadow: 0 0 0 1px #ffae42 inset; }
+
+/* Stats tiles */
+.stats { display: flex; gap: 16px; }
+.stat { text-align: right; }
+.stat__label { color: var(--muted); font-size: 11px; }
+.stat__value { font-feature-settings: "tnum"; }
+
+/* Tabs */
+.tabs {
+  --tabs-h: 40px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: var(--tabs-h);
+  margin-bottom: 8px;
+}
+.tab {
+  background: var(--surface-1);
+  border: 1px solid var(--surface-3);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.tab.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+/* Panels: make the table area the only scroller in the pane */
+.panel { flex: 1; min-height: 0; }
+.panel.is-hidden { display: none; }
+
+.table-wrap {
+  height: calc(100% - 0px); /* already accounted topbar/tabs in parent */
+  overflow: auto; /* single inner scroll */
+  border-radius: 12px;
+  background: var(--surface-1);
+  border: 1px solid var(--surface-3);
+}
+
+/* Tables */
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed; /* keep columns compact/ellipsis */
+  font-size: 13px;
+}
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--surface-3);
+}
+.table th,
+.table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+/* Exports bar */
+.exports {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+/* Footer DB pill alignment (centers left for visibility) */
+.app-footer .pill--db { min-width: 120px; text-align: left; }
+
 /* Grid: left rail (fixed) + right pane (fills) */
 .results-layout {
   display: grid;
@@ -485,3 +823,42 @@
 
 /* Subtle zebra striping for dense tables */
 .table tbody tr:nth-child(odd) td { background: rgba(255,255,255,.02); }
+/* ==========================================================================
+   Results: remove the center “blue slab” background
+   - Let the page background show through (left/right match).
+   - Keep tables/cards painted so readability stays high.
+   ========================================================================== */
+
+/* Make the main canvas transparent (no slab) */
+.op-page.results main.wrap {
+  /* previously set to a solid color; we want it invisible */
+  background: transparent !important;
+}
+
+/* The grid wrapper shouldn’t paint either */
+.op-page.results .results-layout {
+  background: transparent !important;
+}
+
+/* The right pane itself shouldn’t add a backdrop */
+.op-page.results .pane,
+.op-page.results .panel {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Keep actual content surfaces visible */
+.op-page.results .table-wrap,
+.op-page.results .rail,
+.op-page.results .heat-card {
+  /* these keep their normal surfaces for contrast */
+  /* no change needed to backgrounds here */
+}
+
+/* In case a theme sets an inner gradient on the center column,
+   this kills any pseudo-element fill that might be the culprit */
+.op-page.results .results-layout::before,
+.op-page.results .results-layout::after {
+  content: none !important;
+  display: none !important;
+}

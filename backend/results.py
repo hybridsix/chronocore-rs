@@ -53,18 +53,109 @@ def persist_results(DB_PATH: str, race_id: int, race_type: str, snapshot: Dict[s
 
     now_utc = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     standings: List[Dict[str, Any]] = snapshot["standings"]
-    duration_ms: int = snapshot["clock_ms_frozen"]  # set by engine at freeze time
+
+    state = snapshot.get("state")
+    if not isinstance(state, dict):
+        state = {}
+
+    frozen_ms_raw = snapshot.get("clock_ms_frozen")
+    if frozen_ms_raw is None:
+        frozen_ms_raw = snapshot.get("clock_ms")
+
+    frozen_ms = 0
+    if frozen_ms_raw is not None:
+        try:
+            frozen_ms = int(frozen_ms_raw)
+        except (TypeError, ValueError):
+            frozen_ms = 0
+
+    if frozen_ms > 0:
+        frozen_dt_utc = datetime.fromtimestamp(frozen_ms / 1000, tz=timezone.utc)
+        frozen_iso_utc = frozen_dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+        frozen_iso_local = frozen_dt_utc.astimezone().isoformat(timespec="seconds")
+    else:
+        # fall back to now so UI shows something sane
+        fallback_local = datetime.now().astimezone()
+        frozen_iso_local = fallback_local.isoformat(timespec="seconds")
+        frozen_iso_utc = fallback_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    clock_ms_frozen = frozen_ms if frozen_ms > 0 else 0
+    duration_raw = snapshot.get("duration_ms")
+    try:
+        duration_ms = int(duration_raw) if duration_raw is not None else clock_ms_frozen
+    except (TypeError, ValueError):
+        duration_ms = clock_ms_frozen
+
+    event_label = snapshot.get("event_label") or state.get("event_label")
+    session_label = snapshot.get("session_label") or state.get("session_label")
+    race_mode = (
+        snapshot.get("race_mode")
+        or state.get("race_type")
+        or state.get("mode")
+        or race_type
+    )
 
     with sqlite3.connect(DB_PATH) as cx:
         cx.execute("PRAGMA journal_mode=WAL;")
         cur = cx.cursor()
         log_ctx = {"race_id": race_id}
 
-        cur.execute(
-            "INSERT OR IGNORE INTO result_meta (race_id, race_type, frozen_utc, duration_ms) VALUES (?,?,?,?)",
-            (race_id, race_type, now_utc, duration_ms),
-        )
-        if cur.rowcount == 0:
+        cur.execute("PRAGMA table_info(result_meta)")
+        result_meta_cols = {row[1] for row in cur.fetchall()}
+
+        cur.execute("SELECT 1 FROM result_meta WHERE race_id=?", (race_id,))
+        already_exists = cur.fetchone() is not None
+
+        extended_cols = {
+            "clock_ms_frozen",
+            "event_label",
+            "session_label",
+            "race_mode",
+            "frozen_iso_utc",
+            "frozen_iso_local",
+        }
+
+        if extended_cols.issubset(result_meta_cols):
+            frozen_utc_value = frozen_iso_utc or now_utc
+            cur.execute(
+                """
+                INSERT INTO result_meta
+                  (race_id, race_type, frozen_utc, duration_ms, clock_ms_frozen,
+                   event_label, session_label, race_mode, frozen_iso_utc, frozen_iso_local)
+                VALUES (?,?,?,?,?,?,?,?,?,?)
+                ON CONFLICT(race_id) DO UPDATE SET
+                  race_type        = excluded.race_type,
+                  frozen_utc       = excluded.frozen_utc,
+                  duration_ms      = excluded.duration_ms,
+                  clock_ms_frozen  = excluded.clock_ms_frozen,
+                  event_label      = excluded.event_label,
+                  session_label    = excluded.session_label,
+                  race_mode        = excluded.race_mode,
+                  frozen_iso_utc   = excluded.frozen_iso_utc,
+                  frozen_iso_local = excluded.frozen_iso_local
+                """,
+                (
+                    race_id,
+                    race_type,
+                    frozen_utc_value,
+                    duration_ms,
+                    clock_ms_frozen,
+                    event_label,
+                    session_label,
+                    race_mode,
+                    frozen_iso_utc,
+                    frozen_iso_local,
+                ),
+            )
+        else:
+            cur.execute(
+                "INSERT OR IGNORE INTO result_meta (race_id, race_type, frozen_utc, duration_ms) VALUES (?,?,?,?)",
+                (race_id, race_type, frozen_iso_utc or now_utc, duration_ms),
+            )
+            if cur.rowcount == 0:
+                already_exists = True
+
+        if already_exists:
             log.info("persist_results: already exists; skipping", extra=log_ctx)
             return
 

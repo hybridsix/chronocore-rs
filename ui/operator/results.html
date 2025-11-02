@@ -20,7 +20,7 @@
   </head>
 
   <body class="op-page results">
-    <!-- ===== Header (canonical operator header; lives in operator.css) ===== -->
+    <!-- ===== Header (canonical operator header) ===== -->
     <header class="app-header">
       <div class="brand">
         <a class="brand-link" href="/ui/operator/index.html">
@@ -36,7 +36,29 @@
         <div class="page-label">Results</div>
       </div>
 
-      <div class="app-header__tools"></div>
+      <div class="app-header__tools">
+        <nav class="app-nav">
+          <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
+            <svg class="icon"><use href="../img/icons.svg#home"></use></svg>
+            <span class="sr-only">Home</span>
+          </a>
+
+          <div class="app-nav__menu" id="appsMenu" data-open="false">
+            <button type="button" class="app-nav__btn" title="Menu">
+              <svg class="icon"><use href="../img/icons.svg#menu"></use></svg>
+              <span class="sr-only">Open menu</span>
+            </button>
+            <div class="app-nav__panel" id="appsPanel">
+              <a href="/ui/operator/entrants.html">Entrants &amp; Tags</a>
+              <a href="/ui/operator/operator.html">Operator</a>
+              <a href="/ui/operator/settings.html">Settings</a>
+              <a href="/ui/operator/diag.html">Diagnostics</a>
+              <a class="current" href="/ui/operator/results.html">Results</a>
+              <a href="/ui/operator/help.html">Help</a>
+            </div>
+          </div>
+        </nav>
+      </div>
     </header>
 
     <!-- ===== Main: fixed-canvas layout (no outer scrollbar) ===== -->
@@ -50,9 +72,7 @@
               Refresh
             </button>
           </div>
-          <div id="heatList" class="rail__list">
-            <!-- populated by JS -->
-          </div>
+          <div id="heatList" class="rail__list"><!-- populated by JS --></div>
           <div class="rail__empty" id="railEmpty" hidden>No heats found.</div>
         </aside>
 
@@ -95,7 +115,7 @@
           </div>
 
           <!-- Tabs -->
-          <div class="tabs">
+          <div class="tabs" id="tabs">
             <button class="tab is-active" data-tab="standings">Standings</button>
             <button class="tab" data-tab="laps">Lap Table</button>
           </div>
@@ -177,5 +197,31 @@
         <span class="muted">Results MVP</span>
       </div>
     </footer>
+    <script>
+      (function () {
+        const menu = document.getElementById('appsMenu');
+        if (!menu) return;
+        const btn = menu.querySelector('.app-nav__btn');
+        const panel = menu.querySelector('.app-nav__panel');
+
+        function openMenu(on) {
+          menu.dataset.open = on ? 'true' : 'false';
+        }
+
+        btn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          openMenu(menu.dataset.open !== 'true');
+          if (menu.dataset.open === 'true') {
+            const first = panel.querySelector('a');
+            if (first) first.focus();
+          }
+        });
+
+        document.addEventListener('click', () => openMenu(false));
+        document.addEventListener('keydown', (ev) => {
+          if (ev.key === 'Escape') openMenu(false);
+        });
+      })();
+    </script>
   </body>
 </html>
