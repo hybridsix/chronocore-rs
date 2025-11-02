@@ -1,247 +1,504 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
+
 <head>
-  <meta charset="utf-8" />
-  <title>CCRS - Settings</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-
-  <!-- =====================================================================
-       SETTINGS PAGE OVERVIEW
-       ---------------------------------------------------------------------
-       Purpose
-       -------
-       This page is the Operator-facing Settings screen. It uses the same
-       header/footer chrome as the Entrants and Diagnostics pages and shows a
-       left-hand navigation with anchor links into sections within the right
-       scrollable pane. The layout is optimized for 1920×1080 with fixed
-       header/footer heights defined in base/operator CSS.
-
-       Behavior
-       --------
-       • Left-nav links are anchors (e.g., #ingest) that scroll the INTERNAL
-         right-hand scroller (not the window). A scrollspy keeps the active
-         highlight in sync with the section in view.
-       • The actual input controls are progressively wired to the backend via
-         /setup/runtime (GET) and apply endpoints (POST). Those hooks live in
-         settings.js - this file focuses on structure and accessibility.
-
-       Structure
-       ---------
-       Header  : CCRS wordmark + page label + engine pill (from base.js)
-       Main    : .settingsWrap → .sideNav + .pane>.pane__scroll
-       Footer  : Status on left; right side reserved for future shortcuts
-
-       Dependencies
-       -------------
-       CSS  : base.css → operator.css → settings.css
-       JS   : base.js (helpers/CCRS namespace) + settings.js (page logic)
-  ===================================================================== -->
-
-  <!-- Shared foundation stylesheets -->
-  <link rel="stylesheet" href="../css/base.css" />
-  <link rel="stylesheet" href="../css/operator.css" />
-
-  <!-- Page-specific stylesheet for Settings (left-nav, grids, etc.) -->
-  <link rel="stylesheet" href="../css/settings.css" />
-
-  <!-- Base helper script for global CCRS utilities (defines CCRS.* helpers) -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Settings – CCRS Operator</title>
+  <link rel="stylesheet" href="../css/base.css">
+  <link rel="stylesheet" href="../css/operator.css">
+  <link rel="stylesheet" href="../css/settings.css">
   <script src="../js/base.js" defer></script>
-
-  <!-- Page logic: nav scrolling/scrollspy, runtime hydrate, apply/save -->
   <script src="../js/settings.js" defer></script>
 </head>
-<body class="page settings">
+
+<body class="page settings op">
+
+  <!-- =================================================================
+    OPERATOR HEADER
+    ================================================================= -->
   <header class="app-header">
-  <div class="brand">
-    <!-- Brand: link back to Operator Home -->
-  <a class="brand-link" href="/ui/operator/index.html">
-      <img
-        class="brand-logo"
-        src="../img/CCRS_Logo.svg"
-        alt="ChronoCore Logo"
-      />
-  <div class="brand__wordmark">
-        <div class="wordmark__top">
-          <span class="wordmark__big">CHRONO</span>
-          <span class="wordmark__big">CORE</span>
+    <div class="brand">
+      <a class="brand-link" href="/ui/operator/index.html">
+        <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" />
+        <div class="brand__wordmark">
+          <div class="wordmark__top">
+            <span class="wordmark__big">CHRONO</span>
+            <span class="wordmark__big">CORE</span>
+          </div>
+          <div class="wordmark__bottom">RACE SOFTWARE</div>
         </div>
-        <div class="wordmark__bottom">RACE SOFTWARE</div>
-      </div>
-    </a>
-
-  <!-- Page-specific label -->
-  <div class="page-label">Settings</div>
-  </div>
-
-  <div class="app-header__tools">
-    <!-- Right-side cluster: nav -->
-  <nav class="app-nav">
-          <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
-            <svg class="icon"><use href="../img/icons.svg#home"></use></svg>
-            <span class="sr-only">Home</span>
-          </a>
-
-          <div class="app-nav__menu" id="appsMenu" data-open="false">
-            <button type="button" class="app-nav__btn" title="Menu">
-              <svg class="icon"><use href="../img/icons.svg#menu"></use></svg>
-              <span class="sr-only">Open menu</span>
-            </button>
-          <div class="app-nav__panel" id="appsPanel">
-        <a href="/ui/operator/entrants.html">Entrants &amp; Tags</a>
-        <a href="/ui/operator/operator.html">Operator</a>
-        <a class="current" href="/ui/operator/settings.html">Settings</a>
-        <a href="/ui/operator/diag.html">Diagnostics</a>
-        <a href="/ui/operator/help.html">Help</a>
-        </div>
-      </div>
-    </nav>
-  </div>
-</header>
-
-  <!-- =====================================================================
-       MAIN LAYOUT (two-column)
-       ---------------------------------------------------------------------
-       Left  : sticky side navigation (anchors)
-       Right : scrollable pane (.pane__scroll) with one <section> per topic
-
-       NOTE: Each <section> has an id that matches the left-nav href.
-             The content inside each card can be grown as we wire backend.
-  ===================================================================== -->
-  <main class="settingsWrap">
-    <!-- Side navigation: add/remove links as sections evolve. The separator
-         visually isolates the final CTA (Apply/Save) from the others. -->
-  <nav class="sideNav">
-      <a href="#client"      class="navLink">Client Role</a>
-      <a href="#engine"      class="navLink">Engine Host</a>
-      <a href="#ingest"      class="navLink">Ingest &amp; Debounce</a>
-      <a href="#diagnostics" class="navLink">Diagnostics</a>
-      <a href="#track"       class="navLink">Track Locations &amp; Bindings</a>
-      <a href="#flags"       class="navLink">Flags</a>
-      <a href="#missed"      class="navLink">Missed-Lap Detection</a>
-      <a href="#ui"          class="navLink">UI &amp; Audio</a>
-
-      <!-- Visual separator before the CTA link -->
-  <div class="navSep"></div>
-
-      <!-- Primary CTA: Apply / Save (same-page anchor) -->
-      <a href="#apply" class="navLink navLink--primary">Apply / Save</a>
-    </nav>
-
-    <!-- Right content pane with its own scroll context. The scrollspy in
-         settings.js observes these sections relative to this container. -->
-    <div class="pane pane--right">
-      <div class="pane__scroll">
-        <!-- In a separate pass, these sections were filled with controls.
-             Here we leave skeletal headings to keep this file focused on
-             structure and documentation. settings.js performs hydration. -->
-
-        <section id="client" class="card">
-          <h2>Client Role</h2>
-          <!-- Controls injected/managed by settings.js (role, saveRole, etc.) -->
-        </section>
-
-        <section id="engine" class="card">
-          <h2>Engine Host</h2>
-          <!-- effectiveHost / override fields live here (see settings.js). -->
-        </section>
-
-        <section id="ingest" class="card">
-          <h2>Ingest &amp; Debounce</h2>
-          <!-- Global debounce + per-location overrides + minLapMs. -->
-        </section>
-
-        <section id="diagnostics" class="card">
-          <h2>Diagnostics</h2>
-          <!-- Diagnostics enable, buffer size, transport, beep cap. -->
-        </section>
-
-        <section id="track" class="card">
-          <h2>Track Locations &amp; Bindings</h2>
-          <!-- Read-only lists for now; editor comes later. -->
-        </section>
-
-        <section id="flags" class="card">
-          <h2>Flags</h2>
-          <!-- Inference blocklist + post-green grace. -->
-        </section>
-
-        <section id="missed" class="card">
-          <h2>Missed-Lap Detection</h2>
-          <!-- Mode, window, sigma k, min gap, max inferred seq, mark flag. -->
-        </section>
-
-        <section id="ui" class="card">
-          <h2>UI &amp; Audio</h2>
-          <!-- Default sound + time display (local/UTC). -->
-        </section>
-
-        <section id="apply" class="card">
-          <h2>Apply / Save</h2>
-          <!-- Buttons + diff preview area handled by settings.js. -->
-        </section>
-      </div>
+      </a>
+      <div class="page-label">Settings</div>
     </div>
+
+    <div class="app-header__tools">
+      <nav class="app-nav">
+        <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
+          <svg class="icon">
+            <use href="../img/icons.svg#home"></use>
+          </svg>
+          <span class="sr-only">Home</span>
+        </a>
+
+        <div class="app-nav__menu" id="appsMenu" data-open="false">
+          <button type="button" class="app-nav__btn" title="Menu">
+            <svg class="icon"><use href="../img/icons.svg#menu"></use></svg>
+            <span class="sr-only">Open menu</span>
+          </button>
+          <div class="app-nav__panel" id="appsPanel">
+            <a href="/ui/operator/entrants.html">Entrants &amp; Tags</a>
+            <a href="/ui/operator/race_setup.html">Race Setup</a>
+            <a href="/ui/operator/race_control.html">Race Control</a>
+            <a href="/ui/operator/results.html">Results</a>
+            <a class="current" href="/ui/operator/settings.html">Settings</a>
+            <a href="/ui/operator/diag.html">Diagnostics</a>
+          </div>
+        </div>
+      </nav>
+    </div>
+  </header>
+
+  <!-- =================================================================
+    SETTINGS CONTENT (FULL WIDTH)
+    ================================================================= -->
+  <main class="settingsWrap">
+
+    <!-- ===========================================================
+      THREE-COLUMN CARD GRID
+      =========================================================== -->
+        <div class="settings-grid">
+
+          <!-- COLUMN 1 -->
+          <div class="settings-column">
+
+            <!-- ===========================================================
+              EVENT & ENGINE SECTION
+              =========================================================== -->
+            <section id="event" class="card">
+              <h2>Event & Engine</h2>
+
+              <div class="grid grid-2">
+            <!-- Event Identity -->
+            <div class="stack">
+              <label class="label" for="eventName">Event Name</label>
+              <input type="text" class="input" id="eventName" placeholder="e.g., Maker Faire Orlando">
+            </div>
+
+            <div class="stack">
+              <label class="label" for="eventDate">Event Date</label>
+              <input type="date" class="input" id="eventDate">
+            </div>
+
+            <div class="stack">
+              <label class="label" for="eventLocation">Location</label>
+              <input type="text" class="input" id="eventLocation" placeholder="e.g., Orlando, FL">
+            </div>
+
+            <div class="stack">
+              <label class="label" for="defaultMinLap">Default Min Lap (seconds)</label>
+              <input type="number" class="input" id="defaultMinLap" min="5" step="1" placeholder="10">
+              <p class="help small">Global minimum lap time if mode doesn't specify</p>
+            </div>
+
+            <!-- Unknown Tags -->
+            <div class="stack">
+              <label class="label" for="allowUnknownTags">Allow Unknown Tags</label>
+              <select class="input" id="allowUnknownTags">
+                <option value="true">Yes - Auto-create entrant</option>
+                <option value="false">No - Reject unknown tags</option>
+              </select>
+            </div>
+
+            <div class="stack">
+              <label class="label" for="unknownTagName">Unknown Tag Name</label>
+              <input type="text" class="input" id="unknownTagName" placeholder="Unknown">
+              <p class="help small">Display name for auto-created entrants</p>
+            </div>
+            </div>
+          </section>
+
+          <!-- ===========================================================
+            INGEST & TIMING SECTION
+            =========================================================== -->
+          <section id="ingest" class="card">
+            <h2>Ingest & Timing</h2>
+
+            <div class="grid grid-2">
+              <div class="stack">
+                <label class="label" for="debounceMs">Debounce Time (milliseconds)</label>
+                <input type="number" class="input" id="debounceMs" min="0" step="10" placeholder="250">
+                <p class="help small">Minimum time between reads of the same tag</p>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="diagEnabled">Diagnostics Enabled</label>
+                <select class="input" id="diagEnabled">
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="diagBuffer">Diagnostics Buffer Size</label>
+                <input type="number" class="input" id="diagBuffer" min="100" step="50" placeholder="500">
+                <p class="help small">In-memory rolling buffer for late-join UI</p>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="beepMax">Beep Max Per Second</label>
+                <input type="number" class="input" id="beepMax" min="1" max="20" step="1" placeholder="5">
+                <p class="help small">Rate limit for diagnostic beeps</p>
+              </div>
+            </div>
+          </section>
+
+          </div><!-- end column 1 -->
+
+          <!-- COLUMN 2 -->
+          <div class="settings-column">
+
+          <!-- ===========================================================
+            HARDWARE & DECODERS SECTION
+            =========================================================== -->
+          <section id="hardware" class="card">
+            <h2>Hardware & Decoders</h2>
+
+            <div class="grid grid-2">
+              <div class="stack">
+                <label class="label" for="decoderType">Decoder Type</label>
+                <select class="input" id="decoderType">
+                  <option value="ilap_serial">I-Lap Serial</option>
+                  <option value="ambrc_serial">AMBrc Serial</option>
+                </select>
+                <p class="help small">Select which decoder hardware you're using</p>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="serialPort">COM Port</label>
+                <input type="text" class="input" id="serialPort" placeholder="COM3">
+                <p class="help small">Serial port for decoder (e.g., COM3, /dev/ttyUSB0)</p>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="serialBaud">Baud Rate</label>
+                <select class="input" id="serialBaud">
+                  <option value="9600">9600</option>
+                  <option value="19200">19200</option>
+                  <option value="38400">38400</option>
+                  <option value="57600">57600</option>
+                  <option value="115200">115200</option>
+                </select>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="decoderMinLap">Decoder Min Lap (seconds)</label>
+                <input type="number" class="input" id="decoderMinLap" min="5" step="1" placeholder="10">
+                <p class="help small">Local sanity filter at decoder level</p>
+              </div>
+            </div>
+
+            <!-- I-Lap specific settings (only shown when I-Lap is selected) -->
+            <div id="ilapSpecific" style="margin-top: 16px;">
+              <h3>I-Lap Specific Settings</h3>
+              <div class="grid grid-2">
+                <div class="stack">
+                  <label class="label" for="ilapInit7Digit">7-Digit Init on Connect</label>
+                  <select class="input" id="ilapInit7Digit">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                  <p class="help small">Send 7-digit init command on connect</p>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ===========================================================
+            FLAGS & SAFETY SECTION
+            =========================================================== -->
+          <section id="flags" class="card">
+            <h2>Flags & Safety</h2>
+
+            <div class="grid grid-2">
+              <div class="stack">
+                <label class="label" for="flagBlocklist">Inference Blocklist</label>
+                <input type="text" class="input" id="flagBlocklist" placeholder="YELLOW,RED,SC">
+                <p class="help small">Comma-separated flag states that disable predictive helpers</p>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="flagGraceMs">Post-Green Grace (ms)</label>
+                <input type="number" class="input" id="flagGraceMs" min="0" step="100" placeholder="3000">
+                <p class="help small">Time after green flag before full enforcement</p>
+              </div>
+            </div>
+
+            <h3 style="margin-top: 20px;">Missed-Lap Detection</h3>
+
+            <div class="grid grid-2">
+              <div class="stack">
+                <label class="label" for="missedMode">Detection Mode</label>
+                <select class="input" id="missedMode">
+                  <option value="off">Off</option>
+                  <option value="propose">Propose Only</option>
+                  <option value="auto">Auto-Apply</option>
+                </select>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="missedWindowLaps">Rolling Window (laps)</label>
+                <input type="number" class="input" id="missedWindowLaps" min="2" max="20" step="1" placeholder="5">
+              </div>
+
+              <div class="stack">
+                <label class="label" for="missedSigmaK">Sigma Threshold</label>
+                <input type="number" class="input" id="missedSigmaK" min="1" max="5" step="0.1" placeholder="2.0">
+                <p class="help small">Strictness (higher = fewer fills)</p>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="missedMinGapMs">Min Gap Between Laps (ms)</label>
+                <input type="number" class="input" id="missedMinGapMs" min="1000" step="500" placeholder="8000">
+              </div>
+
+              <div class="stack">
+                <label class="label" for="missedMaxConsec">Max Consecutive Inferred</label>
+                <input type="number" class="input" id="missedMaxConsec" min="0" max="10" step="1" placeholder="1">
+              </div>
+
+              <div class="stack">
+                <label class="label" for="missedMark">Mark Inferred Laps</label>
+                <select class="input" id="missedMark">
+                  <option value="true">Yes - Mark in exports</option>
+                  <option value="false">No - Don't mark</option>
+                </select>
+              </div>
+            </div>
+          </section>
+
+          </div><!-- end column 2 -->
+
+          <!-- COLUMN 3 -->
+          <div class="settings-column">
+
+          <!-- ===========================================================
+            TRACK & LOCATIONS SECTION
+            =========================================================== -->
+          <section id="track" class="card">
+            <h2>Track & Locations</h2>
+
+            <h3>Location Labels</h3>
+            <p class="help small" style="margin-bottom: 8px;">Human-readable names for timing points</p>
+
+            <div class="grid grid-2">
+              <div class="stack">
+                <label class="label" for="locationSF">Start/Finish</label>
+                <input type="text" class="input" id="locationSF" placeholder="Start/Finish">
+              </div>
+
+              <div class="stack">
+                <label class="label" for="locationPitIn">Pit In</label>
+                <input type="text" class="input" id="locationPitIn" placeholder="Pit In">
+              </div>
+
+              <div class="stack">
+                <label class="label" for="locationPitOut">Pit Out</label>
+                <input type="text" class="input" id="locationPitOut" placeholder="Pit Out">
+              </div>
+
+              <div class="stack">
+                <label class="label" for="locationX1">Extra Location (X1)</label>
+                <input type="text" class="input" id="locationX1" placeholder="Crossing X">
+              </div>
+            </div>
+
+            <h3 style="margin-top: 16px;">Hardware Bindings</h3>
+            <p class="help small" style="margin-bottom: 8px;">Physical decoder connections to timing locations</p>
+            
+            <!-- Binding 1 -->
+            <div class="stack" style="margin-bottom: 10px;">
+              <label class="label">Binding 1 (Start/Finish)</label>
+              <div class="grid grid-4">
+                <div class="stack">
+                  <label class="label small" for="binding0Computer">Computer ID</label>
+                  <input type="text" class="input" id="binding0Computer" placeholder="race_control">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding0Decoder">Decoder ID</label>
+                  <input type="text" class="input" id="binding0Decoder" placeholder="ilap-210">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding0Port">Port</label>
+                  <input type="text" class="input" id="binding0Port" placeholder="COM3">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding0Location">Location ID</label>
+                  <select class="input" id="binding0Location">
+                    <option value="SF">SF (Start/Finish)</option>
+                    <option value="PIT_IN">PIT_IN</option>
+                    <option value="PIT_OUT">PIT_OUT</option>
+                    <option value="X1">X1</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Binding 2 -->
+            <div class="stack" style="margin-bottom: 10px;">
+              <label class="label">Binding 2 (Pit In)</label>
+              <div class="grid grid-4">
+                <div class="stack">
+                  <label class="label small" for="binding1Computer">Computer ID</label>
+                  <input type="text" class="input" id="binding1Computer" placeholder="t640-pit-a">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding1Decoder">Decoder ID</label>
+                  <input type="text" class="input" id="binding1Decoder" placeholder="ilap-311">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding1Port">Port</label>
+                  <input type="text" class="input" id="binding1Port" placeholder="udp://0.0.0.0:5002">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding1Location">Location ID</label>
+                  <select class="input" id="binding1Location">
+                    <option value="SF">SF (Start/Finish)</option>
+                    <option value="PIT_IN">PIT_IN</option>
+                    <option value="PIT_OUT">PIT_OUT</option>
+                    <option value="X1">X1</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Binding 3 -->
+            <div class="stack" style="margin-bottom: 10px;">
+              <label class="label">Binding 3 (Pit Out)</label>
+              <div class="grid grid-4">
+                <div class="stack">
+                  <label class="label small" for="binding2Computer">Computer ID</label>
+                  <input type="text" class="input" id="binding2Computer" placeholder="t640-pit-b">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding2Decoder">Decoder ID</label>
+                  <input type="text" class="input" id="binding2Decoder" placeholder="ilap-311">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding2Port">Port</label>
+                  <input type="text" class="input" id="binding2Port" placeholder="udp://0.0.0.0:5003">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding2Location">Location ID</label>
+                  <select class="input" id="binding2Location">
+                    <option value="SF">SF (Start/Finish)</option>
+                    <option value="PIT_IN">PIT_IN</option>
+                    <option value="PIT_OUT">PIT_OUT</option>
+                    <option value="X1">X1</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Binding 4 -->
+            <div class="stack">
+              <label class="label">Binding 4 (Extra Location)</label>
+              <div class="grid grid-4">
+                <div class="stack">
+                  <label class="label small" for="binding3Computer">Computer ID</label>
+                  <input type="text" class="input" id="binding3Computer" placeholder="t640-x">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding3Decoder">Decoder ID</label>
+                  <input type="text" class="input" id="binding3Decoder" placeholder="ilap-099">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding3Port">Port</label>
+                  <input type="text" class="input" id="binding3Port" placeholder="/dev/ttyUSB0">
+                </div>
+                <div class="stack">
+                  <label class="label small" for="binding3Location">Location ID</label>
+                  <select class="input" id="binding3Location">
+                    <option value="SF">SF (Start/Finish)</option>
+                    <option value="PIT_IN">PIT_IN</option>
+                    <option value="PIT_OUT">PIT_OUT</option>
+                    <option value="X1">X1</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- ===========================================================
+            UI & SOUNDS SECTION
+            =========================================================== -->
+          <section id="ui" class="card">
+            <h2>UI & Sounds</h2>
+
+            <div class="grid grid-3">
+              <div class="stack">
+                <label class="label" for="uiTheme">Theme</label>
+                <input type="text" class="input" id="uiTheme" placeholder="default-dark">
+              </div>
+
+              <div class="stack">
+                <label class="label" for="showSimPill">Show Simulation Pill</label>
+                <select class="input" id="showSimPill">
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="soundVolumeMaster">Master Volume</label>
+                <input type="number" class="input" id="soundVolumeMaster" min="0" max="1" step="0.1" placeholder="1.0">
+              </div>
+
+              <div class="stack">
+                <label class="label" for="soundVolumeHorns">Horns Volume</label>
+                <input type="number" class="input" id="soundVolumeHorns" min="0" max="1" step="0.1" placeholder="1.0">
+              </div>
+
+              <div class="stack">
+                <label class="label" for="soundVolumeBeeps">Beeps Volume</label>
+                <input type="number" class="input" id="soundVolumeBeeps" min="0" max="1" step="0.1" placeholder="1.0">
+              </div>
+            </div>
+          </section>
+
+          </div><!-- end column 3 -->
+
+        </div><!-- end settings-grid -->
+
   </main>
 
-  <!-- =====================================================================
-       FOOTER (fixed)
-       ---------------------------------------------------------------------
-       Left shows network status; right is intentionally empty for now.
-       We can add quick links or version info later.
-  ===================================================================== -->
+  <!-- =================================================================
+    FIXED BOTTOM BAR WITH SAVE/CANCEL
+    ================================================================= -->
+  <div class="actionBar">
+    <div class="actionBar__content">
+      <div class="actionBar__status">
+        <span id="changeIndicator" class="changeIndicator" style="display: none;">● Unsaved changes</span>
+      </div>
+      <div class="actionBar__buttons">
+        <button class="btn btn--subtle" id="cancelBtn">Cancel</button>
+        <button class="btn btn--primary" id="saveBtn" disabled>Save Settings</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- =================================================================
+    APP FOOTER (matching other operator pages)
+    ================================================================= -->
   <footer class="app-footer">
     <div class="footer-left">
+      <!-- Network status (wired by base.js setNetStatus) -->
       <div class="status-dot" id="netDot"></div>
-      <div id="netMsg">Ready</div>
+      <div id="netMsg"></div>
+      <span id="statusMessage" class="statusMessage" style="margin-left: 12px; color: #b3c2cc;"></span>
     </div>
-    <div class="footer-center">
-  <div class="pill pill--db" id="readyPill">DB: ready</div>
-  <div class="pill pill--db" id="engineLabel">Engine: -</div>
-    </div>
-    <div class="footer-right"></div>
   </footer>
+
 </body>
+
 </html>
-
-<script>
-  (function () {
-    const menu = document.getElementById('appsMenu');
-    if (!menu) return;
-    const btn   = menu.querySelector('.app-nav__btn');
-    const panel = menu.querySelector('.app-nav__panel');
-
-    function openMenu(on) {
-      menu.dataset.open = on ? 'true' : 'false';
-    }
-
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openMenu(menu.dataset.open !== 'true');
-      if (menu.dataset.open === 'true') {
-        const first = panel.querySelector('a');
-        if (first) first.focus();
-      }
-    });
-
-    document.addEventListener('click', () => openMenu(false));
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') openMenu(false);
-    });
-
-    panel.addEventListener('keydown', (e) => {
-      const items = Array.from(panel.querySelectorAll('a'));
-      const i = items.indexOf(document.activeElement);
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        (items[i + 1] || items[0]).focus();
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        (items[i - 1] || items[items.length - 1]).focus();
-      } else if (e.key === 'Home') {
-        e.preventDefault(); (items[0] || document.activeElement).focus();
-      } else if (e.key === 'End') {
-        e.preventDefault(); (items[items.length - 1] || document.activeElement).focus();
-      }
-    });
-  })();
-</script>

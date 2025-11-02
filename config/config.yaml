@@ -1,354 +1,146 @@
-# =============================================================================
-# ChronoCore Race Software (CCRS)
-# -----------------------------------------------------------------------------
-# CONFIGURATION FILE  –  config/config.yaml  (single source of truth)
-# =============================================================================
-#
-# This file defines the *runtime configuration* for the ChronoCore backend and
-# attached subsystems. It consolidates user-editable settings that control how
-# the system runs on a given install.
-#
-# Safe to edit: comments and unknown keys are ignored by the app.
-# YAML is indentation-sensitive; use two spaces per level.
-#
-# Sections in this file:
-#   app:        Platform defaults + Engine behavior (persistence, scoring, etc.)
-#   client:     Local Operator display / UX preferences (for the UI only)
-#   scanner:    How tags are read from I-Lap (serial/UDP) or mock
-#   publisher:  Where parsed tags are delivered (HTTP → this backend)
-#   log:        Logging level for the scanner process
-#   track:      Site-specific physical bindings (decoder/port → location_id)
-#   sounds:     Global sound files and volumes
-#
-# Separation of concerns:
-#   - Event identity (name/date/location/branding) can live in app.engine.event
-#   - Race mode definitions (limits, labels, min lap) live in config/race_modes.yaml
-#
-# IMPORTANT:
-#   There must be exactly ONE top-level 'app:' mapping in this file.
-#   YAML overwrites on duplicate keys; repeating 'app:' would silently nuke
-#   earlier sections (which previously caused 'app.engine' to disappear).
-# =============================================================================
-
 app:
-
-  # ---------------------------------------------------------------------------
-  # App identity & environment
-  # These values are informational (used by logs/UI) and safe to change.
-  # ---------------------------------------------------------------------------
-  name: "ChronoCore Race Software"
-  version: "0.9.0-dev"
-  environment: "development"       # development | staging | production
-
-  # ---------------------------------------------------------------------------
-  # Client → Engine Host Resolution (DEFAULT POLICY)
-  # The Operator/Spectator UIs use this policy to determine which engine host
-  # to talk to. Devices may be allowed to override locally.
-  #
-  # Precedence (deterministic):
-  #   1) If prefer_same_origin == true AND page is served by the engine (http/s),
-  #      use same-origin (no host string).
-  #   2) If allow_client_override == true AND a device override exists
-  #      (e.g., localStorage "cc.engine_host"), use that.
-  #   3) Otherwise use this policy:
-  #        - mode: fixed      → fixed_host
-  #        - mode: localhost  → "127.0.0.1:8000"
-  #        - mode: auto       → same-origin if available; else fixed_host if set;
-  #                             else "127.0.0.1:8000"
-  #
-  # Recommended:
-  #   - Development: mode: localhost
-  #   - Field kiosks/desktop: mode: fixed (and set fixed_host)
-  #   - Mixed: mode: auto with prefer_same_origin: true
-  # ---------------------------------------------------------------------------
+  name: ChronoCore Race Software
+  version: 0.9.0-dev
+  environment: development
   client:
     engine:
-      mode: localhost              # one of: auto | localhost | fixed
-      fixed_host: "127.0.0.1:8000" # used when mode: fixed (or auto fallback)
+      mode: localhost
+      fixed_host: 127.0.0.1:8000
       prefer_same_origin: false
       allow_client_override: true
-
-  # ---------------------------------------------------------------------------
-  # Engine defaults (runtime behavior)
-  # NOTE: RaceEngine *requires* app.engine.persistence.sqlite_path to exist.
-  # ---------------------------------------------------------------------------
   engine:
-
-    # Optional: event descriptor (shown in /race/state and UI headers)
     event:
-      name: "Maker Faire Orlando"  # customize per event or leave generic
-      date: "2025-11-08"           # YYYY-MM-DD
-      location: "Orlando, FL"
-
-    # Minimum lap sanity filter if a mode does not define min_lap_s explicitly.
+      name: Maker Faire Orlando
+      date: '2025-11-08'
+      location: Orlando, FL
     default_min_lap_s: 10
-
-    # -------------------------------------------------------------------------
-    # Global ingest defaults
-    # Single source of truth for de-bounce across the whole system.
-    # Diagnostics will read this to throttle beeps; RaceEngine uses it to de-dupe.
-    # -------------------------------------------------------------------------
     ingest:
       debounce_ms: 250
-
-      # Future-proof: per-location overrides (rare; only if a loop is chattier).
-      # Keys are stable 'location_id's (see app.track.locations below).
-      per_location_debounce_ms: { }
-
-    # Behavior for unknown tags (i.e., a pass arrives with no mapped entrant).
-    # If allow is true, the engine can auto-create a temp entrant so practice
-    # and scrutineering are painless.
+      per_location_debounce_ms: {}
     unknown_tags:
       allow: true
-      auto_create_name: "Unknown"
-
-    # -------------------------------------------------------------------------
-    # Persistence / journaling. If enabled, the engine writes to SQLite so that
-    # restarts do not lose history. Disable for ephemeral dev sessions.
-    # REQUIRED by RaceEngine at startup: 'persistence.sqlite_path' must exist.
-    # -------------------------------------------------------------------------
+      auto_create_name: Unknown
     persistence:
       enabled: true
-      sqlite_path: "backend/db/laps.sqlite"  # server /readyz uses this path
-      journal_passes: true                   # append raw pass events
-      snapshot_on_checkered: true            # write a snapshot when race ends
+      sqlite_path: backend/db/laps.sqlite
+      journal_passes: true
+      snapshot_on_checkered: true
       checkpoint_s: 15
       batch_ms: 200
       batch_max: 50
       fsync: true
-      recreate_on_boot: false                # dev-only: clears DB on restart
-
-    # -------------------------------------------------------------------------
-    # Diagnostics & Live Stream defaults (used by diagnostics pages & SSE).
-    # -------------------------------------------------------------------------
+      recreate_on_boot: false
     diagnostics:
-      # Master switch for diagnostics endpoints (stream + snapshot + meta).
       enabled: true
-
-      # In-memory rolling buffer for late-join UI snapshots.
-      buffer_size: 500   # rows, per-process; small and cheap
-
-      # Transport for the live feed. SSE is perfect; WS later if you want bi-dir.
+      buffer_size: 500
       stream:
-        transport: "sse"   # "sse" | "ws"
-
-      # UI beep behavior defaults (browser still requires a user gesture to unmute).
+        transport: sse
       beep:
-        # Beep rate is globally throttled by 'ingest.debounce_ms' (see above).
-        # This local cap prevents a 'microwave choir' during chatter bursts.
         max_per_sec: 5
-
-    # Optional scoring extensions (future-friendly; safe to ignore if unused).
     scoring:
       break_ties_by_best_lap: true
       include_pit_time_in_total: true
-
-  # ---------------------------------------------------------------------------
-  # Hardware integrations (decoders & pit receivers)
-  # ---------------------------------------------------------------------------
   hardware:
-
-    # Decoder configuration. The active decoder may be chosen elsewhere (e.g.
-    # CLI flag or environment), but defaults live here.
     decoders:
-      # Preferred (I-Lap) serial reader defaults:
       ilap_serial:
-        port: &sf_serial_port "COM3"        # e.g., "/dev/ttyUSB0" on Linux
-        baudrate: &sf_serial_baud 9600
-        init_7digit: true   # send '7-digit init' on connect
-        min_lap_s: 10       # local filter (extra safety on the reader thread)
-
-      # Placeholder for an alternate decoder type:
+        port: COM3
+        baudrate: 9600
+        init_7digit: true
+        min_lap_s: 10
       ambrc_serial:
-        port: "COM4"
+        port: COM4
         baudrate: 19200
         min_lap_s: 10
-
-    # Pit in/out receivers mapping (optional). If provided, the engine can infer
-    # pit entries/exits from device_id in /engine/pass.
     pits:
       enabled: false
-      receivers:
-        # device_id: role (one of: pit_in | pit_out)
-        # "rx-01": pit_in
-        # "rx-02": pit_out
-
-  # ---------------------------------------------------------------------------
-  # Track topology defaults (labels only; site bindings live in top-level 'track')
-  # ---------------------------------------------------------------------------
+      receivers: null
   track:
     locations:
-      # Stable keys for logic (left) → human labels (right).
-      SF:       "Start/Finish"
-      PIT_IN:   "Pit In"
-      PIT_OUT:  "Pit Out"
-      X1:       "Crossing X"   # spare slot to rename on site
-
-  # ---------------------------------------------------------------------------
-  # Flags & missed-lap defaults (ops-facing safety rails)
-  # ---------------------------------------------------------------------------
+      SF: Start/Finish
+      PIT_IN: Pit In
+      PIT_OUT: Pit Out
+      X1: Crossing X
   race:
     flags:
-      # Which flag states disable auto inference / predictive helpers.
-      inference_blocklist: ["YELLOW", "RED", "SC"]
+      inference_blocklist:
+      - YELLOW
+      - RED
+      - SC
       post_green_grace_ms: 3000
-
     missed_lap:
-      enabled: false           # start conservative; ops can enable on Setup
-      apply_mode: "propose"    # "propose" | "auto"
-      window_laps: 5           # rolling window for avg/stddev
-      sigma_k: 2.0             # threshold strictness (higher = fewer fills)
-      min_gap_ms: 8000         # absolute hard floor between any two laps
+      enabled: false
+      apply_mode: propose
+      window_laps: 5
+      sigma_k: 2
+      min_gap_ms: 8000
       max_consecutive_inferred: 1
-      mark_inferred: true      # tag inferred laps in exports/results
-
-  # ---------------------------------------------------------------------------
-  # UI defaults (non event-specific)
-  # ---------------------------------------------------------------------------
+      mark_inferred: true
   ui:
-    theme: "default-dark"
+    theme: default-dark
     show_sim_pill: true
-
-    # Caution copy used consistently across pages
     net_status_text:
-      ok: "OK"
-      connecting: "Connecting…"
-      disconnected: "Disconnected - retrying…"
-
-# -----------------------------------------------------------------------------
-# Client/UI preferences for the local Operator station (device-level hints).
-# These are *preferences*, not hard rules; safe to leave as defaults.
-# -----------------------------------------------------------------------------
+      ok: OK
+      connecting: Connecting…
+      disconnected: Disconnected - retrying…
 client:
-  # Which Operator page to open by default (must exist in your UI routes).
-  default_page: "entrants"
-
-  # Theme preferences read by your UI (if you wire them through).
+  default_page: entrants
   theme:
-    mode: "dark"                 # dark | light
-    accent: "#00b4ff"            # ChronoCore blue
-    secondary: "#22c55e"         # PRS green
-
-  # Optional: where the Operator UI expects the backend to live.
-  # Helpful for multi-node setups; the UI can read this to build API URLs.
-  backend_base_url: "http://127.0.0.1:8000"
-
-# -----------------------------------------------------------------------------
-# Scanner: pluggable tag readers (mock / I-Lap serial / I-Lap UDP).
-# This is read by the ilap_logger process.
-# -----------------------------------------------------------------------------
+    mode: dark
+    accent: '#00b4ff'
+    secondary: '#22c55e'
+  backend_base_url: http://127.0.0.1:8000
 scanner:
-  # Select exactly one:
-  #   "mock"        → emits fake tags periodically (perfect for UI testing)
-  #   "ilap.serial" → reads from an I-Lap base via USB/serial (text protocol)
-  #   "ilap.udp"    → listens for UDP datagrams in the same text format
-  source: "ilap.serial"   # flip to "mock" for UI-only testing
-
-  # Which hardware decoder definition to borrow defaults from.
-  decoder: "ilap_serial"
-
-  # Role of this scanner instance (used by the engine to infer pit passes).
-  # Adjust per physical location this scanner serves.
-  role: "track"   # track | pit_in | pit_out
-
-  # After parsing, only digits are kept. Enforce minimum tag length here.
-  min_tag_len: 7           # I-Lap default is 7 digits
-
-  # Duplicate suppression window (seconds). Same tag within this window is dropped. (Default 0.5)
+  source: ilap.serial
+  decoder: ilap_serial
+  role: track
+  min_tag_len: 7
   duplicate_window_sec: 0.5
-
-  # Optional rate cap in tags/second. 0 = unlimited.
-  # Helps protect UI/back end during bursts or noisy hardware.
   rate_limit_per_sec: 20
-
-  # Serial settings (used only when source == "ilap.serial")
   serial:
-    port: *sf_serial_port
-    baud: *sf_serial_baud
-
-  # UDP listener (used only when source == "ilap.udp")
+    port: COM3
+    baud: 9600
   udp:
-    host: "0.0.0.0"        # bind on all interfaces
-    port: 5000             # match your I-Lap base’s UDP target port
-
-
-# -----------------------------------------------------------------------------
-# Publisher: where the scanner sends validated tags.
-# "http" is typical when scanner runs as a separate process or on a node.
-# "inprocess" is for when the scanner is embedded inside server.py.
-# -----------------------------------------------------------------------------
+    host: 0.0.0.0
+    port: 5000
 publisher:
-  mode: "http"         # "http" | "inprocess"
-
+  mode: http
   http:
-    # Base URL of the CCRS backend exposing /ilap/inject.
-    base_url: "http://127.0.0.1:8000"
-    # Per-request timeout in milliseconds (retry/backoff happens on failure).
+    base_url: http://127.0.0.1:8000
     timeout_ms: 500
-
-# -----------------------------------------------------------------------------
-# Logging for the scanner process (does not change server logging).
-# -----------------------------------------------------------------------------
 log:
-  # info → calm operational logs
-  # debug → raw lines + detailed events/latencies
   level: info
-
-# -----------------------------------------------------------------------------
-# TRACK BINDINGS - physical inputs (computer+decoder+port) → logical location_id
-# These seed the 'sources' table at boot (idempotent upserts).
-# -----------------------------------------------------------------------------
 track:
   bindings:
-    - computer_id: "race_control"
-      decoder_id:  "ilap-210"
-      port:        *sf_serial_port
-      location_id: "SF"
-
-    - computer_id: "t640-pit-a"
-      decoder_id:  "ilap-311"
-      port:        "udp://0.0.0.0:5002"
-      location_id: "PIT_IN"
-
-    - computer_id: "t640-pit-b"
-      decoder_id:  "ilap-311"
-      port:        "udp://0.0.0.0:5003"
-      location_id: "PIT_OUT"
-
-    - computer_id: "t640-x"
-      decoder_id:  "ilap-099"
-      port:        "/dev/ttyUSB0"
-      location_id: "X1"
-
-# -----------------------------------------------------------------------------
-# Global sound settings (Option A: fixed filenames; override by dropping
-# files with the same names into ./config/sounds/ on disk).
-# The app serves /config/sounds/<file> first, falling back to /assets/sounds/<file>.
-#
-# Filenames are NOT mode-specific. Keep these names stable so users can
-# replace them 1:1 without touching YAML or code.
-# Supported formats: .wav (recommended for precise timing), .mp3 (ok).
-# Stereo or mono both work.
-# -----------------------------------------------------------------------------
+  - computer_id: race_control
+    decoder_id: ilap-210
+    port: COM3
+    location_id: SF
+  - computer_id: t640-pit-a
+    decoder_id: ilap-311
+    port: udp://0.0.0.0:5002
+    location_id: PIT_IN
+  - computer_id: t640-pit-b
+    decoder_id: ilap-311
+    port: udp://0.0.0.0:5003
+    location_id: PIT_OUT
+  - computer_id: t640-x
+    decoder_id: ilap-099
+    port: /dev/ttyUSB0
+    location_id: X1
 sounds:
   volume:
-    master: 1.0   # 0.0–1.0, global multiplier
-    horns: 1.0    # 0.0–1.0, applied to horn-like cues
-    beeps: 1.0    # 0.0–1.0, applied to beeps/pips
+    master: 1
+    horns: 1
+    beeps: 1
   files:
-    lap_indication: lap_beep.wav      # short pip when a lap reads (if enabled)
-    countdown:      countdown_beep.wav  # optional "beep on last N seconds"
-    start:          start_horn.wav    # race start
-    end:            end_horn.wav      # race end (if enabled)
-    white_flag:     white_flag.wav    # white flag cue (auto/time/off per mode)
-    checkered:      checkered_flag.wav  # checkered cue at finish (if enabled)
-    rank_change:    rank_change.wav   # rank-change blip (if enabled later)
-    best_lap:       best_lap.wav      # best-lap arpeggio (if enabled)
-
-# -----------------------------------------------------------------------------
-# Journaling: capture raw loop passes into a dedicated table.
-# Useful for debugging, data analysis, or reconstructing lost races
-# -----------------------------------------------------------------------------
+    lap_indication: lap_beep.wav
+    countdown: countdown_beep.wav
+    start: start_horn.wav
+    end: end_horn.wav
+    white_flag: white_flag.wav
+    checkered: checkered_flag.wav
+    rank_change: rank_change.wav
+    best_lap: best_lap.wav
 journaling:
-  enabled: false     # set to true to capture raw loop passes
+  enabled: false
   table: passes_journal

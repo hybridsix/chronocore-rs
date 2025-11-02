@@ -1430,10 +1430,33 @@ function updateClockModeButton(st) {
   }
 
   // ----------------------------------------------------------------------
+  // Start Type Display
+  // ----------------------------------------------------------------------
+  function updateStartTypePill() {
+    const pill = document.getElementById('startTypePill');
+    if (!pill) return;
+    
+    try {
+      const sessionJson = localStorage.getItem('rc.session');
+      if (!sessionJson) return;
+      
+      const session = JSON.parse(sessionJson);
+      const startType = session?.start_type || 'standing';
+      
+      // Capitalize first letter
+      const displayText = startType.charAt(0).toUpperCase() + startType.slice(1);
+      pill.textContent = displayText;
+    } catch {
+      pill.textContent = 'Standing'; // default fallback
+    }
+  }
+
+  // ----------------------------------------------------------------------
   // Boot
   // ----------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', () => {
     bindControls();
+    updateStartTypePill(); // Set start type from session config
     startPolling();
     initSensorTriggers();
   });

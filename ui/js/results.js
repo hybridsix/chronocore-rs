@@ -99,9 +99,9 @@
       if (viaHash) return viaHash;
     }
 
-    // Last selection
-    const ls = toId(localStorage.getItem('rc.race_id'));
-    return ls || null;
+    // Don't use localStorage as fallback - let user pick from heats list
+    // (Old race IDs from localStorage may no longer exist)
+    return null;
   }
 
   // ---------------------------------------------------------------------------
@@ -515,8 +515,19 @@ function selectHeat(heatOrId) {
       await renderLaps(raceId); // tolerant: empty if none persisted
       calcQuickStatsFromFinal(finalData);
       return;
-    } catch {
-      // Fall through to live preview
+    } catch (err) {
+      // If 404, this race doesn't exist - clear selection and bail
+      const errMsg = String(err?.message || err || '');
+      if (errMsg.includes('404')) {
+        // Race not found - silently clear and let user select from heats list
+        selectedRaceId = null;
+        setTitle('-');
+        setWindow('-');
+        clearStandingsTable();
+        clearLapsTable();
+        return;
+      }
+      // Fall through to live preview for other errors
     }
 
     // Live preview
@@ -531,10 +542,10 @@ function selectHeat(heatOrId) {
       clearLapsTable();
       calcQuickStatsFromLive(live);
     } catch (err) {
-      console.warn('[Results] Unable to render final or live state', err);
-      // Clear UI softly
-      setTitle(`Race ${raceId}`);
-      setWindow('Unavailable');
+      // Unable to load live either - clear selection and UI
+      selectedRaceId = null;
+      setTitle('-');
+      setWindow('-');
       clearStandingsTable();
       clearLapsTable();
     }
@@ -749,10 +760,19 @@ function selectHeat(heatOrId) {
     // Fill rail (non-blocking)
     refreshHeats().catch(() => { /* rail is optional */ });
 
-    // If we have a race id, render it immediately, even if the rail is empty.
+    // If we have a race id, try to render it; if it fails, just show the heats list
     if (selectedRaceId) {
-      try { localStorage.setItem('rc.race_id', String(selectedRaceId)); } catch {}
-      await renderFinalOrLive(selectedRaceId);
+      try { 
+        localStorage.setItem('rc.race_id', String(selectedRaceId)); 
+      } catch {}
+      
+      try {
+        await renderFinalOrLive(selectedRaceId);
+      } catch (err) {
+        console.warn('[Results] Failed to load race, showing heats only:', err);
+        // Clear the bad race_id from URL so user can select from list
+        selectedRaceId = null;
+      }
     }
 
     // CSV/JSON buttons track the current selection

@@ -45,6 +45,10 @@
     customLabel: $('#customLabel'),
     btnSaveMode: $('#btnSaveMode'),
 
+    // Start type
+    startStanding: $('#startStanding'),
+    startRolling: $('#startRolling'),
+
     // Limit
     optTime: $('#limitTime'),
     optLaps: $('#limitLaps'),
@@ -363,6 +367,9 @@
       event_label: els.eventLabel?.value?.trim() || '',
       session_label: els.sessionLabel?.value?.trim() || '',
 
+      // Start type
+      start_type: els.startStanding?.checked ? 'standing' : 'rolling',
+
       // These two are UI toggles; we'll map them into the backend's 'bypass' block:
       decoder_bypass: !!els.decoderBypass?.checked,
       entrants_bypass: !!els.entrantsBypass?.checked,
@@ -431,6 +438,7 @@
       event_label:   cfg.event_label,
       session_label: cfg.session_label,
       mode_id:       cfg.mode_id || 'sprint',
+      start_type:    cfg.start_type || 'standing',
       limit:         cfg.limit,
       rank_method:   cfg.rank_method,
       min_lap_s:     cfg.min_lap_s,

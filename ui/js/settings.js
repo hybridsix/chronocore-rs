@@ -1,380 +1,468 @@
 /* =======================================================================
-  CCRS Settings - Page Logic (Verbose-Commented)
+  CCRS Settings - Page Logic
    -----------------------------------------------------------------------
-   Responsibilities
-   1) Left-nav behavior
-      - Smoothly scroll the INTERNAL right-pane scroller when a nav anchor
-        is clicked (e.g., #ingest), not the window.
-      - Maintain an "active" highlight using a scrollspy (IntersectionObserver)
-        based on which <section> is most visible in the right pane.
-
-   2) Runtime hydration
-      - GET /setup/runtime to obtain the merged runtime config. This is a
-        read-only snapshot used to prefill controls. The exact shape is kept
-        intentionally small and stable.
-
-   3) Patch building + Apply/Save stubs
-      - Collect values from inputs to form a MINIMAL patch object that mirrors
-        the runtime structure (engine.*, race.*, ui.*). The patch is sent to
-        either /setup/apply_hot (no restart) or /setup/save_restart (persist +
-        recycle engine). Server-side will validate and reject unknown keys.
-
-   Notes
-   - This file avoids external dependencies. Keep it friendly for maintainers.
-   - All selectors are defensive (elements may be null during early wiring).
+   Responsibilities:
+   1) Left-nav smooth scrolling + scrollspy
+   2) Load config from /settings/config
+   3) Hydrate form fields with current values
+   4) Track changes and enable/disable Save button
+   5) Collect changes and POST to /settings/config
+   6) Show restart requirement message after save
    ======================================================================= */
 
 (function () {
   'use strict';
 
-  // ---------------------------------------------------------------------
-  // Namespace + tiny query helper
-  // ---------------------------------------------------------------------
-  const CCRS = window.CCRS || {};
-  const $ = (sel, root) => (root || document).querySelector(sel);
+  // State management
+  let originalConfig = null;
+  let isDirty = false;
 
-  // ---------------------------------------------------------------------
-  // Element registry - if a control doesn't exist on the page yet, the
-  // corresponding entry is simply null. Code below guards these accesses.
-  // ---------------------------------------------------------------------
-  const ids = [
-    // Header / engine host bits
-    'engineLabel', 'policySummary', 'effectiveHost', 'engineOverride',
-    'testEngine', 'saveEngine', 'clearEngine', 'engineMsg',
+  // Element references
+  const els = {
+    // Event & Engine
+    eventName: document.getElementById('eventName'),
+    eventDate: document.getElementById('eventDate'),
+    eventLocation: document.getElementById('eventLocation'),
+    defaultMinLap: document.getElementById('defaultMinLap'),
+    allowUnknownTags: document.getElementById('allowUnknownTags'),
+    unknownTagName: document.getElementById('unknownTagName'),
 
-    // Client role
-    'role', 'saveRole',
+    // Ingest & Timing
+    debounceMs: document.getElementById('debounceMs'),
+    diagEnabled: document.getElementById('diagEnabled'),
+    diagBuffer: document.getElementById('diagBuffer'),
+    beepMax: document.getElementById('beepMax'),
 
-    // Ingest + Diagnostics
-    'debounce', 'minLapMs', 'debounceOverrides',
-    'diagEnabled', 'diagBuffer', 'diagTransport', 'beepMax', 'testBeep',
+    // Hardware & Decoders (unified)
+    decoderType: document.getElementById('decoderType'),
+    serialPort: document.getElementById('serialPort'),
+    serialBaud: document.getElementById('serialBaud'),
+    decoderMinLap: document.getElementById('decoderMinLap'),
+    ilapInit7Digit: document.getElementById('ilapInit7Digit'),
+    ilapSpecific: document.getElementById('ilapSpecific'),
 
-    // Track lists
-    'locList', 'bindList',
+    // Track & Locations
+    locationSF: document.getElementById('locationSF'),
+    locationPitIn: document.getElementById('locationPitIn'),
+    locationPitOut: document.getElementById('locationPitOut'),
+    locationX1: document.getElementById('locationX1'),
+    
+    // Hardware bindings (4 bindings, each with 4 fields)
+    binding0Computer: document.getElementById('binding0Computer'),
+    binding0Decoder: document.getElementById('binding0Decoder'),
+    binding0Port: document.getElementById('binding0Port'),
+    binding0Location: document.getElementById('binding0Location'),
+    binding1Computer: document.getElementById('binding1Computer'),
+    binding1Decoder: document.getElementById('binding1Decoder'),
+    binding1Port: document.getElementById('binding1Port'),
+    binding1Location: document.getElementById('binding1Location'),
+    binding2Computer: document.getElementById('binding2Computer'),
+    binding2Decoder: document.getElementById('binding2Decoder'),
+    binding2Port: document.getElementById('binding2Port'),
+    binding2Location: document.getElementById('binding2Location'),
+    binding3Computer: document.getElementById('binding3Computer'),
+    binding3Decoder: document.getElementById('binding3Decoder'),
+    binding3Port: document.getElementById('binding3Port'),
+    binding3Location: document.getElementById('binding3Location'),
 
-    // Flags
-    'flagBlock', 'flagGrace',
+    // Flags & Safety
+    flagBlocklist: document.getElementById('flagBlocklist'),
+    flagGraceMs: document.getElementById('flagGraceMs'),
+    missedMode: document.getElementById('missedMode'),
+    missedWindowLaps: document.getElementById('missedWindowLaps'),
+    missedSigmaK: document.getElementById('missedSigmaK'),
+    missedMinGapMs: document.getElementById('missedMinGapMs'),
+    missedMaxConsec: document.getElementById('missedMaxConsec'),
+    missedMark: document.getElementById('missedMark'),
 
-    // Missed-lap
-    'missedMode', 'missedWindow', 'missedK', 'missedMinGap', 'missedMaxSeq', 'missedMark',
+    // UI & Sounds
+    uiTheme: document.getElementById('uiTheme'),
+    showSimPill: document.getElementById('showSimPill'),
+    soundVolumeMaster: document.getElementById('soundVolumeMaster'),
+    soundVolumeHorns: document.getElementById('soundVolumeHorns'),
+    soundVolumeBeeps: document.getElementById('soundVolumeBeeps'),
 
-    // UI
-    'soundDefault', 'timeDisplay',
-
-    // Apply area
-    'configDiff', 'applyHot', 'applyRestart', 'revert', 'applyMsg'
-  ];
-
-  const el = ids.reduce((acc, id) => {
-    acc[id] = document.getElementById(id) || null;
-    return acc;
-  }, {});
+    // Action bar
+    changeIndicator: document.getElementById('changeIndicator'),
+    statusMessage: document.getElementById('statusMessage'),
+    cancelBtn: document.getElementById('cancelBtn'),
+    saveBtn: document.getElementById('saveBtn')
+  };
 
   // ---------------------------------------------------------------------
   // Boot sequence
   // ---------------------------------------------------------------------
-  document.addEventListener('DOMContentLoaded', init);
+  document.addEventListener('DOMContentLoaded', async () => {
+    await loadConfig();
+    wireChangeDetection();
+    wireActionButtons();
+    wireDecoderTypeToggle();
+  });
 
-  async function init() {
-  // 1) Header pill - pull from CCRS helper if available
-    if (typeof CCRS.effectiveEngineLabel === 'function' && el.engineLabel) {
-      el.engineLabel.textContent = 'Engine: ' + CCRS.effectiveEngineLabel();
-    }
-
-    // 2) Left-nav scrolling + scrollspy inside the right pane
-    enableLeftNav();
-
-    // 3) Hydrate fields from runtime; failures are logged, not fatal
+  // ---------------------------------------------------------------------
+  // Load config from backend
+  // ---------------------------------------------------------------------
+  async function loadConfig() {
     try {
-      const rt = await fetchRuntime();
-      hydrate(rt);
+      const res = await fetch('/settings/config', { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      originalConfig = await res.json();
+      hydrate(originalConfig);
+      setStatus('Settings loaded', false);
     } catch (err) {
-      console.warn('[settings] runtime load failed:', err);
+      console.error('[settings] load failed:', err);
+      setStatus('Failed to load settings', true);
     }
-
-    // 4) Wire actions (safe even if elements are missing)
-    el.applyHot     && el.applyHot.addEventListener('click', onApplyHot);
-    el.applyRestart && el.applyRestart.addEventListener('click', onSaveRestart);
-    el.revert       && el.revert.addEventListener('click', onRevert);
-
-    el.saveRole && el.role && el.saveRole.addEventListener('click', () => {
-      // Stored locally on this device only (policy may allow/deny override)
-      try {
-        localStorage.setItem('ccrs.role', el.role.value);
-        toast('Saved role: ' + el.role.value);
-      } catch {}
-    });
   }
 
   // ---------------------------------------------------------------------
-  // Left-nav behavior: internal smooth scroll + scrollspy
+  // Hydrate form fields from config
   // ---------------------------------------------------------------------
-  function enableLeftNav() {
-    const scroller = $('.pane__scroll');
-    if (!scroller) return;
+  function hydrate(cfg) {
+    // Event & Engine
+    setValue(els.eventName, cfg?.app?.engine?.event?.name);
+    setValue(els.eventDate, cfg?.app?.engine?.event?.date);
+    setValue(els.eventLocation, cfg?.app?.engine?.event?.location);
+    setValue(els.defaultMinLap, cfg?.app?.engine?.default_min_lap_s);
+    setValue(els.allowUnknownTags, String(cfg?.app?.engine?.unknown_tags?.allow ?? true));
+    setValue(els.unknownTagName, cfg?.app?.engine?.unknown_tags?.auto_create_name);
 
-    // Anchor links that target in-page ids (e.g., #ingest)
-    const links = Array.from(document.querySelectorAll('.sideNav .navLink[href^="#"]'));
-    const sections = links
-      .map(a => document.querySelector(a.getAttribute('href')))
-      .filter(Boolean);
+    // Ingest & Timing
+    setValue(els.debounceMs, cfg?.app?.engine?.ingest?.debounce_ms);
+    setValue(els.diagEnabled, String(cfg?.app?.engine?.diagnostics?.enabled ?? true));
+    setValue(els.diagBuffer, cfg?.app?.engine?.diagnostics?.buffer_size);
+    setValue(els.beepMax, cfg?.app?.engine?.diagnostics?.beep?.max_per_sec);
 
-    // Smooth scroll inside the INTERNAL pane (not window)
-    links.forEach(a => {
-      a.addEventListener('click', (e) => {
-        e.preventDefault();
-        const target = document.querySelector(a.getAttribute('href'));
-        if (!target) return;
+    // Hardware & Decoders - determine active decoder from scanner.decoder config
+    const activeDecoder = cfg?.scanner?.decoder || 'ilap_serial';
+    setValue(els.decoderType, activeDecoder);
+    
+    // Load settings for the active decoder
+    const decoderCfg = cfg?.app?.hardware?.decoders?.[activeDecoder] || {};
+    setValue(els.serialPort, decoderCfg.port);
+    setValue(els.serialBaud, decoderCfg.baudrate);
+    setValue(els.decoderMinLap, decoderCfg.min_lap_s);
+    
+    // I-Lap specific
+    if (activeDecoder === 'ilap_serial') {
+      setValue(els.ilapInit7Digit, String(decoderCfg.init_7digit ?? true));
+    }
+    
+    // Show/hide I-Lap specific settings
+    updateDecoderSpecificUI();
 
-        // Set active immediately for instant feedback
-        links.forEach(l => l.classList.remove('active'));
-        a.classList.add('active');
+    // Track & Locations - editable inputs
+    const locations = cfg?.app?.track?.locations || {};
+    setValue(els.locationSF, locations.SF);
+    setValue(els.locationPitIn, locations.PIT_IN);
+    setValue(els.locationPitOut, locations.PIT_OUT);
+    setValue(els.locationX1, locations.X1);
+    
+    // Hardware bindings - populate up to 4 bindings
+    const bindings = cfg?.track?.bindings || [];
+    for (let i = 0; i < 4; i++) {
+      const binding = bindings[i] || {};
+      setValue(els[`binding${i}Computer`], binding.computer_id);
+      setValue(els[`binding${i}Decoder`], binding.decoder_id);
+      setValue(els[`binding${i}Port`], binding.port);
+      setValue(els[`binding${i}Location`], binding.location_id);
+    }
 
-        // Offset calculation: position target relative to the scroller
-        const top = target.getBoundingClientRect().top
-                  - scroller.getBoundingClientRect().top
-                  + scroller.scrollTop
-                  - 8; // tiny breathing room for sticky h2
-        scroller.scrollTo({ top, behavior: 'smooth' });
+    // Flags & Safety
+    const blocklist = cfg?.app?.race?.flags?.inference_blocklist || [];
+    setValue(els.flagBlocklist, Array.isArray(blocklist) ? blocklist.join(',') : '');
+    setValue(els.flagGraceMs, cfg?.app?.race?.flags?.post_green_grace_ms);
+
+    // Missed-lap
+    const missedEnabled = cfg?.app?.race?.missed_lap?.enabled ?? false;
+    const missedApplyMode = cfg?.app?.race?.missed_lap?.apply_mode || 'propose';
+    const missedMode = missedEnabled ? missedApplyMode : 'off';
+    setValue(els.missedMode, missedMode);
+    setValue(els.missedWindowLaps, cfg?.app?.race?.missed_lap?.window_laps);
+    setValue(els.missedSigmaK, cfg?.app?.race?.missed_lap?.sigma_k);
+    setValue(els.missedMinGapMs, cfg?.app?.race?.missed_lap?.min_gap_ms);
+    setValue(els.missedMaxConsec, cfg?.app?.race?.missed_lap?.max_consecutive_inferred);
+    setValue(els.missedMark, String(cfg?.app?.race?.missed_lap?.mark_inferred ?? true));
+
+    // UI & Sounds
+    setValue(els.uiTheme, cfg?.app?.ui?.theme);
+    setValue(els.showSimPill, String(cfg?.app?.ui?.show_sim_pill ?? true));
+    setValue(els.soundVolumeMaster, cfg?.sounds?.volume?.master);
+    setValue(els.soundVolumeHorns, cfg?.sounds?.volume?.horns);
+    setValue(els.soundVolumeBeeps, cfg?.sounds?.volume?.beeps);
+
+    // Reset dirty flag after hydration
+    isDirty = false;
+    updateDirtyUI();
+  }
+
+  function setValue(el, value) {
+    if (!el) return;
+    if (value !== undefined && value !== null) {
+      el.value = value;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Decoder type toggle - show/hide decoder-specific settings
+  // ---------------------------------------------------------------------
+  function wireDecoderTypeToggle() {
+    if (els.decoderType) {
+      els.decoderType.addEventListener('change', updateDecoderSpecificUI);
+    }
+  }
+
+  function updateDecoderSpecificUI() {
+    const decoderType = els.decoderType?.value;
+    
+    // Show/hide I-Lap specific settings
+    if (els.ilapSpecific) {
+      els.ilapSpecific.style.display = decoderType === 'ilap_serial' ? 'block' : 'none';
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Change detection
+  // ---------------------------------------------------------------------
+  function wireChangeDetection() {
+    const inputs = [
+      els.eventName, els.eventDate, els.eventLocation, els.defaultMinLap,
+      els.allowUnknownTags, els.unknownTagName,
+      els.debounceMs, els.diagEnabled, els.diagBuffer, els.beepMax,
+      els.decoderType, els.serialPort, els.serialBaud, els.decoderMinLap, els.ilapInit7Digit,
+      els.locationSF, els.locationPitIn, els.locationPitOut, els.locationX1,
+      els.binding0Computer, els.binding0Decoder, els.binding0Port, els.binding0Location,
+      els.binding1Computer, els.binding1Decoder, els.binding1Port, els.binding1Location,
+      els.binding2Computer, els.binding2Decoder, els.binding2Port, els.binding2Location,
+      els.binding3Computer, els.binding3Decoder, els.binding3Port, els.binding3Location,
+      els.flagBlocklist, els.flagGraceMs,
+      els.missedMode, els.missedWindowLaps, els.missedSigmaK,
+      els.missedMinGapMs, els.missedMaxConsec, els.missedMark,
+      els.uiTheme, els.showSimPill,
+      els.soundVolumeMaster, els.soundVolumeHorns, els.soundVolumeBeeps
+    ].filter(Boolean);
+
+    inputs.forEach(el => {
+      el.addEventListener('input', () => {
+        isDirty = true;
+        updateDirtyUI();
       });
     });
+  }
 
-    // Scrollspy: highlight the link whose section is most visible
-    if (sections.length) {
-      const linkById = Object.fromEntries(links.map(l => [l.getAttribute('href'), l]));
-      const io = new IntersectionObserver((entries) => {
-        let best = null, max = 0;
-        for (const e of entries) {
-          if (e.intersectionRatio >= max) { max = e.intersectionRatio; best = e.target; }
+  function updateDirtyUI() {
+    if (els.changeIndicator) {
+      els.changeIndicator.style.display = isDirty ? 'inline' : 'none';
+    }
+    if (els.saveBtn) {
+      els.saveBtn.disabled = !isDirty;
+    }
+  }
+
+  // ---------------------------------------------------------------------
+  // Action buttons
+  // ---------------------------------------------------------------------
+  function wireActionButtons() {
+    if (els.cancelBtn) {
+      els.cancelBtn.addEventListener('click', () => {
+        if (originalConfig) {
+          hydrate(originalConfig);
+          setStatus('Changes cancelled', false);
         }
-        if (!best) return;
-        links.forEach(l => l.classList.remove('active'));
-        linkById['#' + best.id]?.classList.add('active');
-      }, {
-        root: scroller,
-        threshold: [0.35, 0.55, 0.75] // tune for desired sensitivity
       });
-      sections.forEach(sec => io.observe(sec));
+    }
+
+    if (els.saveBtn) {
+      els.saveBtn.addEventListener('click', async () => {
+        await saveConfig();
+      });
     }
   }
 
   // ---------------------------------------------------------------------
-  // Runtime I/O - load snapshot and hydrate fields
+  // Collect changes and save
   // ---------------------------------------------------------------------
-  async function fetchRuntime() {
-    const res = await fetch('/setup/runtime', { credentials: 'same-origin' });
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    return await res.json();
-  }
+  async function saveConfig() {
+    try {
+      setStatus('Saving...', false);
 
-  function hydrate(rt) {
-    // Ingest
-    if (el.debounce) el.debounce.value = val(rt, 'engine.ingest.debounce_ms', '');
-    if (el.minLapMs) el.minLapMs.value = val(rt, 'race.missed_lap.min_gap_ms', '');
+      const patch = collectPatch();
+      
+      const res = await fetch('/settings/config', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        credentials: 'same-origin',
+        body: JSON.stringify(patch)
+      });
 
-    // Per-location debounce overrides (render-only for now)
-    renderDebounceOverrides(val(rt, 'engine.ingest.per_location_debounce_ms', {}) || {});
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.detail || 'Save failed');
+      }
 
-    // Diagnostics
-    el.diagEnabled   && (el.diagEnabled.value   = String(val(rt, 'engine.diagnostics.enabled', true)));
-    el.diagBuffer    && (el.diagBuffer.value    = val(rt, 'engine.diagnostics.buffer_size', 500));
-    el.diagTransport && (el.diagTransport.value = val(rt, 'engine.diagnostics.stream.transport', 'sse'));
-    el.beepMax       && (el.beepMax.value       = val(rt, 'engine.diagnostics.beep.max_per_sec', 5));
+      const data = await res.json();
 
-    // Flags
-    el.flagBlock && (el.flagBlock.value = (val(rt, 'race.flags.inference_blocklist', []) || []).join(','));
-    el.flagGrace && (el.flagGrace.value = val(rt, 'race.flags.post_green_grace_ms', 3000));
+      // Update originalConfig with saved values
+      originalConfig = deepMerge(originalConfig || {}, patch);
+      isDirty = false;
+      updateDirtyUI();
 
-    // Missed-lap
-    const enabled = !!val(rt, 'race.missed_lap.enabled', false);
-    const mode    = enabled ? val(rt, 'race.missed_lap.apply_mode', 'propose') : 'off';
-    el.missedMode    && (el.missedMode.value    = mode);
-    el.missedWindow  && (el.missedWindow.value  = val(rt, 'race.missed_lap.window_laps', 5));
-    el.missedK       && (el.missedK.value       = val(rt, 'race.missed_lap.sigma_k', 2.0));
-    el.missedMinGap  && (el.missedMinGap.value  = val(rt, 'race.missed_lap.min_gap_ms', 8000));
-    el.missedMaxSeq  && (el.missedMaxSeq.value  = val(rt, 'race.missed_lap.max_consecutive_inferred', 1));
-    el.missedMark    && (el.missedMark.value    = String(val(rt, 'race.missed_lap.mark_inferred', true)));
-
-    // Track (read-only lists for now)
-    renderLocations(val(rt, 'track.locations', {}));
-    renderBindings(val(rt, 'track.bindings', []));
-
-    // Engine host informational fields
-  el.effectiveHost && (el.effectiveHost.value = val(rt, 'meta.engine_host', '-'));
-    el.policySummary && (el.policySummary.value = 'Runtime: merged config');
-  }
-
-  // Render helpers for read-only lists ------------------------------------------------
-  function renderDebounceOverrides(map) {
-    const box = el.debounceOverrides; if (!box) return;
-    box.innerHTML = '';
-    const entries = Object.entries(map);
-    if (!entries.length) {
-      box.innerHTML = '<div class="small muted">No per-location overrides.</div>';
-      return;
+      // Show popup alert
+      alert('Settings saved successfully!\n\nRestart the application for changes to take effect.');
+      setStatus('', false);
+    } catch (err) {
+      console.error('[settings] save failed:', err);
+      setStatus('Save failed: ' + err.message, true);
     }
-    entries.forEach(([loc, ms]) => {
-      const row = document.createElement('div');
-      row.className = 'row';
-      row.innerHTML = `
-        <div class="key">${loc}</div>
-        <input type="number" class="input" value="${ms}" data-loc="${loc}" min="0" step="10">
-        <button class="btn btn--subtle" data-remove="${loc}">Remove</button>`;
-      box.appendChild(row);
-    });
   }
 
-  function renderLocations(locMap) {
-    const box = el.locList; if (!box) return;
-    box.innerHTML = '';
-    const ids = Object.keys(locMap || {});
-    if (!ids.length) { box.innerHTML = '<div class="small muted">No locations defined.</div>'; return; }
-    ids.sort().forEach(id => {
-      const row = document.createElement('div'); row.className = 'row';
-      row.innerHTML = `<div class="key">${id}</div><div>${locMap[id]}</div>`;
-      box.appendChild(row);
-    });
-  }
-
-  function renderBindings(bindings) {
-    const box = el.bindList; if (!box) return;
-    box.innerHTML = '';
-    if (!Array.isArray(bindings) || !bindings.length) {
-      box.innerHTML = '<div class="small muted">No bindings defined.</div>';
-      return;
-    }
-    bindings.forEach(b => {
-      const row = document.createElement('div'); row.className = 'row';
-      row.innerHTML = `
-  <div class="key">${b.computer_id || '-'}</div>
-  <div>${b.decoder_id || '-'}</div>
-  <div>${b.port || '-'}</div>
-        <div>→ <b>${b.location_id || 'UNKNOWN'}</b></div>`;
-      box.appendChild(row);
-    });
-  }
-
-  // ---------------------------------------------------------------------
-  // Patch collection and apply/save actions
-  // ---------------------------------------------------------------------
   function collectPatch() {
-    const patch = { engine: {}, race: {} };
+    const patch = { app: {}, sounds: {} };
 
-    // Ingest globals
-    if (el.debounce && el.debounce.value !== '') {
-      patch.engine.ingest = Object.assign({}, patch.engine.ingest, {
-        debounce_ms: Number(el.debounce.value)
-      });
-    }
-
-    // Diagnostics
-    patch.engine.diagnostics = {
-      enabled: (el.diagEnabled && el.diagEnabled.value === 'true') || false,
-      buffer_size: numOrUndef(el.diagBuffer?.value),
-      stream: { transport: (el.diagTransport && el.diagTransport.value) || 'sse' },
-      beep:   { max_per_sec: numOrUndef(el.beepMax?.value, 5) }
+    // Event & Engine
+    patch.app.engine = patch.app.engine || {};
+    patch.app.engine.event = {
+      name: els.eventName?.value || '',
+      date: els.eventDate?.value || '',
+      location: els.eventLocation?.value || ''
+    };
+    patch.app.engine.default_min_lap_s = numOrUndef(els.defaultMinLap?.value, 10);
+    patch.app.engine.unknown_tags = {
+      allow: els.allowUnknownTags?.value === 'true',
+      auto_create_name: els.unknownTagName?.value || 'Unknown'
     };
 
-    // Flags
-    patch.race.flags = {
-      inference_blocklist: (el.flagBlock?.value || '')
+    // Ingest & Timing
+    patch.app.engine.ingest = {
+      debounce_ms: numOrUndef(els.debounceMs?.value, 250)
+    };
+    patch.app.engine.diagnostics = {
+      enabled: els.diagEnabled?.value === 'true',
+      buffer_size: numOrUndef(els.diagBuffer?.value, 500),
+      beep: {
+        max_per_sec: numOrUndef(els.beepMax?.value, 5)
+      }
+    };
+
+    // Hardware & Decoders - save to both scanner.decoder and app.hardware.decoders
+    const decoderType = els.decoderType?.value || 'ilap_serial';
+    
+    // Update scanner.decoder to set active decoder
+    patch.scanner = {
+      decoder: decoderType
+    };
+    
+    // Build the config for the selected decoder
+    const decoderConfig = {
+      port: els.serialPort?.value || 'COM3',
+      baudrate: numOrUndef(els.serialBaud?.value, 9600),
+      min_lap_s: numOrUndef(els.decoderMinLap?.value, 10)
+    };
+    
+    // Add I-Lap specific settings
+    if (decoderType === 'ilap_serial') {
+      decoderConfig.init_7digit = els.ilapInit7Digit?.value === 'true';
+    }
+    
+    // Save to app.hardware.decoders.[decoder_type]
+    patch.app.hardware = {
+      decoders: {
+        [decoderType]: decoderConfig
+      }
+    };
+
+    // Track & Locations
+    patch.app.track = {
+      locations: {
+        SF: els.locationSF?.value || 'Start/Finish',
+        PIT_IN: els.locationPitIn?.value || 'Pit In',
+        PIT_OUT: els.locationPitOut?.value || 'Pit Out',
+        X1: els.locationX1?.value || 'Crossing X'
+      }
+    };
+
+    // Hardware bindings - collect up to 4 bindings, skip empty ones
+    const bindings = [];
+    for (let i = 0; i < 4; i++) {
+      const computer = els[`binding${i}Computer`]?.value?.trim();
+      const decoder = els[`binding${i}Decoder`]?.value?.trim();
+      const port = els[`binding${i}Port`]?.value?.trim();
+      const location = els[`binding${i}Location`]?.value?.trim();
+      
+      // Only include binding if at least computer_id and location_id are set
+      if (computer && location) {
+        bindings.push({
+          computer_id: computer,
+          decoder_id: decoder || '',
+          port: port || '',
+          location_id: location
+        });
+      }
+    }
+    
+    // Add bindings at top level (not under app)
+    patch.track = {
+      bindings: bindings
+    };
+
+    // Flags & Safety
+    patch.app.race = patch.app.race || {};
+    patch.app.race.flags = {
+      inference_blocklist: (els.flagBlocklist?.value || '')
         .split(',').map(s => s.trim()).filter(Boolean),
-      post_green_grace_ms: numOrUndef(el.flagGrace?.value, 3000)
+      post_green_grace_ms: numOrUndef(els.flagGraceMs?.value, 3000)
     };
 
     // Missed-lap
-    const mode = (el.missedMode && el.missedMode.value) || 'off';
-    patch.race.missed_lap = {
-      enabled: mode !== 'off',
-      apply_mode: mode === 'off' ? 'propose' : mode,
-      window_laps: numOrUndef(el.missedWindow?.value, 5),
-      sigma_k: numOrUndef(el.missedK?.value, 2.0),
-      min_gap_ms: numOrUndef(el.missedMinGap?.value, 8000),
-      max_consecutive_inferred: numOrUndef(el.missedMaxSeq?.value, 1),
-      mark_inferred: (el.missedMark && el.missedMark.value === 'true') || true
+    const missedMode = els.missedMode?.value || 'off';
+    patch.app.race.missed_lap = {
+      enabled: missedMode !== 'off',
+      apply_mode: missedMode === 'off' ? 'propose' : missedMode,
+      window_laps: numOrUndef(els.missedWindowLaps?.value, 5),
+      sigma_k: numOrUndef(els.missedSigmaK?.value, 2.0),
+      min_gap_ms: numOrUndef(els.missedMinGapMs?.value, 8000),
+      max_consecutive_inferred: numOrUndef(els.missedMaxConsec?.value, 1),
+      mark_inferred: els.missedMark?.value === 'true'
     };
 
-    // UI (optional; safe if controls exist)
-    if (el.soundDefault || el.timeDisplay) {
-      patch.ui = patch.ui || {};
-      patch.ui.operator = {
-        sound_default_enabled: el.soundDefault ? (el.soundDefault.value === 'true') : undefined,
-        time_display: el.timeDisplay ? (el.timeDisplay.value || 'local') : undefined
-      };
-    }
+    // UI & Sounds
+    patch.app.ui = {
+      theme: els.uiTheme?.value || 'default-dark',
+      show_sim_pill: els.showSimPill?.value === 'true'
+    };
+    patch.sounds.volume = {
+      master: numOrUndef(els.soundVolumeMaster?.value, 1.0),
+      horns: numOrUndef(els.soundVolumeHorns?.value, 1.0),
+      beeps: numOrUndef(els.soundVolumeBeeps?.value, 1.0)
+    };
 
-    return pruneEmpty(patch);
+    return patch;
   }
 
   function numOrUndef(v, dflt) {
     const n = Number(v);
-    return Number.isFinite(n) ? n : (dflt === undefined ? undefined : dflt);
+    return Number.isFinite(n) ? n : dflt;
   }
 
-  function pruneEmpty(obj) {
-    if (!obj || typeof obj !== 'object') return obj;
-    Object.keys(obj).forEach(k => {
-      const v = obj[k];
-      if (v && typeof v === 'object' && !Array.isArray(v)) pruneEmpty(v);
-      const emptyObj = v && typeof v === 'object' && !Array.isArray(v) && Object.keys(v).length === 0;
-      if (v === undefined || v === null || v === '' || emptyObj) delete obj[k];
-    });
-    return obj;
-  }
-
-  // Apply (hot) - no restart
-  async function onApplyHot() {
-    try {
-      const patch = collectPatch();
-      const res = await fetch('/setup/apply_hot', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify(patch)
-      });
-      const data = await res.json();
-      toast(data.ok ? 'Applied hot.' : 'Apply failed.');
-      el.configDiff && (el.configDiff.textContent = JSON.stringify(patch, null, 2));
-    } catch (err) {
-      toast('Apply failed.');
-      console.warn('[settings] apply hot failed:', err);
+  function deepMerge(base, overlay) {
+    const result = { ...base };
+    for (const key in overlay) {
+      if (overlay[key] && typeof overlay[key] === 'object' && !Array.isArray(overlay[key])) {
+        result[key] = deepMerge(result[key] || {}, overlay[key]);
+      } else {
+        result[key] = overlay[key];
+      }
     }
+    return result;
   }
 
-  // Save & restart - persist to config and recycle engine
-  async function onSaveRestart() {
-    try {
-      const patch = collectPatch();
-      const res = await fetch('/setup/save_restart', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        credentials: 'same-origin',
-        body: JSON.stringify(patch)
-      });
-      const data = await res.json();
-      toast(data.ok ? 'Saved. Engine restarting…' : 'Save failed.');
-      el.configDiff && (el.configDiff.textContent = JSON.stringify(patch, null, 2));
-    } catch (err) {
-      toast('Save failed.');
-      console.warn('[settings] save/restart failed:', err);
+  // ---------------------------------------------------------------------
+  // Status message helper
+  // ---------------------------------------------------------------------
+  function setStatus(msg, isError) {
+    if (els.statusMessage) {
+      els.statusMessage.textContent = msg;
+      els.statusMessage.style.color = isError ? '#ff5555' : '#b3c2cc';
     }
-  }
-
-  // Revert - rehydrate from the live runtime snapshot
-  function onRevert() {
-    fetchRuntime()
-      .then(rt => { hydrate(rt); toast('Reverted to runtime.'); })
-      .catch(() => toast('Revert failed.'));
-  }
-
-  // Small helper to surface status near the Apply buttons
-  function toast(msg) {
-    el.applyMsg && (el.applyMsg.textContent = msg);
-  }
-
-  // Path helper (safe get)
-  function val(obj, path, dflt) {
-    try { return path.split('.').reduce((a, k) => (a && a[k] != null ? a[k] : undefined), obj) ?? dflt; }
-    catch { return dflt; }
   }
 })();

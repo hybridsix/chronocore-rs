@@ -64,6 +64,25 @@ log.setLevel(logging.INFO)
 DB_PATH = get_db_path()
 ensure_schema(DB_PATH, recreate=False, include_passes=True)
 
+# --- Journaling config (YAML + env override) ---
+import os
+
+def _load_cfg() -> dict:
+    p = pathlib.Path("config/config.yaml")
+    if p.exists():
+        with p.open("r", encoding="utf-8") as f:
+            return yaml.safe_load(f) or {}
+    return {}
+
+_CFG = _load_cfg()
+
+# Allow env var to override YAML; accepts "1"/"true"/"yes"
+_env = os.getenv("CCRS_JOURNALING", "").strip().lower()
+_env_val = _env in ("1", "true", "yes")
+
+JOURNALING_ENABLED = _env_val if _env else bool(_CFG.get("journaling", {}).get("enabled", False))
+JOURNALING_TABLE   = _CFG.get("journaling", {}).get("table", "passes_journal")
+
 # ------------------------------------------------------------
 # FastAPI app bootstrap
 # ------------------------------------------------------------
@@ -1478,7 +1497,9 @@ def export_passes_csv(heat_id: int):
                 (name,),
             ).fetchone() is not None
 
-        table_name = next((name for name in ("passes_journal", "passes") if table_exists(name)), None)
+        table_name = JOURNALING_TABLE if table_exists(JOURNALING_TABLE) else (
+            "passes" if table_exists("passes") else None
+        )
         if not table_name:
             raise HTTPException(status_code=404, detail="Pass journal table not found")
 
@@ -2802,6 +2823,102 @@ async def delete_entrant(request: Request):
         raise HTTPException(status_code=404, detail="entrant not found")
 
     return {"deleted": deleted}
+
+
+# ============================================================
+# SETTINGS - Read/Write config.yaml
+# ============================================================
+
+@app.get("/settings/config")
+async def get_settings_config():
+    """
+    Return the current config.yaml contents for the settings UI.
+    Returns sanitized config object safe for editing.
+    """
+    try:
+        # Read the config file directly (config_loader already loaded it)
+        config_path = Path(__file__).parent.parent / "config" / "config.yaml"
+        
+        if not config_path.exists():
+            raise HTTPException(status_code=500, detail="config.yaml not found")
+        
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = yaml.safe_load(f)
+        
+        if not config_data:
+            raise HTTPException(status_code=500, detail="config.yaml is empty or invalid")
+        
+        return JSONResponse(config_data)
+    
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=500, detail=f"YAML parse error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to read config: {e}")
+
+
+@app.post("/settings/config")
+async def update_settings_config(request: Request):
+    """
+    Update config.yaml with provided changes.
+    Accepts partial config object and merges with existing config.
+    Returns success/error response.
+    
+    NOTE: Changes require server restart to take effect.
+    """
+    try:
+        # Parse the incoming patch
+        patch = await request.json()
+        
+        if not patch or not isinstance(patch, dict):
+            raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+        
+        # Read current config
+        config_path = Path(__file__).parent.parent / "config" / "config.yaml"
+        
+        if not config_path.exists():
+            raise HTTPException(status_code=500, detail="config.yaml not found")
+        
+        with open(config_path, 'r', encoding='utf-8') as f:
+            config_data = yaml.safe_load(f)
+        
+        if not config_data:
+            config_data = {}
+        
+        # Deep merge the patch into existing config
+        def deep_merge(base: dict, overlay: dict):
+            """Recursively merge overlay into base."""
+            for key, value in overlay.items():
+                if key in base and isinstance(base[key], dict) and isinstance(value, dict):
+                    deep_merge(base[key], value)
+                else:
+                    base[key] = value
+        
+        deep_merge(config_data, patch)
+        
+        # Write back to file with proper formatting
+        with open(config_path, 'w', encoding='utf-8') as f:
+            yaml.safe_dump(
+                config_data,
+                f,
+                default_flow_style=False,
+                sort_keys=False,
+                allow_unicode=True,
+                width=80,
+                indent=2
+            )
+        
+        return {
+            "ok": True,
+            "message": "Settings saved. Restart server for changes to take effect.",
+            "restart_required": True
+        }
+    
+    except yaml.YAMLError as e:
+        raise HTTPException(status_code=500, detail=f"YAML error: {e}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update config: {e}")
+
+
 # ------------------------------------------------------------
 # Polling endpoint (UI fallback)
 # ------------------------------------------------------------
