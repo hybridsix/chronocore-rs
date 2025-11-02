@@ -724,12 +724,24 @@ function selectHeat(heatOrId) {
     // btnPassesCSV remains disabled unless you wire /passes.csv?heat_id=
   }
 
+  // Wire the "Export All Heats" button
+  function wireExportAll() {
+    const btnExportAll = $('#btnExportAll');
+    if (!btnExportAll) return;
+
+    btnExportAll.onclick = () => {
+      const bust = `?_=${Date.now()}`;
+      window.location.href = `/results/export/all${bust}`;
+    };
+  }
+
   // ---------------------------------------------------------------------------
   // Bootstrap
   // ---------------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', async () => {
     wireTabs();
     wireAdminButtons();
+    wireExportAll();  // Wire the bulk export button
 
     // Pull a race id from the URL (or last selection)
     selectedRaceId = getRaceIdFromPage();

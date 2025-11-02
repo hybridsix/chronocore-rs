@@ -344,3 +344,11 @@ sounds:
     checkered:      checkered_flag.wav  # checkered cue at finish (if enabled)
     rank_change:    rank_change.wav   # rank-change blip (if enabled later)
     best_lap:       best_lap.wav      # best-lap arpeggio (if enabled)
+
+# -----------------------------------------------------------------------------
+# Journaling: capture raw loop passes into a dedicated table.
+# Useful for debugging, data analysis, or reconstructing lost races
+# -----------------------------------------------------------------------------
+journaling:
+  enabled: false     # set to true to capture raw loop passes
+  table: passes_journal

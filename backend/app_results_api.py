@@ -14,9 +14,10 @@ from __future__ import annotations
 import csv
 from datetime import datetime, timezone, timedelta
 import sqlite3
-from io import StringIO
+from io import StringIO, BytesIO
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
+import zipfile
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -373,6 +374,12 @@ def get_laps(race_id: int) -> Dict[str, Any]:
 # CSV exports
 # ---------------------------------------------------------------------------
 
+def _ms_to_seconds(ms) -> str:
+    """Format milliseconds as SS.mmm for CSV exports."""
+    if ms is None:
+        return ""
+    return f"{float(ms) / 1000:.3f}"
+
 def _csv_stream(rows: List[List[Any]], headers: List[str]) -> StreamingResponse:
     buf = StringIO()
     w = csv.writer(buf, lineterminator="\n")
@@ -414,9 +421,9 @@ def standings_csv(race_id: int) -> StreamingResponse:
                 r["name"],
                 r["tag"],         # always included (snapshot or fallback)
                 r["laps"],
-                r["last_ms"],
-                r["best_ms"],
-                r["gap_ms"],
+                _ms_to_seconds(r["last_ms"]),
+                _ms_to_seconds(r["best_ms"]),
+                _ms_to_seconds(r["gap_ms"]),
                 r["lap_deficit"],
                 r["pit_count"],
                 r["status"],
@@ -424,7 +431,7 @@ def standings_csv(race_id: int) -> StreamingResponse:
 
         headers = [
             "position","entrant_id","number","name","tag",
-            "laps","last_ms","best_ms","gap_ms","lap_deficit","pit_count","status"
+            "laps","last_sec","best_sec","gap_sec","lap_deficit","pit_count","status"
         ]
         return _csv_stream(payload, headers)
 
@@ -460,11 +467,155 @@ def laps_csv(race_id: int) -> StreamingResponse:
                 r["number"],
                 r["name"],
                 r["lap_no"],
-                r["lap_ms"],
+                _ms_to_seconds(r["lap_ms"]),
             ])
 
-        headers = ["entrant_id","tag","number","name","lap_no","lap_ms"]
+        headers = ["entrant_id","tag","number","name","lap_no","lap_sec"]
         return _csv_stream(payload, headers)
+
+
+@router.get("/export/all")
+def export_all_heats() -> StreamingResponse:
+    """
+    Export all frozen heats as a zip file containing standings.csv and laps.csv
+    for each heat. Ideal for race weekend archival.
+    """
+    with _connect() as db:
+        _ensure_result_schema(db)
+        
+        # Get all heats ordered by frozen time
+        heats = db.execute(
+            """
+            SELECT race_id, race_type, event_label, session_label, frozen_iso_local, frozen_iso_utc
+            FROM result_meta
+            ORDER BY
+              COALESCE(
+                frozen_utc,
+                CAST(strftime('%s', frozen_iso_utc) AS INTEGER) * 1000,
+                0
+              ) DESC,
+              race_id DESC
+            """
+        ).fetchall()
+        
+        if not heats:
+            raise HTTPException(status_code=404, detail="No frozen heats found")
+        
+        # Create zip in memory
+        zip_buffer = BytesIO()
+        
+        with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for heat in heats:
+                race_id = heat["race_id"]
+                
+                # Build descriptive filename base
+                # Format: YYYY-MM-DD_event_session_raceType
+                parts = []
+                
+                # Extract date from frozen time
+                date_str = None
+                if heat["frozen_iso_local"]:
+                    try:
+                        date_str = heat["frozen_iso_local"][:10]  # YYYY-MM-DD
+                    except Exception:
+                        pass
+                if not date_str and heat["frozen_iso_utc"]:
+                    try:
+                        date_str = heat["frozen_iso_utc"][:10]
+                    except Exception:
+                        pass
+                if date_str:
+                    parts.append(date_str)
+                
+                # Add event/session/race_type
+                if heat["event_label"]:
+                    parts.append(heat["event_label"].replace(" ", "_"))
+                if heat["session_label"]:
+                    parts.append(heat["session_label"].replace(" ", "_"))
+                if heat["race_type"]:
+                    parts.append(heat["race_type"].replace(" ", "_"))
+                
+                # Fallback to race_id if nothing else
+                if not parts:
+                    parts.append(f"heat_{race_id}")
+                
+                base_name = "_".join(parts)
+                
+                # --- Generate standings CSV ---
+                st_rows = db.execute(
+                    """
+                    SELECT
+                      rs.position, rs.entrant_id, rs.number, rs.name,
+                      COALESCE(rs.tag, e.tag) AS tag,
+                      rs.laps, rs.last_ms, rs.best_ms, rs.gap_ms,
+                      rs.lap_deficit, rs.pit_count, rs.status
+                    FROM result_standings rs
+                    LEFT JOIN entrants e ON e.entrant_id = rs.entrant_id
+                    WHERE rs.race_id = ?
+                    ORDER BY rs.position ASC
+                    """,
+                    (race_id,),
+                ).fetchall()
+                
+                st_buf = StringIO()
+                st_writer = csv.writer(st_buf, lineterminator="\n")
+                st_writer.writerow([
+                    "position","entrant_id","number","name","tag",
+                    "laps","last_sec","best_sec","gap_sec","lap_deficit","pit_count","status"
+                ])
+                for r in st_rows:
+                    st_writer.writerow([
+                        r["position"], r["entrant_id"], r["number"], r["name"], r["tag"],
+                        r["laps"], _ms_to_seconds(r["last_ms"]), _ms_to_seconds(r["best_ms"]),
+                        _ms_to_seconds(r["gap_ms"]), r["lap_deficit"], r["pit_count"], r["status"]
+                    ])
+                
+                zf.writestr(f"{base_name}_standings.csv", st_buf.getvalue())
+                
+                # --- Generate laps CSV ---
+                lap_rows = db.execute(
+                    """
+                    SELECT
+                      rl.entrant_id,
+                      COALESCE(rs.tag, e.tag) AS tag,
+                      rs.number,
+                      rs.name,
+                      rl.lap_no,
+                      rl.lap_ms
+                    FROM result_laps rl
+                    LEFT JOIN result_standings rs
+                      ON rs.race_id = rl.race_id AND rs.entrant_id = rl.entrant_id
+                    LEFT JOIN entrants e
+                      ON e.entrant_id = rl.entrant_id
+                    WHERE rl.race_id = ?
+                    ORDER BY rl.entrant_id ASC, rl.lap_no ASC
+                    """,
+                    (race_id,),
+                ).fetchall()
+                
+                lap_buf = StringIO()
+                lap_writer = csv.writer(lap_buf, lineterminator="\n")
+                lap_writer.writerow(["entrant_id","tag","number","name","lap_no","lap_sec"])
+                for r in lap_rows:
+                    lap_writer.writerow([
+                        r["entrant_id"], r["tag"], r["number"], r["name"],
+                        r["lap_no"], _ms_to_seconds(r["lap_ms"])
+                    ])
+                
+                zf.writestr(f"{base_name}_laps.csv", lap_buf.getvalue())
+        
+        # Prepare zip for download
+        zip_buffer.seek(0)
+        
+        # Generate filename with current date
+        now = datetime.now().strftime("%Y%m%d")
+        filename = f"race_weekend_export_{now}.zip"
+        
+        return StreamingResponse(
+            zip_buffer,
+            media_type="application/zip",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
 
 
 # ---------------- Admin: delete frozen results ----------------

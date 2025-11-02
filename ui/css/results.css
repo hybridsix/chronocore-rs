@@ -401,6 +401,7 @@
   overflow-y: auto;         /* enable vertical scrolling */
   overflow-x: hidden;       /* prevent horizontal scroll */
   padding: 6px;
+  padding-top: 16px;        /* extra space below header */
   display: flex;
   flex-direction: column;
   gap: 4px;                 /* small gap between cards */
@@ -595,6 +596,7 @@
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+  align-items: center;
 }
 .exports .btn {
   padding: 10px 12px;
@@ -603,10 +605,30 @@
   background: #12171c;
   color: #e6ebf0;
   cursor: pointer;
+  transition: all 120ms ease;
+}
+.exports .btn:hover:not([disabled]) {
+  border-color: rgba(125, 253, 254, 0.45);
+  background: rgba(125, 253, 254, 0.12);
+  box-shadow: 0 0 8px rgba(125, 253, 254, 0.25);
 }
 .exports .btn[disabled] {
   opacity: 0.55;
   cursor: not-allowed;
+}
+
+/* "Export All Heats" - race weekend archive button */
+.btn--archive {
+  margin-left: auto;  /* push to far right */
+  border-color: rgba(125, 253, 254, 0.35);
+  background: rgba(125, 253, 254, 0.08);
+  font-weight: 600;
+  box-shadow: 0 0 0 1px rgba(125, 253, 254, 0.2) inset;
+}
+.btn--archive:hover {
+  border-color: rgba(125, 253, 254, 0.6);
+  background: rgba(125, 253, 254, 0.14);
+  box-shadow: 0 0 0 1px rgba(125, 253, 254, 0.35) inset;
 }
 
 /* Subtle zebra striping for dense tables */
