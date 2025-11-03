@@ -182,6 +182,165 @@ function updateAdminEnabled() {
   });
 }
 
+  // ---------------------------------------------------------------------------
+  // View Mode Helpers (Frozen vs Live)
+  // ---------------------------------------------------------------------------
+  let viewMode = 'frozen'; // 'frozen' | 'live'
+
+  async function hasFrozenResult(raceId) {
+    try {
+      const res = await fetch(`/results/${raceId}`, { cache: 'no-store' });
+      return res.ok;
+    } catch { return false; }
+  }
+
+  async function hasLiveFor(raceId) {
+    try {
+      const res = await fetch(`/race/state`, { cache: 'no-store' });
+      if (!res.ok) return false;
+      const js = await res.json();
+      return String(js?.race_id) === String(raceId);
+    } catch { return false; }
+  }
+
+  function setPillState({ frozenEnabled, liveEnabled }) {
+    const pFrozen = document.getElementById('pillFrozen');
+    const pLive   = document.getElementById('pillLive');
+    const hint    = document.getElementById('viewHint');
+
+    if (pFrozen) {
+      pFrozen.disabled = !frozenEnabled;
+      pFrozen.classList.toggle('is-on', viewMode === 'frozen');
+      pFrozen.setAttribute('aria-selected', viewMode === 'frozen' ? 'true' : 'false');
+    }
+    if (pLive) {
+      pLive.disabled = !liveEnabled;
+      pLive.classList.toggle('is-on', viewMode === 'live');
+      pLive.setAttribute('aria-selected', viewMode === 'live' ? 'true' : 'false');
+    }
+    if (hint) {
+      if (viewMode === 'frozen') {
+        hint.textContent = frozenEnabled ? 'Showing frozen results (authoritative).' : 'No frozen results available.';
+      } else {
+        hint.textContent = liveEnabled ? 'Live preview from engine (not final).' : 'Live preview not available for this heat.';
+      }
+    }
+  }
+
+  async function chooseDefaultView(raceId) {
+    const frozen = await hasFrozenResult(raceId);
+    const live   = await hasLiveFor(raceId);
+    viewMode = frozen ? 'frozen' : (live ? 'live' : 'frozen');
+    setPillState({ frozenEnabled: frozen, liveEnabled: live });
+    return { frozen, live };
+  }
+
+  async function renderFinalOrLive(raceId) {
+    // Clear chips first
+    if (chipFrozenEl) chipFrozenEl.hidden = true;
+    if (chipLiveEl)   chipLiveEl.hidden   = true;
+
+    // Check availability
+    const frozenAvail = await hasFrozenResult(raceId);
+    const liveAvail   = await hasLiveFor(raceId);
+    setPillState({ frozenEnabled: frozenAvail, liveEnabled: liveAvail });
+
+    if (viewMode === 'frozen' && frozenAvail) {
+      if (chipFrozenEl) chipFrozenEl.hidden = false;
+      try {
+        const [meta, laps] = await Promise.all([
+          getJSON(`/results/${raceId}`),
+          getJSON(`/results/${raceId}/laps`)
+        ]);
+        
+        // Title + window info
+        setTitle(meta?.race_type || `Race ${raceId}`);
+        setWindow(`Frozen ${meta?.frozen_utc || ''} • Duration ${fmtDuration(meta?.duration_ms)}`);
+        
+        renderStandings(meta?.entrants || []);
+        renderLapsFromMap(laps?.laps || {});
+        calcQuickStatsFromFinal(meta);
+        return;
+      } catch (err) {
+        console.error('[Results] frozen fetch failed:', err);
+      }
+    }
+
+    if (viewMode === 'live' && liveAvail) {
+      if (chipLiveEl) chipLiveEl.hidden = false;
+      try {
+        const state = await getJSON(`/race/state`);
+        
+        // Title + window info
+        setTitle(state?.race_type || `Race ${raceId}`);
+        setWindow('Live preview - not final');
+        
+        renderStandings(liveToStandings(state));
+        renderLapsFromMap(liveToLapMap(state));
+        calcQuickStatsFromLive(state);
+        return;
+      } catch (err) {
+        console.error('[Results] live fetch failed:', err);
+      }
+    }
+
+    // Fallback: clear selection and UI
+    selectedRaceId = null;
+    setTitle('-');
+    setWindow('-');
+    renderStandings([]);
+    renderLapsFromMap({});
+  }
+
+  // Normalize live state to frozen standings format
+  function liveToStandings(state) {
+    if (!state?.standings) return [];
+    return state.standings.map(s => ({
+      position: s.position || 0,
+      entrant_id: s.entrant_id,
+      number: s.number || '',
+      name: s.name || '',
+      tag: s.tag || '',
+      laps: s.laps || 0,
+      last_ms: s.last != null ? Math.round(s.last * 1000) : null,
+      best_ms: s.best != null ? Math.round(s.best * 1000) : null,
+      gap_ms: s.gap_s != null ? Math.round(s.gap_s * 1000) : null,
+      lap_deficit: s.lap_deficit || 0,
+      status: s.status || 'ACTIVE',
+      enabled: s.enabled !== false
+    }));
+  }
+
+  // Normalize live state to frozen lap map format
+  function liveToLapMap(state) {
+    if (!state?.standings) return {};
+    const lapMap = {};
+    state.standings.forEach(s => {
+      if (s.lap_times && Array.isArray(s.lap_times)) {
+        // lap_times is already in seconds, convert to ms
+        lapMap[s.entrant_id] = s.lap_times.map(t => Math.round(t * 1000));
+      }
+    });
+    return lapMap;
+  }
+
+  function wireViewPills() {
+    const pFrozen = document.getElementById('pillFrozen');
+    const pLive   = document.getElementById('pillLive');
+    if (pFrozen) pFrozen.addEventListener('click', async () => {
+      if (viewMode === 'frozen') return;
+      viewMode = 'frozen';
+      setPillState({ frozenEnabled: !pFrozen.disabled, liveEnabled: !pLive?.disabled });
+      if (selectedRaceId) await renderFinalOrLive(selectedRaceId);
+    });
+    if (pLive) pLive.addEventListener('click', async () => {
+      if (viewMode === 'live') return;
+      viewMode = 'live';
+      setPillState({ frozenEnabled: !pFrozen?.disabled, liveEnabled: !pLive.disabled });
+      if (selectedRaceId) await renderFinalOrLive(selectedRaceId);
+    });
+  }
+
 // Wire admin button handlers with event delegation
 function wireAdminButtons() {
   const rail = document.getElementById('railAdmin');
@@ -452,8 +611,9 @@ function selectHeat(heatOrId) {
   // Enable/disable rail admin buttons based on selection
   updateAdminEnabled();
 
-  // Load frozen-or-live view and wire export buttons for this race
-  renderFinalOrLive(id)
+  // Choose default view mode and render
+  chooseDefaultView(id)
+    .then(() => renderFinalOrLive(id))
     .then(() => wireExports(id))
     .catch(err => {
       console.warn(err);
@@ -495,61 +655,10 @@ function selectHeat(heatOrId) {
   }
 
   // ---------------------------------------------------------------------------
-  // Right pane: Final-first, Live-fallback
+  // Right pane: Final-first, Live-fallback (REPLACED BY NEW VIEW MODE SYSTEM)
   // ---------------------------------------------------------------------------
-  async function renderFinalOrLive(raceId) {
-    // Clear chips first
-    if (chipFrozenEl) chipFrozenEl.hidden = true;
-    if (chipLiveEl)   chipLiveEl.hidden   = true;
-
-    // Try frozen results
-    try {
-      const finalData = await getJSON(`/results/${raceId}`);
-      if (chipFrozenEl) chipFrozenEl.hidden = false;
-
-      // Title + window info
-      setTitle(finalData?.race_type || `Race ${raceId}`);
-      setWindow(`Frozen ${finalData?.frozen_utc || ''} • Duration ${fmtDuration(finalData?.duration_ms)}`);
-
-      renderStandings(finalData);
-      await renderLaps(raceId); // tolerant: empty if none persisted
-      calcQuickStatsFromFinal(finalData);
-      return;
-    } catch (err) {
-      // If 404, this race doesn't exist - clear selection and bail
-      const errMsg = String(err?.message || err || '');
-      if (errMsg.includes('404')) {
-        // Race not found - silently clear and let user select from heats list
-        selectedRaceId = null;
-        setTitle('-');
-        setWindow('-');
-        clearStandingsTable();
-        clearLapsTable();
-        return;
-      }
-      // Fall through to live preview for other errors
-    }
-
-    // Live preview
-    try {
-      const live = await getJSON(`/race/state?race_id=${raceId}`);
-      if (chipLiveEl) chipLiveEl.hidden = false;
-
-      setTitle(live?.race_type || `Race ${raceId}`);
-  setWindow('Live preview - not final');
-
-      renderStandings(live);
-      clearLapsTable();
-      calcQuickStatsFromLive(live);
-    } catch (err) {
-      // Unable to load live either - clear selection and UI
-      selectedRaceId = null;
-      setTitle('-');
-      setWindow('-');
-      clearStandingsTable();
-      clearLapsTable();
-    }
-  }
+  // The old renderFinalOrLive function has been replaced by the new one above
+  // that uses viewMode state and pills. Keeping this comment as a marker.
 
   // ---------------------------------------------------------------------------
   // Standings rendering (accepts frozen {entrants:[...]} or live {standings:[...]})
@@ -599,39 +708,44 @@ function selectHeat(heatOrId) {
     try {
       const data = await getJSON(`/results/${raceId}/laps`);
       const map = data?.laps || {};
-      const rows = [];
-
-      // Render by entrant, in ascending lap order, with simple cumulative.
-      Object.entries(map).forEach(([entrantId, arr]) => {
-        let cumul = 0;
-        (arr || []).forEach((lapMs, idx) => {
-          cumul += Number(lapMs) || 0;
-          rows.push(`
-            <tr>
-              <td>${entrantId}</td>
-              <td>${'' /* Name not present in this endpoint */}</td>
-              <td>${idx + 1}</td>
-              <td>${lapMs}</td>
-              <td>${fmtSec(lapMs)}</td>
-              <td>${cumul}</td>
-              <td>${fmtSec(cumul)}</td>
-              <td>${'' /* ts_ms not in frozen laps */}</td>
-              <td>${'' /* UTC not in frozen laps */}</td>
-              <td>${'' /* Flag */}</td>
-              <td>${'' /* Src */}</td>
-              <td>${'' /* Loc ID */}</td>
-              <td>${'' /* Loc */}</td>
-              <td>${'' /* Inf */}</td>
-            </tr>
-          `);
-        });
-      });
-
-      tbodyLaps.innerHTML = rows.join('');
-      if (lapsEmpty) lapsEmpty.hidden = rows.length > 0;
+      renderLapsFromMap(map);
     } catch {
       clearLapsTable();
     }
+  }
+
+  function renderLapsFromMap(map) {
+    if (!tbodyLaps) return;
+    const rows = [];
+
+    // Render by entrant, in ascending lap order, with simple cumulative.
+    Object.entries(map).forEach(([entrantId, arr]) => {
+      let cumul = 0;
+      (arr || []).forEach((lapMs, idx) => {
+        cumul += Number(lapMs) || 0;
+        rows.push(`
+          <tr>
+            <td>${entrantId}</td>
+            <td>${'' /* Name not present in this endpoint */}</td>
+            <td>${idx + 1}</td>
+            <td>${lapMs}</td>
+            <td>${fmtSec(lapMs)}</td>
+            <td>${cumul}</td>
+            <td>${fmtSec(cumul)}</td>
+            <td>${'' /* ts_ms not in frozen laps */}</td>
+            <td>${'' /* UTC not in frozen laps */}</td>
+            <td>${'' /* Flag */}</td>
+            <td>${'' /* Src */}</td>
+            <td>${'' /* Loc ID */}</td>
+            <td>${'' /* Loc */}</td>
+            <td>${'' /* Inf */}</td>
+          </tr>
+        `);
+      });
+    });
+
+    tbodyLaps.innerHTML = rows.join('');
+    if (lapsEmpty) lapsEmpty.hidden = rows.length > 0;
   }
 
   function clearLapsTable() {
@@ -760,13 +874,15 @@ function selectHeat(heatOrId) {
     // Fill rail (non-blocking)
     refreshHeats().catch(() => { /* rail is optional */ });
 
-    // If we have a race id, try to render it; if it fails, just show the heats list
+    // Wire view pills and set up view mode
+    wireViewPills();
     if (selectedRaceId) {
       try { 
         localStorage.setItem('rc.race_id', String(selectedRaceId)); 
       } catch {}
       
       try {
+        await chooseDefaultView(selectedRaceId);
         await renderFinalOrLive(selectedRaceId);
       } catch (err) {
         console.warn('[Results] Failed to load race, showing heats only:', err);

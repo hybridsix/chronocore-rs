@@ -205,6 +205,7 @@ This persistence layer balances speed and reliability, providing a durable recor
 - **Freeze (operator action)**: take a point-in-time snapshot for review/exports while a race may still be live.
 - **Frozen (engine state)**: after **checkered**, the next leader crossing locks classification and clock.
 - **Publication**: Only **Frozen Standings** are official; **Live Preview** is labeled as such.
+- **View Mode Toggle (2025-11-02)**: Results page supports switching between frozen (official) and live (preview) views via pill buttons. The UI probes availability of both modes and enables pills accordingly. Frozen view fetches from `/results/{id}` and `/results/{id}/laps`; live view normalizes `/race/state` to match the frozen format for consistent rendering.
 
 ---
 
@@ -547,6 +548,86 @@ Duplicate submissions return **200 OK** with `flag` unchanged so callers can tre
 3. From `green`, send `yellow` → `green`; ensure standings continue updating and responses stay `200`.
 4. After `checkered`, attempt `green`; expect `409` with `phase="checkered"`.
 5. Restart the backend mid-countdown; confirm phase resets to `pre` and no stale countdown remains.
+
+---
+
+### 8.5 Qualifying and Grid Freezing (2025-11-02)
+
+ChronoCore supports qualifying sessions where best lap times determine starting grid order for subsequent races. The frozen grid is persisted in the event's config JSON and applies to all heats in that event.
+
+**Endpoints:**
+
+| Endpoint | Method | Body | Response | Notes |
+|----------|--------|------|----------|-------|
+| `/event/{event_id}/qual/freeze` | POST | `{ source_heat_id: int, policy: "demote"\|"use_next_valid"\|"exclude" }` | `{ event_id, qualifying: { source_heat_id, policy, grid: [...] } }` | Freezes grid from qualifying heat results |
+| `/event/{event_id}/qual` | GET | None | `{ event_id, qualifying: {...} }` or `{ event_id, qualifying: null }` | Retrieves frozen grid for an event |
+| `/results/{race_id}` | DELETE | `?confirm=heat-{race_id}` | `{ race_id, laps_deleted, standings_deleted, meta_deleted, cleared_qualifying_grid?: bool }` | Deletes frozen results; auto-clears qualifying grid if this was the source |
+
+**Freeze Grid Logic:**
+
+1. **Collect lap durations** - Extract all lap times from `lap_events` for the qualifying heat
+2. **Load brake test verdicts** - Manual pass/fail flags stored in heat config JSON
+3. **Calculate best lap per entrant:**
+   - `brake_ok=true`: Use fastest lap
+   - `brake_ok=false`:
+     - `policy="use_next_valid"`: Use second-fastest lap
+     - `policy="demote"`: Use fastest but sort to back
+     - `policy="exclude"`: Remove from grid entirely
+   - `brake_ok=null`: Use fastest lap (no penalty)
+4. **Rank entrants** - Sort by `(excluded, demoted, best_ms)`
+5. **Assign 1-based order** - Grid positions for each entrant
+6. **Persist to event config** - Stored in `events.config_json` under `qualifying` key
+
+**Event Config Structure:**
+```json
+{
+  "qualifying": {
+    "source_heat_id": 42,
+    "policy": "demote",
+    "grid": [
+      {
+        "entrant_id": 12,
+        "order": 1,
+        "best_ms": 23456,
+        "brake_ok": true
+      },
+      {
+        "entrant_id": 7,
+        "order": 2,
+        "best_ms": 23789,
+        "brake_ok": true
+      }
+    ]
+  }
+}
+```
+
+**Grid Application:**
+
+When loading a race (`/engine/load`), if `heats.event_id` has a frozen qualifying grid:
+- Entrants in PRE/COUNTDOWN phases are sorted by `grid[].order`
+- `grid_index` and `brake_valid` fields are included in `/race/state` standings
+- During GREEN/CHECKERED, order follows actual race position (laps + time)
+
+**Auto-Clear on Delete:**
+
+When deleting frozen results via `DELETE /results/{race_id}`:
+1. Backend checks if `race_id` matches any event's `qualifying.source_heat_id`
+2. If match found, sets `qualifying: null` in event config
+3. Response includes `"cleared_qualifying_grid": true`
+4. Prevents orphaned qualifying data from deleted heats
+
+**UI Integration:**
+
+- **Race Control**: After checkered flag on qualifying races, "Freeze Grid Standings" button appears with breathing animation
+- **Results Page**: View toggle pills (Frozen/Live) allow switching between official results and live preview
+- **Race Setup**: Shows "Grid: frozen" indicator when qualifying order is active
+
+**Notes:**
+- Brake test verdicts are optional; if not set, entrant uses fastest lap with no penalty
+- Re-freezing from a different qualifying heat overwrites the previous grid completely
+- Frozen grids persist across backend restarts (stored in SQLite `events.config_json`)
+- Grid order only affects PRE/COUNTDOWN sorting; race results are always based on actual performance
 
 ---
 

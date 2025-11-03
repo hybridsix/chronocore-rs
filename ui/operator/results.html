@@ -20,12 +20,14 @@
   </head>
 
   <body class="op-page results">
-    <!-- ===== Header (canonical operator header) ===== -->
+    <!-- ============================================================= -->
+    <!-- Header (canonical operator header)                           -->
+    <!-- ============================================================= -->
     <header class="app-header">
       <div class="brand">
         <a class="brand-link" href="/ui/operator/index.html">
           <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" />
-          <div class="brand__wordmark">
+          <div class="brand__wordmark" aria-label="ChronoCore Race Software">
             <div class="wordmark__top">
               <span class="wordmark__big">CHRONO</span>
               <span class="wordmark__big">CORE</span>
@@ -61,21 +63,24 @@
       </div>
     </header>
 
-    <!-- ===== Main: fixed-canvas layout (no outer scrollbar) ===== -->
+    <!-- ============================================================= -->
+    <!-- Main: fixed-canvas layout (no outer scrollbar)                -->
+    <!-- ============================================================= -->
     <main class="wrap">
       <section class="results-layout">
-        <!-- Left rail: heats list (scrolls internally) -->
+        <!-- --------------------------------------------------------- -->
+        <!-- Left rail: heats list + admin controls                    -->
+        <!-- --------------------------------------------------------- -->
         <aside class="rail">
           <div class="rail__head">
             <h2 class="rail__title">Heats</h2>
-            <button id="btnRefreshHeats" class="btn btn-small" title="Refresh heats list">
-              Refresh
-            </button>
+            <button id="btnRefreshHeats" class="btn btn-small" title="Refresh heats list">Refresh</button>
           </div>
+
           <div id="heatList" class="rail__list"><!-- populated by JS --></div>
           <div class="rail__empty" id="railEmpty" hidden>No heats found.</div>
 
-          <!-- NEW: admin actions pinned in the rail -->
+          <!-- Admin actions pinned in the rail (Delete, Copy, Purge) -->
           <div id="railAdmin" class="rail-admin">
             <div class="rail-admin__group">
               <button id="btnCopyLinks"  type="button" class="btn btn--secondary">Copy Links</button>
@@ -86,18 +91,15 @@
           </div>
         </aside>
 
-        <!-- Right / main pane -->
+        <!-- --------------------------------------------------------- -->
+        <!-- Right / main pane                                         -->
+        <!-- --------------------------------------------------------- -->
         <section class="pane">
-          <!-- Top bar: name, window, chips, quick stats, freeze controls -->
+          <!-- Top bar: identity (no mode chips here anymore) -->
           <div class="topbar">
             <div class="topbar__left">
               <div class="heat-title" id="heatTitle">-</div>
               <div class="heat-window" id="heatWindow">-</div>
-              <div class="chips">
-                <span id="chipFrozen" class="chip chip--state" hidden>Frozen</span>
-                <span id="chipLive" class="chip chip--warn" hidden>Live preview - not final</span>
-                <span id="chipGrid" class="chip chip--grid" hidden>Grid: Frozen</span>
-              </div>
             </div>
 
             <div class="topbar__right">
@@ -111,17 +113,23 @@
                   <div class="stat__value" id="statCars">-</div>
                 </div>
               </div>
-
-              <div class="freeze">
-                <!-- label removed per project preference; select title explains -->
-                <select id="freezePolicy" class="select" title="Freeze Policy">
-                  <option value="demote">demote</option>
-                  <option value="use_next_valid">use_next_valid</option>
-                  <option value="exclude">exclude</option>
-                </select>
-                <button id="btnFreeze" class="btn">Freeze Grid</button>
-              </div>
             </div>
+          </div>
+
+          <!-- View controls: SINGLE source toggle (Frozen vs Live Preview) -->
+          <!-- Replaces previous chips + Freeze controls entirely.         -->
+          <div class="results-controls">
+            <div class="pillbar" role="tablist" aria-label="Results view mode">
+              <button id="pillFrozen" class="pill is-on" role="tab" aria-selected="true">Frozen</button>
+              <button id="pillLive"   class="pill" role="tab" aria-selected="false" title="Preview live engine state">Live Preview</button>
+            </div>
+
+            <!-- Hidden for now; will show when penalties/DQ logic ships -->
+            <div id="penaltyBar" class="penaltybar" hidden>
+              <button id="btnDemote" class="btn btn--tiny btn--danger" type="button" title="Move the selected entrant down one position">Demote</button>
+            </div>
+
+            <div id="viewHint" class="view-hint" aria-live="polite"></div>
           </div>
 
           <!-- Tabs -->
@@ -130,7 +138,7 @@
             <button class="tab" data-tab="laps">Lap Table</button>
           </div>
 
-          <!-- Tab panels -->
+          <!-- Tab: Standings -->
           <div class="panel" id="panel-standings">
             <div class="table-wrap">
               <table id="tblStandings" class="table">
@@ -155,6 +163,7 @@
             </div>
           </div>
 
+          <!-- Tab: Laps table -->
           <div class="panel is-hidden" id="panel-laps">
             <div class="table-wrap">
               <table id="tblLaps" class="table table--mono">
@@ -195,30 +204,28 @@
       </section>
     </main>
 
-    <!-- ===== Footer ===== -->
+    <!-- ============================================================= -->
+    <!-- Footer                                                        -->
+    <!-- ============================================================= -->
     <footer class="app-footer">
       <div class="footer-left">
         <span id="netDot" class="status-dot"></span>
         <span id="netMsg" class="pill pill--db">DB: Offline</span>
       </div>
-
       <div class="footer-center"></div>
-
       <div class="footer-right">
         <span class="muted">Results MVP</span>
       </div>
     </footer>
+
+    <!-- Small, self-contained menu toggler -->
     <script>
       (function () {
         const menu = document.getElementById('appsMenu');
         if (!menu) return;
         const btn = menu.querySelector('.app-nav__btn');
         const panel = menu.querySelector('.app-nav__panel');
-
-        function openMenu(on) {
-          menu.dataset.open = on ? 'true' : 'false';
-        }
-
+        function openMenu(on) { menu.dataset.open = on ? 'true' : 'false'; }
         btn.addEventListener('click', (e) => {
           e.stopPropagation();
           openMenu(menu.dataset.open !== 'true');
@@ -227,11 +234,8 @@
             if (first) first.focus();
           }
         });
-
         document.addEventListener('click', () => openMenu(false));
-        document.addEventListener('keydown', (ev) => {
-          if (ev.key === 'Escape') openMenu(false);
-        });
+        document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') openMenu(false); });
       })();
     </script>
   </body>

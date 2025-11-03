@@ -1062,6 +1062,7 @@ body[data-flag="CHECKERED"] #flagPill #flagPillText {
 
 .post-finish {
   display: flex;
+  gap: 16px;
   justify-content: center;
   align-items: center;
   position: absolute;
@@ -1097,13 +1098,40 @@ body[data-flag="CHECKERED"] #flagPill #flagPillText {
   border: 1px solid var(--blue-600, #2058c7);
   border-radius: 10px;
 
-  /* extra space before this button */
-  margin-left: 16px;
+  /* removed margin-left since we're using gap now */
   flex-shrink: 0; /* prevent flexbox from squeezing it to zero width */
 }
 
 .btn--results:hover {
   filter: brightness(1.08);
+}
+
+/* Freeze grid button - similar to results but with orange/amber color */
+.btn--freeze-grid {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 280px;
+  padding: 10px 22px;
+  font-size: 16px;
+  font-weight: 700;
+  text-align: center;
+
+  color: #fff;
+  background: var(--orange-500, #f97316);
+  border: 1px solid var(--orange-600, #ea580c);
+  border-radius: 10px;
+  
+  flex-shrink: 0;
+}
+
+.btn--freeze-grid:hover {
+  filter: brightness(1.08);
+}
+
+.btn--freeze-grid.btn--success {
+  background: var(--green-500, #22c55e);
+  border-color: var(--green-600, #16a34a);
 }
 
 /* Gentle breathing pulse reserved for the results CTA */

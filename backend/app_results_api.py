@@ -22,6 +22,9 @@ import zipfile
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
+# Import qualifying helpers to clear frozen grids
+from backend.db_schema import get_event_config, set_event_config
+
 
 # ---------------------------------------------------------------------------
 # DB helpers
@@ -637,6 +640,7 @@ def _delete_frozen_by_race(db: sqlite3.Connection, race_id: int) -> Dict[str, in
 def delete_heat(race_id: int, confirm: str | None = None) -> Dict[str, int | str]:
     """
     Delete a single frozen heat (result_meta/standings/laps).
+    If this heat was the source for a frozen qualifying grid, clear that grid too.
     Safety: require confirm=f"heat-{race_id}".
     """
     with _connect() as db:
@@ -650,9 +654,26 @@ def delete_heat(race_id: int, confirm: str | None = None) -> Dict[str, int | str
             # Tell the client exactly what to send back
             raise HTTPException(status_code=409, detail=f"Confirmation required. Resend with ?confirm={required}")
 
+        # Find the event_id for this heat
+        heat_row = db.execute("SELECT event_id FROM heats WHERE heat_id = ?", (race_id,)).fetchone()
+        event_id = heat_row["event_id"] if heat_row else None
+
+        # Check if this heat is the source for a frozen qualifying grid
+        cleared_qual = False
+        if event_id:
+            cfg = get_event_config(db, event_id)
+            qual = cfg.get("qualifying") if cfg else None
+            if qual and qual.get("source_heat_id") == race_id:
+                # Clear the qualifying grid since we're deleting its source
+                cfg["qualifying"] = None
+                set_event_config(db, event_id, cfg)
+                cleared_qual = True
+
         counts = _delete_frozen_by_race(db, race_id)
         result: Dict[str, int | str] = dict(counts)
         result["race_id"] = race_id
+        if cleared_qual:
+            result["cleared_qualifying_grid"] = True
         return result
 
 @router.delete("/")

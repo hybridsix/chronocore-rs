@@ -753,3 +753,13 @@
   box-shadow: 0 0 0 1px rgba(255,64,64,0.4) inset, 0 0 4px rgba(255,64,64,0.25);
 }
 .rail-admin__hint{ opacity: 0.8; font-size: 12px; }
+
+.results-controls { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.pillbar { display:inline-flex; gap:6px; }
+.pill {
+  padding:6px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.22);
+  background: rgba(255,255,255,.06); cursor:pointer; font-weight:600;
+}
+.pill.is-on { border-color: rgba(125,253,254,.65); box-shadow: 0 0 0 1px rgba(125,253,254,.25) inset; }
+.pill[disabled] { opacity:.5; cursor:not-allowed; }
+.view-hint { opacity:.8; font-size:12px; }

@@ -707,6 +707,7 @@ function padStandingsRows(tbody, minRows = DEFAULT_VISIBLE_STANDINGS_ROWS) {
 
     //Post-finish actions
     postFinish     : document.querySelector('#postFinishActions'),
+    btnFreezeGrid  : document.querySelector('#btnFreezeGrid'),
     btnResults     : document.querySelector('#btnResults'),
   };
 
@@ -1163,6 +1164,13 @@ function updateClockModeButton(st) {
       const show = (phaseLower === 'checkered') || (flagLower === 'checkered');
       els.postFinish.classList.toggle('hidden', !show);
       if (els.btnResults) els.btnResults.classList.toggle('btn--breathing', show);
+      
+      // Show freeze grid button only for qualifying races
+      if (els.btnFreezeGrid) {
+        const isQualifying = (st.race_type || '').toLowerCase() === 'qualifying';
+        els.btnFreezeGrid.classList.toggle('hidden', !isQualifying || !show);
+        if (isQualifying && show) els.btnFreezeGrid.classList.add('btn--breathing');
+      }
     }
   }
   // ----------------------------------------------------------------------
@@ -1283,6 +1291,62 @@ function updateClockModeButton(st) {
         // Adjust the URL if your results page path is different
   const url = `/ui/operator/results.html${rid ? `?race=${encodeURIComponent(rid)}` : ''}`;
         window.location.assign(url);
+      });
+    }
+
+    // Freeze grid button (qualifying only)
+    if (els.btnFreezeGrid) {
+      els.btnFreezeGrid.addEventListener('click', async () => {
+        if (!lastState) {
+          toast?.('No race data available');
+          return;
+        }
+
+        const raceId = lastState.race_id;
+        const eventId = lastState.event?.id;
+        
+        if (!raceId || !eventId) {
+          toast?.('Missing race or event ID');
+          return;
+        }
+
+        // Prompt for policy
+        const policy = prompt(
+          'Choose brake test failure policy:\n' +
+          '- "demote": Failed entrants start at back\n' +
+          '- "use_next_valid": Use next valid lap\n' +
+          '- "exclude": Remove from grid entirely',
+          'demote'
+        );
+
+        if (!policy || !['demote', 'use_next_valid', 'exclude'].includes(policy)) {
+          toast?.('Invalid or cancelled policy');
+          return;
+        }
+
+        try {
+          const res = await api(`/event/${eventId}/qual/freeze`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              source_heat_id: raceId,
+              policy: policy
+            })
+          });
+
+          toast?.(`Grid frozen with ${res.qualifying?.grid?.length || 0} entrants`);
+          
+          // Add breathing effect to show success
+          els.btnFreezeGrid.classList.add('btn--success');
+          els.btnFreezeGrid.textContent = '✓ Grid frozen';
+          
+          setTimeout(() => {
+            els.btnFreezeGrid.classList.remove('btn--breathing');
+          }, 2000);
+        } catch (err) {
+          console.error('Freeze grid failed:', err);
+          toast?.(err?.message || 'Failed to freeze grid');
+        }
       });
     }
   }

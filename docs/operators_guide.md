@@ -11,8 +11,9 @@ Here's what changed in the latest update:
 - The header and footer now look the same across all pages. The **DB: Ready** indicator moved to the center of the footer, and we added a home icon plus hamburger menu at the top.
 - New **Diagnostics / Live Sensors** page shows you a live stream of transponder reads. You can pause, clear the log, and even enable a beep sound for each detection.
 - We clarified the difference between **Freeze** (when you take a snapshot) and **Frozen** (when the race automatically locks after the leader crosses under the checkered flag).
-- **Results & Exports** now clearly shows Live Preview (while racing) versus Frozen Standings (official results). Both lap and event CSV exports use consistent file names now.
+- **Results & Exports** now clearly shows Live Preview (while racing) versus Frozen Standings (official results). You can toggle between frozen and live views using the pill buttons at the top. Both lap and event CSV exports use consistent file names now.
 - The Entrants & Tags page has an "Entrant Enabled" toggle and a **Status** dropdown (ACTIVE, DNS, DNF, RET, Other).
+- **Qualifying Race Support**: After a qualifying race finishes (checkered flag), a "Freeze Grid Standings" button appears on Race Control. Click it to lock in the starting order for subsequent races based on best lap times. You can choose how to handle brake test failures: demote to back of grid, use next valid lap, or exclude entirely. Deleting a qualifying race from Results automatically clears its frozen grid.
 - Added troubleshooting help for when laps aren't counting but you can see transponder reads coming through.
 
 
@@ -421,6 +422,36 @@ Look at the footer of the Operator UI - it always shows the **Effective Engine**
 ### Demote (presentation aid)
 Temporarily move an out-of-place entrant down the order for the display while you fix data (e.g., tag merge). Raw pass history remains intact.
 
+## 13.1 Qualifying Races and Grid Freezing
+
+When you run a **qualifying race**, ChronoCore can freeze the grid standings to set the starting order for subsequent races.
+
+**How It Works:**
+1. Set up a race with race type "qualifying" (in Race Setup)
+2. Run the qualifying session normally
+3. Throw the **checkered flag** when time expires
+4. A **"Freeze Grid Standings"** button appears (orange, breathing animation)
+5. Click it and choose a brake test failure policy:
+   - **demote** - Failed entrants start at the back of the grid
+   - **use_next_valid** - Use their second-best lap time
+   - **exclude** - Remove them from the grid entirely
+6. Grid is frozen and saved to the event config
+
+**Using the Frozen Grid:**
+- When you load subsequent races in the same event, the starting grid will automatically follow the qualifying order
+- Entrants are sorted by their best lap time from qualifying
+- The Race Setup page shows "Grid: frozen" when a qualifying order is active
+
+**Resetting the Grid:**
+- **Run another qualifying race** - freezing new results overwrites the old grid
+- **Delete the qualifying race** - go to Results & Exports, delete the qualifying heat, and the frozen grid is automatically cleared
+- The system won't leave orphaned qualifying data when you delete a heat
+
+**Notes:**
+- Brake test verdicts (pass/fail) are manually set per entrant during or after qualifying
+- If no brake verdict is recorded, the entrant's fastest lap is used with no penalty
+- The frozen grid persists in the event config and applies to all heats in that event until cleared
+
 ## 14. Diagnostics / Live Sensors
 
 - Subscribes to `/diagnostics/stream` (Server-Sent Events).
@@ -430,14 +461,20 @@ Temporarily move an out-of-place entrant down the order for the display while yo
 
 ## 15. Results & Exports
 
-### Modes
-- **Live Preview** - heat is running; not for official publication.
-- **Frozen Standings** - after checkered, leader-cross freeze; official snapshot.
+### View Modes
+- **Live Preview** - Shows current race state while the heat is running; not for official publication. Updates in real-time.
+- **Frozen Standings** - Official classification snapshot taken after checkered flag when leader crosses.
+- **Toggle Pills** - Use the "Frozen" and "Live" pill buttons at the top of the page to switch between views. The system automatically shows which modes are available.
 
 ### CSV Exports
 - **Laps CSV** - per-lap table for each entrant.
 - **Events/Passes CSV** - raw journal export (visible only if journaling is enabled).
 - File naming: `CCRS_<event>_<heat>_<YYYYmmdd-HHMMSS>.csv`
+
+### Deleting Races
+- Click the delete button for any frozen heat
+- Requires confirmation: `?confirm=heat-{id}`
+- **Auto-clears qualifying grids**: If you delete a qualifying race that was used to freeze a grid, the frozen grid is automatically cleared from the event config
 
 ### Copy/Download
 Buttons provide clipboard copy or file download for quick posting.
