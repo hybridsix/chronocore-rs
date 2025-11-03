@@ -17,9 +17,19 @@
   const $  = (s) => document.querySelector(s);
   const $$ = (s) => Array.from(document.querySelectorAll(s));
 
+  // Fallback toast so we never silently fail
+  function toast(msg) { try { CCRS?.toast?.(msg); } catch { console.log(msg); } }
+
   async function api(url, opts = {}) {
     const r = await fetch(url, opts);
-    if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+    if (!r.ok) {
+      let errorMsg = `${r.status} ${r.statusText}`;
+      try {
+        const body = await r.json();
+        if (body.detail) errorMsg = body.detail;
+      } catch {}
+      throw new Error(errorMsg);
+    }
     try { return await r.json(); } catch { return {}; }
   }
 
@@ -246,7 +256,8 @@ function renderSeen(state) {
       number: r.number != null && r.number !== '' ? String(r.number) : '',
       name: r.name || '',
       reads: Number(r.reads ?? (r.tag ? counts[r.tag] : 0) ?? 0),
-      enabled: r.enabled !== false
+      enabled: r.enabled !== false,
+      gridIndex: Number.isFinite(r.grid_index) ? Number(r.grid_index) : null
     }));
   } else {
     const entrants = Array.isArray(state?.entrants) ? state.entrants : [];
@@ -258,15 +269,25 @@ function renderSeen(state) {
         number: e.number != null && e.number !== '' ? String(e.number) : '',
         name: e.name || '',
         reads: Number(tag ? counts[tag] : 0) || 0,
-        enabled: e.enabled !== false
+        enabled: e.enabled !== false,
+        gridIndex: Number.isFinite(e.grid_index) ? Number(e.grid_index) : null
       };
     });
   }
 
-  // Sort: enabled first, reads desc, then number asc (numeric-aware)
+  // Sort: enabled first, then by grid_index (if available), then reads desc, then number asc
   base.sort((a, b) => {
     if (a.enabled !== b.enabled) return a.enabled ? -1 : 1;
-    if (a.reads   !== b.reads)   return b.reads - a.reads;
+    
+    // If both have grid positions, sort by grid order
+    const aHasGrid = a.gridIndex !== null;
+    const bHasGrid = b.gridIndex !== null;
+    if (aHasGrid && bHasGrid) return a.gridIndex - b.gridIndex;
+    if (aHasGrid && !bHasGrid) return -1;  // Gridded entrants first
+    if (!aHasGrid && bHasGrid) return 1;
+    
+    // Otherwise sort by reads (detections), then number
+    if (a.reads !== b.reads) return b.reads - a.reads;
     return String(a.number || '').localeCompare(String(b.number || ''), undefined, { numeric: true });
   });
 
@@ -610,12 +631,26 @@ function padStandingsRows(tbody, minRows = DEFAULT_VISIBLE_STANDINGS_ROWS) {
     const el = document.getElementById('rcSummaryText');
     if (!el) return;
     el.textContent = summarizeFromState(st);
-}
+  }
 
 
   function summarizeFromState(st) {
+    const parts = [];
+    
+    // Race type (e.g., "Qualifying", "Sprint", "Endurance")
+    const raceType = st?.race_type || st?.state?.race_type;
+    if (raceType) {
+      parts.push(raceType.charAt(0).toUpperCase() + raceType.slice(1));
+    }
+    
+    // Session label
+    const sessionLabel = st?.session_label || st?.state?.session_label;
+    if (sessionLabel && sessionLabel !== '-') {
+      parts.push(sessionLabel);
+    }
+    
     // Limit
-  let limitStr = '-';
+    let limitStr = null;
     const lim = st?.limit;
 
     if (lim && typeof lim === 'object') {
@@ -643,16 +678,19 @@ function padStandingsRows(tbody, minRows = DEFAULT_VISIBLE_STANDINGS_ROWS) {
         limitStr = String(lim.type).toUpperCase();
       }
     }
+    
+    // Add limit if present
+    if (limitStr) parts.push(limitStr);
 
     // Rank (kept simple for now)
-    const rankStr = 'Rank: Total Laps';
+    parts.push('Rank: Total Laps');
 
     // MinLap: accept from several places
     const minLap = st?.min_lap_s ?? st?.session?.min_lap_s ?? st?.engine?.min_lap_s;
-    const minLapStr = (minLap != null) ? `MinLap ${Number(minLap).toFixed(1)}s` : null;
+    if (minLap != null) {
+      parts.push(`MinLap ${Number(minLap).toFixed(1)}s`);
+    }
 
-    const parts = [limitStr, rankStr];
-    if (minLapStr) parts.push(minLapStr);
     return parts.join(' • ');
   }
 
@@ -1297,34 +1335,37 @@ function updateClockModeButton(st) {
     // Freeze grid button (qualifying only)
     if (els.btnFreezeGrid) {
       els.btnFreezeGrid.addEventListener('click', async () => {
+        console.log('Freeze grid clicked');
+        
         if (!lastState) {
-          toast?.('No race data available');
+          console.log('No lastState available');
+          toast('No race data available');
           return;
         }
 
         const raceId = lastState.race_id;
-        const eventId = lastState.event?.id;
+        const eventId = lastState.event?.id || 1;  // Default to event 1 if not configured
         
-        if (!raceId || !eventId) {
-          toast?.('Missing race or event ID');
+        console.log('Race ID:', raceId, 'Event ID:', eventId);
+        console.log('Full event object:', lastState.event);
+        
+        if (!raceId) {
+          console.log('Missing race ID - cannot proceed');
+          toast('Missing race ID');
           return;
         }
 
-        // Prompt for policy
-        const policy = prompt(
-          'Choose brake test failure policy:\n' +
-          '- "demote": Failed entrants start at back\n' +
-          '- "use_next_valid": Use next valid lap\n' +
-          '- "exclude": Remove from grid entirely',
-          'demote'
-        );
-
-        if (!policy || !['demote', 'use_next_valid', 'exclude'].includes(policy)) {
-          toast?.('Invalid or cancelled policy');
+        // Confirm action
+        if (!confirm('Freeze qualifying grid and standings?\n\nThis will lock the starting order based on best lap times and brake test results.')) {
           return;
         }
+
+        // Get policy from state (sent from config) or default
+        const policy = lastState.qualifying?.brake_test_policy || 'demote';
 
         try {
+          console.log(`Calling POST /event/${eventId}/qual/freeze with race_id=${raceId}, policy=${policy}`);
+          
           const res = await api(`/event/${eventId}/qual/freeze`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -1334,18 +1375,16 @@ function updateClockModeButton(st) {
             })
           });
 
-          toast?.(`Grid frozen with ${res.qualifying?.grid?.length || 0} entrants`);
+          console.log('Freeze response:', res);
+          toast(`Grid frozen with ${res.qualifying?.grid?.length || 0} entrants`);
           
-          // Add breathing effect to show success
+          // Stop breathing animation and change to success state
+          els.btnFreezeGrid.classList.remove('btn--breathing');
           els.btnFreezeGrid.classList.add('btn--success');
-          els.btnFreezeGrid.textContent = '✓ Grid frozen';
-          
-          setTimeout(() => {
-            els.btnFreezeGrid.classList.remove('btn--breathing');
-          }, 2000);
+          els.btnFreezeGrid.textContent = 'Grid frozen!';
         } catch (err) {
           console.error('Freeze grid failed:', err);
-          toast?.(err?.message || 'Failed to freeze grid');
+          toast(err?.message || 'Failed to freeze grid');
         }
       });
     }

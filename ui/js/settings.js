@@ -75,6 +75,9 @@
     missedMaxConsec: document.getElementById('missedMaxConsec'),
     missedMark: document.getElementById('missedMark'),
 
+    // Qualifying
+    brakeTestPolicy: document.getElementById('brakeTestPolicy'),
+
     // UI & Sounds
     uiTheme: document.getElementById('uiTheme'),
     showSimPill: document.getElementById('showSimPill'),
@@ -184,6 +187,9 @@
     setValue(els.missedMaxConsec, cfg?.app?.race?.missed_lap?.max_consecutive_inferred);
     setValue(els.missedMark, String(cfg?.app?.race?.missed_lap?.mark_inferred ?? true));
 
+    // Qualifying
+    setValue(els.brakeTestPolicy, cfg?.app?.engine?.qualifying?.brake_test_policy || 'demote');
+
     // UI & Sounds
     setValue(els.uiTheme, cfg?.app?.ui?.theme);
     setValue(els.showSimPill, String(cfg?.app?.ui?.show_sim_pill ?? true));
@@ -238,6 +244,7 @@
       els.flagBlocklist, els.flagGraceMs,
       els.missedMode, els.missedWindowLaps, els.missedSigmaK,
       els.missedMinGapMs, els.missedMaxConsec, els.missedMark,
+      els.brakeTestPolicy,
       els.uiTheme, els.showSimPill,
       els.soundVolumeMaster, els.soundVolumeHorns, els.soundVolumeBeeps
     ].filter(Boolean);
@@ -423,6 +430,11 @@
       min_gap_ms: numOrUndef(els.missedMinGapMs?.value, 8000),
       max_consecutive_inferred: numOrUndef(els.missedMaxConsec?.value, 1),
       mark_inferred: els.missedMark?.value === 'true'
+    };
+
+    // Qualifying
+    patch.app.engine.qualifying = {
+      brake_test_policy: els.brakeTestPolicy?.value || 'demote'
     };
 
     // UI & Sounds

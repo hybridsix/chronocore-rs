@@ -69,15 +69,11 @@ def persist_results(DB_PATH: str, race_id: int, race_type: str, snapshot: Dict[s
         except (TypeError, ValueError):
             frozen_ms = 0
 
-    if frozen_ms > 0:
-        frozen_dt_utc = datetime.fromtimestamp(frozen_ms / 1000, tz=timezone.utc)
-        frozen_iso_utc = frozen_dt_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
-        frozen_iso_local = frozen_dt_utc.astimezone().isoformat(timespec="seconds")
-    else:
-        # fall back to now so UI shows something sane
-        fallback_local = datetime.now().astimezone()
-        frozen_iso_local = fallback_local.isoformat(timespec="seconds")
-        frozen_iso_utc = fallback_local.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # frozen_ms is the race clock time (elapsed ms), not a wall-clock timestamp
+    # Use the current wall-clock time as the freeze timestamp
+    freeze_time = datetime.now().astimezone()
+    frozen_iso_local = freeze_time.isoformat(timespec="seconds")
+    frozen_iso_utc = freeze_time.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
     clock_ms_frozen = frozen_ms if frozen_ms > 0 else 0
     duration_raw = snapshot.get("duration_ms")
@@ -180,14 +176,37 @@ def persist_results(DB_PATH: str, race_id: int, race_type: str, snapshot: Dict[s
             # Some dev/test databases may not have an entrants table; fall back to snapshot tags only.
             tags_by_id = {}
 
+        # Capture brake test flags for this race (stored on heats table as JSON)
+        from backend.db_schema import get_brake_flags
+        brake_flags_by_id: Dict[int, bool] = {}
+        try:
+            brake_flags_by_id = get_brake_flags(cx, race_id)
+        except Exception:
+            # If heats table doesn't exist or race isn't a heat, skip brake tests
+            pass
+
         # Standings
         for pos, e in enumerate(standings, start=1):
             entrant_id = int(e["entrant_id"])
             entrant_tag = e.get("tag") or tags_by_id.get(entrant_id)
+            
+            # Convert brake_valid: prioritize snapshot, then brake_flags, then NULL
+            # Snapshot might have it if passed through; otherwise query from heats table
+            brake_val = e.get("brake_valid")
+            if brake_val is None and entrant_id in brake_flags_by_id:
+                brake_val = brake_flags_by_id[entrant_id]
+                
+            if brake_val is True:
+                brake_int = 1
+            elif brake_val is False:
+                brake_int = 0
+            else:
+                brake_int = None
+            
             cur.execute(
                 """INSERT INTO result_standings
-                (race_id, position, entrant_id, number, name, tag, laps, last_ms, best_ms, gap_ms, lap_deficit, pit_count, status)
-                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""",
+                (race_id, position, entrant_id, number, name, tag, laps, last_ms, best_ms, gap_ms, lap_deficit, pit_count, status, grid_index, brake_valid)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)""",
                 (
                     race_id, pos, entrant_id, e.get("number"), e.get("name"), entrant_tag,
                     e["laps"],
@@ -197,6 +216,8 @@ def persist_results(DB_PATH: str, race_id: int, race_type: str, snapshot: Dict[s
                     e.get("lap_deficit", 0),
                     e.get("pit_count", 0),
                     e.get("status", "ACTIVE"),
+                    e.get("grid_index"),                      # qualifying position
+                    brake_int,                                 # brake test result
                 ),
             )
 

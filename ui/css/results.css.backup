@@ -6,6 +6,102 @@
    - Verbose comments because Future-You will thank Past-You
    ========================================================================== */
 
+/* ----- Layout shell: header/footer height come from operator.css/base.css ----- */
+.op-page.results main.wrap {
+  /* Prevent an accidental outer scrollbar:
+     we clamp the main area and handle all scrolling inside sub-panes. */
+  height: calc(100vh - var(--headerH-ops) - var(--footer-h));
+  overflow: hidden;
+  padding: 16px;
+}
+
+/* ==========================================================================
+   Results layout glue — fixed canvas, single inner scroll
+   ========================================================================== */
+
+/* Color tokens (tweak to your palette) */
+:root {
+  --accent: #7DFDFE; /* Tron blue */
+  --surface-0: #071218; /* page bg */
+  --surface-1: #0C1A22; /* card bg */
+  --surface-2: #10232F; /* header/sticky row bg */
+  --surface-3: #1A2D3A; /* borders */
+  --text: #E6F2F5;
+  --muted: #9AB6BF;
+}
+
+/* Canvas sizing:
+   Total page height = 100vh
+   We reserve header/footer heights so the main area never overflows the window.
+   Only the table pane and rail lists will scroll internally. */
+.op-page.results main.wrap {
+  --header-h: 88px;
+  --footer-h: 40px;
+  height: calc(100vh - var(--header-h) - var(--footer-h));
+  overflow: hidden; /* prevent outer scrollbars */
+  background: var(--surface-0);
+  color: var(--text);
+}
+
+/* Two-column layout: left rail + main pane */
+.results-layout {
+  height: 100%;
+  display: grid;
+  grid-template-columns: 320px 1fr; /* rail width + flexible pane */
+  gap: 20px;
+  padding: 16px 24px;
+  box-sizing: border-box;
+}
+
+/* ---------------- Rail ---------------- */
+.rail {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  height: 100%;
+}
+
+.rail__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 2px 10px 2px;
+}
+
+.rail__title {
+  margin: 0;
+  font-size: 16px;
+  letter-spacing: 0.04em;
+}
+
+.rail__list {
+  /* Single scroll region for the rail */
+  overflow: auto;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;           /* small gap between cards */
+  padding-right: 4px; /* room for scrollbar */
+}
+
+.rail__empty {
+  margin-top: 8px;
+  color: var(--muted);
+}
+
+/* Heat card button */
+.heat {
+  border: 1px solid var(--surface-3);
+  background: var(--surface-1);
+  border-radius: 14px;
+  padding: 4px;
+}
+
+.heat.is-selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
 /* ==========================================================================
    Results – Heat Rail
    Small, readable cards with three rows:
@@ -107,6 +203,140 @@
     rgba(125, 253, 254, 0.02) 100%
   );
 }
+
+.heat-btn {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 10px 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.heat-name {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.muted { color: var(--muted); }
+
+/* ---------------- Pane ---------------- */
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0; /* allow children to shrink */
+  height: 100%;
+}
+
+/* Top bar with chips & quick stats */
+.topbar {
+  --topbar-h: 68px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  min-height: var(--topbar-h);
+  height: auto;
+  padding: 6px 0 10px 0;
+}
+
+.topbar__left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  flex: 1 1 60%;
+  min-width: 220px;
+}
+.topbar__right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  flex: 1 1 30%;
+  justify-content: flex-end;
+}
+
+.heat-title { font-size: 20px; font-weight: 700; }
+.heat-window { color: var(--muted); font-size: 13px; }
+
+/* Chips (Frozen / Live) */
+.chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.chip {
+  display: inline-block;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  letter-spacing: 0.03em;
+  background: var(--surface-2);
+  border: 1px solid var(--surface-3);
+}
+.chip--state { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent) inset; }
+.chip--warn { border-color: #ffae42; box-shadow: 0 0 0 1px #ffae42 inset; }
+
+/* Stats tiles */
+.stats { display: flex; gap: 16px; }
+.stat { text-align: right; }
+.stat__label { color: var(--muted); font-size: 11px; }
+.stat__value { font-feature-settings: "tnum"; }
+
+/* Tabs */
+.tabs {
+  --tabs-h: 40px;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  height: var(--tabs-h);
+  margin-bottom: 8px;
+}
+.tab {
+  background: var(--surface-1);
+  border: 1px solid var(--surface-3);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+}
+.tab.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent) inset;
+}
+
+/* NOTE: Panel and table styles moved to line ~535 to avoid duplication */
+
+/* Old table styles (kept for reference) */
+.table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--surface-3);
+}
+.table th,
+.table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.table tr:nth-child(even) td { background: rgba(255,255,255,0.02); }
+
+/* Exports bar */
+.exports {
+  display: flex;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+/* Footer DB pill alignment (centers left for visibility) */
+.app-footer .pill--db { min-width: 120px; text-align: left; }
 
 /* Grid: left rail (fixed) + right pane (fills) */
 .results-layout {
@@ -213,11 +443,10 @@
 
 /* ===== Right pane ===== */
 .pane {
-  display: grid !important;
-  grid-template-rows: auto auto auto 1fr auto !important; /* topbar / controls / tabs / panel / exports */
+  display: grid;
+  grid-template-rows: auto auto 1fr auto; /* topbar / tabs / panel / exports */
   gap: 12px;
   min-width: 0;   /* enables child overflow to work in grid */
-  height: 100%;
 }
 
 /* Top bar: name, chips, stats, freeze action */
@@ -344,28 +573,8 @@
 .table tbody td {
   padding: 8px 10px;
   border-bottom: 1px solid #0b0f13;
-  color: #e6f2f5;
-  font-size: 13px;
 }
 .table--mono td { font-family: var(--mono); }
-
-/* Column widths for standings table */
-.table thead th:nth-child(1), .table tbody td:nth-child(1) { width: 50px; }  /* Pos */
-.table thead th:nth-child(2), .table tbody td:nth-child(2) { width: 60px; }  /* # (car number, max 3 digits) */
-.table thead th:nth-child(3), .table tbody td:nth-child(3) { width: 200px; } /* Name (prevent wrapping) */
-.table thead th:nth-child(4), .table tbody td:nth-child(4) { width: 60px; }  /* Laps */
-.table thead th:nth-child(5), .table tbody td:nth-child(5) { width: 70px; }  /* Def */
-.table thead th:nth-child(6), .table tbody td:nth-child(6) { width: 80px; }  /* Last */
-.table thead th:nth-child(7), .table tbody td:nth-child(7) { width: 80px; }  /* Best */
-.table thead th:nth-child(8), .table tbody td:nth-child(8) { width: 80px; }  /* Pace-5 */
-.table thead th:nth-child(9), .table tbody td:nth-child(9) { width: 60px; }  /* Grid */
-.table thead th:nth-child(10), .table tbody td:nth-child(10) { width: 70px; }  /* Brake */
-.table thead th:nth-child(11), .table tbody td:nth-child(11) { width: 60px; }  /* Pits */
-
-/* Subtle zebra striping for dense tables */
-.table tbody tr:nth-child(odd) td { 
-  background: rgba(255,255,255,.02); 
-}
 
 /* Empty states - centered in the tbody area */
 .empty {
@@ -376,9 +585,6 @@
   padding: 40px 10px;
   text-align: center;
   color: #b7cbdc;
-}
-.empty[hidden] {
-  display: none;
 }
 
 /* Exports row (bottom) */

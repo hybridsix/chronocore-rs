@@ -177,6 +177,8 @@ CREATE TABLE IF NOT EXISTS result_standings (
     lap_deficit    INTEGER,
     pit_count      INTEGER DEFAULT 0,
     status         TEXT DEFAULT 'ACTIVE',
+    grid_index     INTEGER,              -- qualifying grid position (1-based)
+    brake_valid    INTEGER,              -- brake test result: 1=pass, 0=fail, NULL=not tested
     PRIMARY KEY (race_id, position)
 );
 

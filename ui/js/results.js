@@ -254,10 +254,13 @@ function updateAdminEnabled() {
         ]);
         
         // Title + window info
-        setTitle(meta?.race_type || `Race ${raceId}`);
+        const titleParts = [];
+        if (meta?.race_type) titleParts.push(meta.race_type.charAt(0).toUpperCase() + meta.race_type.slice(1));
+        if (meta?.session_label) titleParts.push(meta.session_label);
+        setTitle(titleParts.length > 0 ? titleParts.join(' • ') : `Race ${raceId}`);
         setWindow(`Frozen ${meta?.frozen_utc || ''} • Duration ${fmtDuration(meta?.duration_ms)}`);
         
-        renderStandings(meta?.entrants || []);
+        renderStandings(meta);
         renderLapsFromMap(laps?.laps || {});
         calcQuickStatsFromFinal(meta);
         return;
@@ -272,7 +275,10 @@ function updateAdminEnabled() {
         const state = await getJSON(`/race/state`);
         
         // Title + window info
-        setTitle(state?.race_type || `Race ${raceId}`);
+        const titleParts = [];
+        if (state?.race_type) titleParts.push(state.race_type.charAt(0).toUpperCase() + state.race_type.slice(1));
+        if (state?.session_label) titleParts.push(state.session_label);
+        setTitle(titleParts.length > 0 ? titleParts.join(' • ') : `Race ${raceId}`);
         setWindow('Live preview - not final');
         
         renderStandings(liveToStandings(state));
@@ -350,6 +356,8 @@ function wireAdminButtons() {
     const btn = ev.target.closest('button');
     if (!btn) return;
 
+    console.log('[wireAdminButtons] Button clicked:', btn.id, 'selectedRaceId:', selectedRaceId);
+
     // No selection? Give a friendly nudge.
     if (!selectedRaceId && (btn.id === 'btnCopyLinks' || btn.id === 'btnDeleteHeat')) {
       toast('Select a heat first.');
@@ -363,13 +371,15 @@ function wireAdminButtons() {
       }
 
       if (btn.id === 'btnDeleteHeat') {
+        console.log('[wireAdminButtons] Calling deleteHeatById with:', selectedRaceId);
         await deleteHeatById(selectedRaceId);  // shows prompt internally
         await refreshHeats();                  // rebuild rail after delete
         // Clear main view if the selected heat is gone
         if (!heats.find(h => String(h.heat_id) === String(selectedRaceId))) {
           selectedRaceId = null;
           updateAdminEnabled();
-          // Clear tables if you have helpers for that
+          // Clear all displayed data
+          try { clearHeatHeader(); } catch {}
           try { clearStandingsTable(); } catch {}
           try { clearLapsTable(); } catch {}
         }
@@ -381,6 +391,7 @@ function wireAdminButtons() {
         await refreshHeats();
         selectedRaceId = null;
         updateAdminEnabled();
+        try { clearHeatHeader(); } catch {}
         try { clearStandingsTable(); } catch {}
         try { clearLapsTable(); } catch {}
         return;
@@ -418,11 +429,13 @@ async function copyLinksFor(raceId) {
 }
 
 async function deleteHeatById(raceId) {
+  console.log('[deleteHeatById] Called with raceId:', raceId);
   if (!raceId) return;
   
   const heat = heats.find(h => String(h.heat_id) === String(raceId));
   const label = heat?.race_mode || heat?.name || `Heat ${raceId}`;
   
+  console.log('[deleteHeatById] About to show confirm dialog for:', label);
   const confirmed = confirm(
     `Delete frozen results for "${label}" (race_id=${raceId})?\n\n` +
     `This will permanently remove:\n` +
@@ -515,6 +528,8 @@ function renderHeats(list) {
     const eventLabel = safeText(h.event_label, '—');
     const sessionLabel = safeText(h.session_label, '—');
     const raceMode = safeText(h.race_mode, '—');
+    // Capitalize first letter of race mode
+    const raceModeCapitalized = raceMode.charAt(0).toUpperCase() + raceMode.slice(1);
     const when = heatDisplayTime(h); // uses display_time/fallbacks
 
     return `
@@ -522,14 +537,14 @@ function renderHeats(list) {
         class="heat-card${isSelected ? ' heat-card--selected' : ''}"
         data-heat-id="${h.heat_id}"
         aria-current="${isSelected ? 'true' : 'false'}"
-        title="${raceMode}"
+        title="${raceModeCapitalized}"
       >
         <div class="heat-card__top">
           <span class="heat-card__event">${eventLabel}</span>
-          <span class="heat-card__session">${sessionLabel}</span>
+          <span class="heat-card__session">${raceModeCapitalized}</span>
         </div>
         <div class="heat-card__mid">
-          <span class="heat-card__mode">${raceMode}</span>
+          <span class="heat-card__mode">${sessionLabel}</span>
         </div>
         <div class="heat-card__bottom">
           <span class="heat-card__time">${when}</span>
@@ -576,7 +591,8 @@ function selectHeat(heatOrId) {
     : toId(heatOrId?.heat_id ?? heatOrId?.race_id ?? heatOrId?.id);
 
   if (!id) return;
-  if (id === selectedRaceId) return; // no-op if already selected
+  // Allow re-selection to force render (removed early return)
+  // if (id === selectedRaceId) return; // no-op if already selected
 
   selectedRaceId = id;
 
@@ -675,6 +691,14 @@ function selectHeat(heatOrId) {
       const lastMs = e.last_ms ?? (e.last != null ? Math.round(Number(e.last) * 1000) : null);
       const gapMs  = e.gap_ms  ?? (e.gap_s != null ? Math.round(Number(e.gap_s) * 1000) : null);
 
+      // Format brake status
+      let brakeHtml = '-';
+      if (e.brake_valid === true) {
+        brakeHtml = '<span class="badge badge--pass">Pass</span>';
+      } else if (e.brake_valid === false) {
+        brakeHtml = '<span class="badge badge--fail">Fail</span>';
+      }
+
       return `
         <tr>
           <td>${e.position ?? (i + 1)}</td>
@@ -685,8 +709,8 @@ function selectHeat(heatOrId) {
           <td>${fmtSec(lastMs)}</td>
           <td>${fmtSec(bestMs)}</td>
           <td>${fmtSec(null) /* Pace-5 not yet computed */}</td>
-          <td>${'' /* Grid placeholder */}</td>
-          <td>${'' /* Brake placeholder */}</td>
+          <td>${e.grid_index ?? '-'}</td>
+          <td>${brakeHtml}</td>
           <td>${e.pit_count ?? 0}</td>
         </tr>
       `;
@@ -698,6 +722,16 @@ function selectHeat(heatOrId) {
   function clearStandingsTable() {
     if (tbodyStandings) tbodyStandings.innerHTML = '';
     if (standingsEmpty) standingsEmpty.hidden = false;
+  }
+
+  function clearHeatHeader() {
+    setTitle('');
+    setWindow('');
+    if (chipFrozenEl) chipFrozenEl.textContent = '';
+    if (chipLiveEl) chipLiveEl.textContent = '';
+    if (chipGridEl) chipGridEl.textContent = '';
+    if (statFastEl) statFastEl.textContent = '-';
+    if (statCarsEl) statCarsEl.textContent = '-';
   }
 
   // ---------------------------------------------------------------------------
@@ -837,13 +871,13 @@ function selectHeat(heatOrId) {
     if (btnStandingsJSON) {
       btnStandingsJSON.onclick = () => {
         if (!raceId) return;
-        window.open(`/results/${raceId}`, '_blank');
+        window.location.href = `/results/${raceId}/standings.json${bust()}`;
       };
     }
     if (btnLapsJSON) {
       btnLapsJSON.onclick = () => {
         if (!raceId) return;
-        window.open(`/results/${raceId}/laps`, '_blank');
+        window.location.href = `/results/${raceId}/laps.json${bust()}`;
       };
     }
     // btnPassesCSV remains disabled unless you wire /passes.csv?heat_id=
@@ -861,9 +895,27 @@ function selectHeat(heatOrId) {
   }
 
   // ---------------------------------------------------------------------------
+  // Health check for DB status indicator
+  // ---------------------------------------------------------------------------
+  async function checkBackendHealth() {
+    try {
+      const res = await fetch('/healthz', { cache: 'no-store' });
+      if (res.ok && window.CCRS?.setNetStatus) {
+        window.CCRS.setNetStatus(true, 'DB: Online');
+      }
+    } catch (err) {
+      if (window.CCRS?.setNetStatus) {
+        window.CCRS.setNetStatus(false, 'DB: Offline');
+      }
+    }
+  }
+
+  // ---------------------------------------------------------------------------
   // Bootstrap
   // ---------------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', async () => {
+    checkBackendHealth(); // Update DB status pill
+    
     wireTabs();
     wireAdminButtons();
     wireExportAll();  // Wire the bulk export button
@@ -881,6 +933,9 @@ function selectHeat(heatOrId) {
         localStorage.setItem('rc.race_id', String(selectedRaceId)); 
       } catch {}
       
+      // Enable admin buttons since we have a selection
+      updateAdminEnabled();
+      
       try {
         await chooseDefaultView(selectedRaceId);
         await renderFinalOrLive(selectedRaceId);
@@ -888,6 +943,7 @@ function selectHeat(heatOrId) {
         console.warn('[Results] Failed to load race, showing heats only:', err);
         // Clear the bad race_id from URL so user can select from list
         selectedRaceId = null;
+        updateAdminEnabled(); // Disable buttons again
       }
     }
 

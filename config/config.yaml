@@ -10,10 +10,13 @@ app:
       allow_client_override: true
   engine:
     event:
+      id: 1
       name: Maker Faire Orlando
       date: '2025-11-08'
       location: Orlando, FL
     default_min_lap_s: 10
+    qualifying:
+      brake_test_policy: demote
     ingest:
       debounce_ms: 250
       per_location_debounce_ms: {}

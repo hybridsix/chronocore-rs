@@ -22,15 +22,18 @@ ALLOWED_STATUS = {"ACTIVE","DISABLED","DNF","DQ"}
 class Entrant:
     __slots__ = ("entrant_id","enabled","status","tag","number","name",
                  "laps","last_s","best_s","pace_buf","pit_open_at_ms",
-                 "pit_count","last_pit_s","_last_hit_ms")
+                 "pit_count","last_pit_s","_last_hit_ms","grid_index","brake_valid")
     def __init__(self, entrant_id:int, enabled:bool=True, status:str="ACTIVE",
-                 tag:Optional[str]=None, number:Optional[str]=None, name:str=""):
+                 tag:Optional[str]=None, number:Optional[str]=None, name:str="",
+                 grid_index:Optional[int]=None, brake_valid:Optional[bool]=None):
         self.entrant_id = int(entrant_id)
         self.enabled    = bool(enabled)
         self.status     = status if status in ALLOWED_STATUS else "ACTIVE"
         self.tag        = (tag or None)
         self.number     = number or None
         self.name       = name or f"Entrant {entrant_id}"
+        self.grid_index = grid_index
+        self.brake_valid = brake_valid
 
         self.laps: int  = 0
         self.last_s: Optional[float] = None
@@ -68,6 +71,8 @@ class Entrant:
             "lap_deficit": lap_deficit,
             "pit_count": self.pit_count,
             "last_pit_s": None if self.last_pit_s is None else round(self.last_pit_s, 3),
+            "grid_index": self.grid_index,
+            "brake_valid": self.brake_valid,
         }
 
 # ----------------------------- Journal (optional) -----------------------------
@@ -208,6 +213,8 @@ class RaceEngine:
             self.flag: str = "pre"
             self.race_id: Optional[int] = None
             self.race_type: Optional[str] = None
+            self.event_label: Optional[str] = None
+            self.session_label: Optional[str] = None
             self.clock_ms: int = 0
             self.clock_start_monotonic: Optional[float] = None  # when green started
             self.running: bool = False
@@ -248,6 +255,11 @@ class RaceEngine:
             self.reset()
             self.race_id = int(race_id)
             self.race_type = str(race_type)
+            
+            # Extract event/session labels from session_config
+            if isinstance(session_config, dict):
+                self.event_label = session_config.get("event_label")
+                self.session_label = session_config.get("session_label")
 
             # apply mode overrides (e.g., min_lap_s, limits) if present
             self._apply_mode_cfg(self.race_type)
@@ -320,6 +332,8 @@ class RaceEngine:
                     tag=(str(e.get("tag")).strip() if e.get("tag") else None),
                     number=(str(e.get("number")).strip() if e.get("number") else None),
                     name=str(e.get("name") or f"Entrant {entrant_id}"),
+                    grid_index=e.get("grid_index"),
+                    brake_valid=e.get("brake_valid"),
                 )
                 self.entrants[ent.entrant_id] = ent
                 self._lap_history[ent.entrant_id] = []
@@ -589,8 +603,10 @@ class RaceEngine:
 
     def _persist_results(self, snapshot: Dict[str, Any], lap_history: Dict[int, List[int]]) -> None:
         """Write the frozen snapshot to SQLite (best-effort, idempotent)."""
+        print(f"!!! _persist_results called: race_id={self.race_id}, db_path={getattr(self, '_db_path', None)}", flush=True)
         db_path = getattr(self, "_db_path", None)
         if not db_path or self.race_id is None:
+            print(f"!!! _persist_results EARLY RETURN: db_path={db_path}, race_id={self.race_id}", flush=True)
             return
 
         freeze_snapshot = dict(snapshot)
@@ -611,8 +627,11 @@ class RaceEngine:
                 freeze_snapshot,
                 lap_map,
             )
-        except Exception:
+        except Exception as e:
             log.exception("results_persist_failed", extra={"race_id": self.race_id})
+            print(f"!!! PERSIST_RESULTS ERROR for race_id={self.race_id}: {e}", flush=True)
+            import traceback
+            traceback.print_exc()
 
     # ---------- internal helpers ----------
     def _elapsed_s(self) -> float:
@@ -821,6 +840,8 @@ class RaceEngine:
                 "flag": self.flag,
                 "race_id": self.race_id,
                 "race_type": self.race_type or "sprint",
+                "event_label": self.event_label,
+                "session_label": self.session_label,
                 "clock_ms": self.clock_ms,
                 "running": self.running,
                 "standings": rows,
@@ -836,6 +857,11 @@ class RaceEngine:
                 snap["mode"] = self._active_mode
             if isinstance(self._event, dict) and self._event:
                 snap["event"] = self._event
+
+            # Include qualifying config if present
+            qual_cfg = self.cfg.get("qualifying", {})
+            if qual_cfg:
+                snap["qualifying"] = qual_cfg
 
             # Limit block (keep your existing shape; add remaining when time mode)
             if self._limit:

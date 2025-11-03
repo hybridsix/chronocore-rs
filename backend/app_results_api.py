@@ -277,7 +277,8 @@ def get_results(race_id: int) -> Dict[str, Any]:
               rs.position, rs.entrant_id, rs.number, rs.name,
               COALESCE(rs.tag, e.tag) AS tag,
               rs.laps, rs.last_ms, rs.best_ms, rs.gap_ms,
-              rs.lap_deficit, rs.pit_count, rs.status
+              rs.lap_deficit, rs.pit_count, rs.status,
+              rs.grid_index, rs.brake_valid
             FROM result_standings rs
             LEFT JOIN entrants e ON e.entrant_id = rs.entrant_id
             WHERE rs.race_id = ?
@@ -301,6 +302,8 @@ def get_results(race_id: int) -> Dict[str, Any]:
                 "lap_deficit":  int(r["lap_deficit"]) if r["lap_deficit"] is not None else 0,
                 "pit_count":    int(r["pit_count"])   if r["pit_count"]   is not None else 0,
                 "status":       r["status"] or "ACTIVE",
+                "grid_index":   None if r["grid_index"] is None else int(r["grid_index"]),
+                "brake_valid":  None if r["brake_valid"] is None else bool(r["brake_valid"]),
             })
 
         md = _meta_row_to_dict(meta)
@@ -319,9 +322,19 @@ def get_results(race_id: int) -> Dict[str, Any]:
 
 @router.get("/{race_id}/laps")
 def get_laps(race_id: int) -> Dict[str, Any]:
-    """Per-lap times plus entrant_meta (with tag fallback)."""
+    """Per-lap times plus entrant_meta (with tag fallback) and race metadata."""
     with _connect() as db:
         _ensure_result_schema(db)
+        
+        # Get metadata
+        meta = db.execute(
+            "SELECT * FROM result_meta WHERE race_id = ?",
+            (race_id,),
+        ).fetchone()
+        if not meta:
+            raise HTTPException(status_code=404, detail="Heat not found")
+        
+        md = _meta_row_to_dict(meta)
 
         # Laps
         rows = db.execute(
@@ -333,14 +346,6 @@ def get_laps(race_id: int) -> Dict[str, Any]:
             """,
             (race_id,),
         ).fetchall()
-
-        # 404 only if no meta either (otherwise return empty laps array)
-        meta_exists = db.execute(
-            "SELECT 1 FROM result_meta WHERE race_id=?",
-            (race_id,),
-        ).fetchone()
-        if not rows and not meta_exists:
-            raise HTTPException(status_code=404, detail="Heat not found")
 
         laps: Dict[str, List[int]] = {}
         for r in rows:
@@ -370,7 +375,19 @@ def get_laps(race_id: int) -> Dict[str, Any]:
             for r in emeta_rows
         }
 
-        return {"race_id": race_id, "laps": laps, "entrant_meta": entrant_meta}
+        return {
+            "race_id":          md["race_id"],
+            "race_type":        md["race_type"],
+            "event_label":      md["event_label"],
+            "session_label":    md["session_label"],
+            "race_mode":        md["race_mode"] or md["race_type"],
+            "frozen_iso_local": md["frozen_iso_local"],
+            "frozen_iso_utc":   md["frozen_iso_utc"],
+            "clock_ms_frozen":  md["clock_ms_frozen"],
+            "duration_ms":      md["duration_ms"],
+            "laps":             laps,
+            "entrant_meta":     entrant_meta,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -400,13 +417,25 @@ def _csv_stream(rows: List[List[Any]], headers: List[str]) -> StreamingResponse:
 def standings_csv(race_id: int) -> StreamingResponse:
     with _connect() as db:
         _ensure_result_schema(db)
+        
+        # Get metadata
+        meta = db.execute(
+            "SELECT * FROM result_meta WHERE race_id = ?",
+            (race_id,),
+        ).fetchone()
+        if not meta:
+            raise HTTPException(status_code=404, detail="Heat not found")
+        
+        md = _meta_row_to_dict(meta)
+        
         rows = db.execute(
             """
             SELECT
               rs.position, rs.entrant_id, rs.number, rs.name,
               COALESCE(rs.tag, e.tag) AS tag,
               rs.laps, rs.last_ms, rs.best_ms, rs.gap_ms,
-              rs.lap_deficit, rs.pit_count, rs.status
+              rs.lap_deficit, rs.pit_count, rs.status,
+              rs.grid_index, rs.brake_valid
             FROM result_standings rs
             LEFT JOIN entrants e ON e.entrant_id = rs.entrant_id
             WHERE rs.race_id = ?
@@ -415,14 +444,42 @@ def standings_csv(race_id: int) -> StreamingResponse:
             (race_id,),
         ).fetchall()
 
-        payload: List[List[Any]] = []
+        # Build CSV with metadata header
+        buf = StringIO()
+        w = csv.writer(buf, lineterminator="\n")
+        
+        # Metadata comments
+        w.writerow([f"# Race ID: {md['race_id']}"])
+        if md["event_label"]:
+            w.writerow([f"# Event: {md['event_label']}"])
+        if md["session_label"]:
+            w.writerow([f"# Session: {md['session_label']}"])
+        if md["race_mode"]:
+            w.writerow([f"# Mode: {md['race_mode']}"])
+        if md["frozen_iso_local"]:
+            w.writerow([f"# Frozen: {md['frozen_iso_local']}"])
+        if md["clock_ms_frozen"]:
+            duration_sec = md["clock_ms_frozen"] / 1000.0
+            mins = int(duration_sec // 60)
+            secs = int(duration_sec % 60)
+            w.writerow([f"# Duration: {mins:02d}:{secs:02d}"])
+        w.writerow([])  # blank line
+        
+        # Data headers
+        w.writerow([
+            "position","entrant_id","number","name","tag",
+            "laps","last_sec","best_sec","gap_sec","lap_deficit","pit_count","status",
+            "grid_index","brake_valid"
+        ])
+        
+        # Data rows
         for r in rows:
-            payload.append([
+            w.writerow([
                 r["position"],
                 r["entrant_id"],
                 r["number"],
                 r["name"],
-                r["tag"],         # always included (snapshot or fallback)
+                r["tag"],
                 r["laps"],
                 _ms_to_seconds(r["last_ms"]),
                 _ms_to_seconds(r["best_ms"]),
@@ -430,18 +487,37 @@ def standings_csv(race_id: int) -> StreamingResponse:
                 r["lap_deficit"],
                 r["pit_count"],
                 r["status"],
+                r["grid_index"],
+                r["brake_valid"],
             ])
-
-        headers = [
-            "position","entrant_id","number","name","tag",
-            "laps","last_sec","best_sec","gap_sec","lap_deficit","pit_count","status"
-        ]
-        return _csv_stream(payload, headers)
+        
+        buf.seek(0)
+        filename = f"standings_{race_id}.csv"
+        if md["session_label"]:
+            safe_name = md["session_label"].replace(" ", "_").replace("/", "-")
+            filename = f"standings_{safe_name}.csv"
+        
+        return StreamingResponse(
+            buf,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
 @router.get("/{race_id}/laps.csv")
 def laps_csv(race_id: int) -> StreamingResponse:
     with _connect() as db:
         _ensure_result_schema(db)
+        
+        # Get metadata
+        meta = db.execute(
+            "SELECT * FROM result_meta WHERE race_id = ?",
+            (race_id,),
+        ).fetchone()
+        if not meta:
+            raise HTTPException(status_code=404, detail="Heat not found")
+        
+        md = _meta_row_to_dict(meta)
+        
         rows = db.execute(
             """
             SELECT
@@ -462,19 +538,93 @@ def laps_csv(race_id: int) -> StreamingResponse:
             (race_id,),
         ).fetchall()
 
-        payload: List[List[Any]] = []
+        # Build CSV with metadata header
+        buf = StringIO()
+        w = csv.writer(buf, lineterminator="\n")
+        
+        # Metadata comments
+        w.writerow([f"# Race ID: {md['race_id']}"])
+        if md["event_label"]:
+            w.writerow([f"# Event: {md['event_label']}"])
+        if md["session_label"]:
+            w.writerow([f"# Session: {md['session_label']}"])
+        if md["race_mode"]:
+            w.writerow([f"# Mode: {md['race_mode']}"])
+        if md["frozen_iso_local"]:
+            w.writerow([f"# Frozen: {md['frozen_iso_local']}"])
+        if md["clock_ms_frozen"]:
+            duration_sec = md["clock_ms_frozen"] / 1000.0
+            mins = int(duration_sec // 60)
+            secs = int(duration_sec % 60)
+            w.writerow([f"# Duration: {mins:02d}:{secs:02d}"])
+        w.writerow([])  # blank line
+        
+        # Data headers
+        w.writerow(["entrant_id","tag","number","name","lap_no","lap_sec"])
+        
+        # Data rows
         for r in rows:
-            payload.append([
+            w.writerow([
                 r["entrant_id"],
-                r["tag"],      # snapshot or fallback
+                r["tag"],
                 r["number"],
                 r["name"],
                 r["lap_no"],
                 _ms_to_seconds(r["lap_ms"]),
             ])
+        
+        buf.seek(0)
+        filename = f"laps_{race_id}.csv"
+        if md["session_label"]:
+            safe_name = md["session_label"].replace(" ", "_").replace("/", "-")
+            filename = f"laps_{safe_name}.csv"
+        
+        return StreamingResponse(
+            buf,
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+        )
 
-        headers = ["entrant_id","tag","number","name","lap_no","lap_sec"]
-        return _csv_stream(payload, headers)
+
+# ---------------------------------------------------------------------------
+# JSON download exports (with Content-Disposition for proper filenames)
+# ---------------------------------------------------------------------------
+
+@router.get("/{race_id}/standings.json")
+def standings_json(race_id: int):
+    """Standings as JSON download with proper filename."""
+    import json
+    result = get_results(race_id)
+    
+    # Generate filename from session label or race_id
+    filename = f"standings_{race_id}.json"
+    if result.get("session_label"):
+        safe_name = result["session_label"].replace(" ", "_").replace("/", "-")
+        filename = f"standings_{safe_name}.json"
+    
+    return StreamingResponse(
+        iter([json.dumps(result, indent=2)]),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+@router.get("/{race_id}/laps.json")
+def laps_json_download(race_id: int):
+    """Laps as JSON download with proper filename."""
+    import json
+    result = get_laps(race_id)
+    
+    # Generate filename from session label or race_id
+    filename = f"laps_{race_id}.json"
+    if result.get("session_label"):
+        safe_name = result["session_label"].replace(" ", "_").replace("/", "-")
+        filename = f"laps_{safe_name}.json"
+    
+    return StreamingResponse(
+        iter([json.dumps(result, indent=2)]),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/export/all")

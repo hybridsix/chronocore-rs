@@ -41,10 +41,12 @@ from pydantic import BaseModel
 import sqlite3, json
 from typing import Dict, List, Optional
 
-# --- if you keep DB connection helpers elsewhere, import your own ---
+# Import DB path from config
+from backend.config_loader import get_db_path
+
+# --- DB connection helper ---
 def get_conn() -> sqlite3.Connection:
-    # Replace with your real dependency / connection pool
-    conn = sqlite3.connect("data/ccrs.db")
+    conn = sqlite3.connect(get_db_path())
     conn.row_factory = sqlite3.Row
     return conn
 
@@ -56,6 +58,7 @@ from backend.db_schema import (
 )
 
 qual = APIRouter(prefix="/event", tags=["qualifying"])
+qual_brake = APIRouter(prefix="/qual", tags=["qualifying-brake"])
 
 class FreezeBody(BaseModel):
     source_heat_id: int                  # qualifying heat id
@@ -63,20 +66,18 @@ class FreezeBody(BaseModel):
 
 # ---- core: collect per-entrant lap durations (ms) from a heat -----
 def _laps_by_entrant(conn: sqlite3.Connection, heat_id: int) -> Dict[int, List[int]]:
+    """Pull lap durations for the qualifying heat from result_laps (must be frozen first)."""
     cur = conn.execute("""
-        SELECT entrant_id, ts_ms
-        FROM lap_events
-        WHERE heat_id = ?
-        ORDER BY entrant_id, ts_ms
+        SELECT entrant_id, lap_ms
+        FROM result_laps
+        WHERE race_id = ?
+        ORDER BY entrant_id, lap_no
     """, (heat_id,))
     times: Dict[int, List[int]] = {}
-    last_ts: Dict[int, int] = {}
     for row in cur.fetchall():
         eid = row["entrant_id"]
-        ts  = int(row["ts_ms"])
-        if eid in last_ts:
-            times.setdefault(eid, []).append(ts - last_ts[eid])
-        last_ts[eid] = ts
+        lap_ms = int(row["lap_ms"])
+        times.setdefault(eid, []).append(lap_ms)
     return times
 
 def _event_id_for_heat(conn: sqlite3.Connection, heat_id: int) -> int:
@@ -96,6 +97,12 @@ def freeze_grid(event_id: int, body: FreezeBody):
 
         # 1) lap durations per entrant
         by_e = _laps_by_entrant(conn, body.source_heat_id)        # { entrant_id: [ms, ...] }
+        
+        if not by_e:
+            raise HTTPException(400, 
+                "No lap times found for this qualifying heat. "
+                "Make sure the race has finished (CHECKERED flag) and results have been persisted."
+            )
 
         # 2) manual brake-test verdicts from the QUAL heat
         flags = get_brake_flags(conn, body.source_heat_id)        # { entrant_id: True/False }
@@ -163,3 +170,57 @@ def get_frozen_grid(event_id: int):
         return {"event_id": event_id, "qualifying": q}
     finally:
         conn.close()
+
+# -------------------------------------------------------------------------
+# Brake Test Verdict endpoints
+# -------------------------------------------------------------------------
+# Store per-entrant brake test verdicts (Pass/Fail) in memory or SQLite
+# In-memory storage for active races; optionally persist to race_meta if needed
+#
+# GET /qual/heat/{heat_id}/brake
+#     Returns: { "entrant_id": bool, ... }
+#
+# POST /qual/heat/{heat_id}/brake
+#     Body: { entrant_id: int, brake_ok: bool | None }
+#     If brake_ok is None/null, removes the verdict (resets to unknown)
+# -------------------------------------------------------------------------
+
+# In-memory storage: race_id -> { entrant_id: bool }
+_brake_verdicts_cache: Dict[int, Dict[int, bool]] = {}
+
+class BrakeVerdictBody(BaseModel):
+    entrant_id: int
+    brake_ok: Optional[bool] = None  # true=Pass, false=Fail, None=remove
+
+@qual_brake.get("/heat/{heat_id}/brake")
+def get_brake_verdicts(heat_id: int):
+    """Return all brake test verdicts for a heat/race as { entrant_id: bool }"""
+    # Use in-memory cache (race_id is used as heat_id for active races)
+    verdicts = _brake_verdicts_cache.get(heat_id, {})
+    return verdicts
+
+@qual_brake.post("/heat/{heat_id}/brake")
+def set_brake_verdict(heat_id: int, body: BrakeVerdictBody):
+    """Set or clear a single brake test verdict for an entrant"""
+    # Use in-memory cache (race_id is used as heat_id for active races)
+    if heat_id not in _brake_verdicts_cache:
+        _brake_verdicts_cache[heat_id] = {}
+    
+    if body.brake_ok is None:
+        # Remove the verdict (reset to unknown)
+        _brake_verdicts_cache[heat_id].pop(body.entrant_id, None)
+    else:
+        # Set verdict (true=Pass, false=Fail)
+        _brake_verdicts_cache[heat_id][body.entrant_id] = body.brake_ok
+    
+    # Persist to database so freeze can read it
+    conn = get_conn()
+    try:
+        from backend.db_schema import set_brake_flag
+        if body.brake_ok is not None:
+            set_brake_flag(conn, heat_id, body.entrant_id, body.brake_ok)
+        conn.commit()
+    finally:
+        conn.close()
+    
+    return {"heat_id": heat_id, "entrant_id": body.entrant_id, "brake_ok": body.brake_ok}

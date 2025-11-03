@@ -50,7 +50,7 @@ from pydantic import BaseModel, Field, ValidationError, field_validator
 from .race_engine import ENGINE  
 from .db_schema import ensure_schema, tag_conflicts, get_event_config
 from .config_loader import get_db_path, get_scanner_cfg, CONFIG
-from backend.qualifying import qual
+from backend.qualifying import qual, qual_brake
 from .app_results_api import router as app_results_router
 
 
@@ -90,6 +90,7 @@ app = FastAPI(title="CCRS Backend", version="0.2.1")
 
 # Register auxiliary routers
 app.include_router(qual)
+app.include_router(qual_brake)
 app.include_router(app_results_router)   # no prefix; paths mount exactly as declared
 
 # ======================================================================
@@ -513,6 +514,8 @@ def _state_seen_block() -> dict:
                 "name": e.get("name"),
                 "enabled": bool(e.get("enabled", True)),
                 "reads": int(_SEEN_COUNTS.get(eid, 0)),
+                "grid_index": e.get("grid_index"),
+                "brake_valid": e.get("brake_valid"),
             })
         # Sort: enabled first, reads desc, then car number for stable ties
         rows.sort(key=lambda r: (
@@ -1916,6 +1919,58 @@ async def race_setup(
         entrants_copy = [dict(e) for e in entrants_engine]
         _CURRENT_ENTRANTS_ENGINE = entrants_copy[:]  # keep for reset
 
+        # Apply qualifying grid if available for this event
+        event_id = CONFIG.get('app', {}).get('engine', {}).get('event', {}).get('id', 1)
+        try:
+            import sqlite3
+            from backend.db_schema import get_event_config
+            db_conn = sqlite3.connect(DB_PATH)
+            db_conn.row_factory = sqlite3.Row
+            event_cfg = get_event_config(db_conn, event_id)
+            qual_grid = event_cfg.get("qualifying", {}).get("grid", []) if event_cfg else []
+            db_conn.close()
+            
+            if qual_grid:
+                # Create maps for grid order and brake test results
+                grid_map = {entry["entrant_id"]: entry["order"] for entry in qual_grid}
+                brake_map = {entry["entrant_id"]: entry.get("brake_ok", True) for entry in qual_grid}
+                
+                # Get brake test policy
+                brake_policy = CONFIG.get('app', {}).get('engine', {}).get('qualifying', {}).get('brake_test_policy', 'warn')
+                
+                # Add grid_index and brake_valid to each entrant
+                for e in entrants_copy:
+                    eid = e["entrant_id"]
+                    if eid in grid_map:
+                        e["grid_index"] = grid_map[eid]
+                        # brake_valid: True = pass, False/None = fail
+                        brake_result = brake_map.get(eid)
+                        e["brake_valid"] = True if brake_result is True else False
+                
+                # Build a map of best lap times from qual_grid for sorting demoted entrants
+                best_lap_map = {entry["entrant_id"]: entry.get("best_ms", float('inf')) for entry in qual_grid}
+                
+                # Sort entrants by grid order, applying brake test policy
+                def sort_key(e):
+                    grid_pos = e.get("grid_index")
+                    brake_ok = e.get("brake_valid", False)
+                    
+                    if grid_pos is not None:
+                        # If brake_test_policy is "demote" and brake test failed/null, demote to back
+                        if brake_policy == "demote" and not brake_ok:
+                            # Sort demoted entrants by best lap (fastest first)
+                            best_ms = best_lap_map.get(e["entrant_id"], float('inf'))
+                            return (2, best_ms)  # Demoted entrants sorted by lap time
+                        return (0, grid_pos)  # Grid entrants with passing brake test
+                    else:
+                        return (1, e["entrant_id"])  # Non-grid entrants in middle
+                
+                entrants_copy.sort(key=sort_key)
+                
+                log.info(f"Applied qualifying grid with {len(grid_map)} positions to {len(entrants_copy)} entrants")
+        except Exception as e:
+            log.warning(f"Could not apply qualifying grid: {e}")
+
         # Make entrants available to Seen block (and anything else that needs roster)
         _RACE_STATE["entrants"] = entrants_copy[:]
         _reseed_seen_roster(_RACE_STATE["entrants"])
@@ -1942,11 +1997,24 @@ async def race_setup(
 
         snap = ENGINE.load(
             race_id=_CURRENT_RACE_ID,
-            entrants=entrants_engine,
+            entrants=entrants_copy,
             race_type=race_type,
             session_config=_CURRENT_SESSION,
         )
         _apply_session_min_lap(_CURRENT_SESSION)
+
+        # Ensure event and heat exist in database
+        event_id = CONFIG.get('app', {}).get('engine', {}).get('event', {}).get('id', 1)
+        async with aiosqlite.connect(DB_PATH) as db:
+            await db.execute(
+                'INSERT OR IGNORE INTO events (event_id, name, config_json) VALUES (?, ?, ?)',
+                (event_id, 'Event', '{}')
+            )
+            await db.execute(
+                'INSERT OR IGNORE INTO heats (heat_id, event_id, name, config_json) VALUES (?, ?, ?, ?)',
+                (_CURRENT_RACE_ID, event_id, f'{race_type} Race', '{}')
+            )
+            await db.commit()
 
         # Capture a minimal echo of what the engine returned (don’t spam huge payloads)
         try:
@@ -2078,6 +2146,26 @@ async def engine_load(payload: Dict[str, Any]):
 
     # Choose race_type: prefer session mode if available, else default
     race_type = _CURRENT_SESSION.get("mode_id", "sprint") if _CURRENT_SESSION else "sprint"
+
+    # Ensure event and heat exist in database for this race
+    event_id = CONFIG.get("app", {}).get("engine", {}).get("event", {}).get("id", 1)
+    event_name = CONFIG.get("app", {}).get("engine", {}).get("event", {}).get("name", "Unknown Event")
+    event_date = CONFIG.get("app", {}).get("engine", {}).get("event", {}).get("date", None)
+    
+    async with aiosqlite.connect(DB_PATH) as db:
+        # Ensure event exists
+        await db.execute("""
+            INSERT OR IGNORE INTO events (event_id, name, date_utc, config_json)
+            VALUES (?, ?, ?, '{}')
+        """, (event_id, event_name, event_date))
+        
+        # Ensure heat exists for this race_id
+        await db.execute("""
+            INSERT OR IGNORE INTO heats (heat_id, event_id, name, config_json)
+            VALUES (?, ?, ?, '{}')
+        """, (race_id, event_id, f"{race_type.capitalize()} Race"))
+        
+        await db.commit()
 
     snapshot = ENGINE.load(
         race_id=race_id,
@@ -2302,6 +2390,11 @@ async def race_state():
 
                 # 5) Always attach live 'seen'
                 snap["seen"] = _state_seen_block()
+                
+                # 6) Attach session labels from _CURRENT_SESSION if available
+                if _CURRENT_SESSION:
+                    snap.setdefault("session_label", _CURRENT_SESSION.get("session_label"))
+                    snap.setdefault("event_label", _CURRENT_SESSION.get("event_label"))
 
             return JSONResponse(snap)
         except Exception:
@@ -3353,7 +3446,13 @@ async def diagnostics_test_fire():
 # Minimal runtime stub for frontends (Settings/Diagnostics)
 @app.get("/setup/runtime")
 async def setup_runtime():
+    # Include current race info if available
+    race_id = ENGINE.race_id if hasattr(ENGINE, 'race_id') else None
+    race_type = ENGINE.race_type if hasattr(ENGINE, 'race_type') else None
+    
     return {
+        "heat_id": race_id,  # Frontend uses this for brake test storage
+        "session_type": race_type,  # "qualifying", "sprint", "endurance"
         "engine": {
             "ingest": {"debounce_ms": 250},
             "diagnostics": {
@@ -3410,3 +3509,4 @@ async def readyz():
             media_type="application/json",
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
+
