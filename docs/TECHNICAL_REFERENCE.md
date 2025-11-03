@@ -207,6 +207,120 @@ This persistence layer balances speed and reliability, providing a durable recor
 - **Publication**: Only **Frozen Standings** are official; **Live Preview** is labeled as such.
 - **View Mode Toggle (2025-11-02)**: Results page supports switching between frozen (official) and live (preview) views via pill buttons. The UI probes availability of both modes and enables pills accordingly. Frozen view fetches from `/results/{id}` and `/results/{id}/laps`; live view normalizes `/race/state` to match the frozen format for consistent rendering.
 
+### 6.1 Qualifying Workflow and Grid Freezing (2025-11-03)
+
+ChronoCore supports a complete qualifying workflow where grid position is determined by best lap time and persisted for subsequent races in the same event.
+
+**Workflow:**
+1. Set up a race with `race_type: "qualifying"` in Race Setup
+2. Run the qualifying session normally (drivers post laps, best times are tracked)
+3. Optionally set brake test flags for each entrant during/after qualifying
+4. When checkered flag is thrown, a "Freeze Grid Standings" button appears on Race Control
+5. Operator clicks "Freeze Grid" and chooses a brake test policy
+6. Grid order is frozen and saved to `events.config_json`
+
+**Data Model:**
+
+Grid data is stored in two places:
+
+1. **Event Config** (`events.config_json`):
+```json
+{
+  "qualifying": {
+    "grid": [
+      {
+        "entrant_id": 23,
+        "order": 1,
+        "best_ms": 4210,
+        "brake_ok": true
+      },
+      ...
+    ]
+  }
+}
+```
+
+2. **Result Tables** (`result_standings`, `result_laps`):
+- `result_standings.grid_index` (INTEGER) - qualifying position (1, 2, 3...)
+- `result_standings.brake_valid` (INTEGER) - brake test result (1=pass, 0=fail, NULL=no test)
+
+**Grid Application:**
+
+When loading a subsequent race in the same event:
+
+1. Backend reads qualifying grid from `events.config_json`
+2. For each entrant in the roster:
+   - Adds `grid_index` field with their qualifying position
+   - Adds `brake_valid` field with their brake test result
+3. Applies brake test policy and sorts entrants:
+   - **Policy: "demote"** (default):
+     - Passing brake test: sort by grid_index ascending
+     - No grid position: sort by entrant_id
+     - Failed/null brake test: demoted to back, sorted by best_ms ascending
+   - **Policy: "warn"**: Grid order preserved, brake status shown as badge only
+4. Sorted entrant list is passed to `ENGINE.load()`
+5. Engine stores `grid_index` and `brake_valid` on each Entrant object
+
+**UI Display:**
+
+- **Race Control**: Standings and Seen tables sort by grid_index when present
+- **Race Setup**: Shows "Grid: frozen" indicator when qualifying grid is active
+- **Results Page**: Displays grid_index column and brake test badges (Pass/Fail)
+- **CSV Exports**: Include grid_index and brake_valid columns
+
+**Grid Persistence Flow:**
+
+```
+Qualifying Race
+   ↓
+Checkered Flag
+   ↓
+Freeze Grid (operator action)
+   ↓
+Save to result_standings (grid_index, brake_valid)
+   ↓
+Save to events.config_json (qualifying.grid array)
+   ↓
+Load Next Race
+   ↓
+Read grid from config_json
+   ↓
+Apply grid_index + brake_valid to entrants
+   ↓
+Sort by policy
+   ↓
+ENGINE.load(sorted_entrants)
+   ↓
+Engine.snapshot() includes grid_index/brake_valid
+   ↓
+UI displays in grid order
+```
+
+**Grid Reset:**
+
+Three ways to clear a frozen grid:
+1. Run another qualifying session and freeze new results (overwrites)
+2. Delete the qualifying race from Results page (auto-clears grid)
+3. Manual edit of `events.config_json` (advanced)
+
+**Important Implementation Details:**
+
+- `Entrant.__slots__` includes `grid_index` and `brake_valid` to allow storage
+- `Entrant.__init__()` accepts these fields as optional parameters
+- `Entrant.as_snapshot()` includes these fields in the returned dict
+- `_state_seen_block()` includes grid metadata in seen.rows for frontend sorting
+- Null brake test results are treated as failures per the "demote" policy
+- Grid sorting happens before ENGINE.load(), not in the engine itself
+
+**Configuration:**
+
+```yaml
+app:
+  engine:
+    qualifying:
+      brake_test_policy: demote  # demote | warn
+```
+
 ---
 
 ## 7. Database Schema
@@ -295,6 +409,8 @@ This allows disabled entrants to retain historical tags while preventing conflic
 - `entrant_id`, `number`, `name`, `tag`
 - `laps`, `last_ms`, `best_ms`, `gap_ms`, `lap_deficit`
 - `pit_count`, `status`
+- `grid_index` (INTEGER, nullable) - qualifying position (1, 2, 3...) when applicable
+- `brake_valid` (INTEGER, nullable) - brake test result (1=pass, 0=fail, NULL=no test)
 
 **`result_laps`**: Lap-by-lap history
 - `race_id`, `entrant_id`, `lap_no` (PK composite)
@@ -307,6 +423,12 @@ This allows disabled entrants to retain historical tags while preventing conflic
 - `frozen_utc` - ISO8601 timestamp when results froze
 - `duration_ms` - total race duration
 - `clock_ms_frozen`, `event_label`, `session_label`, `race_mode` - extended metadata
+
+**Schema Evolution:**
+- `grid_index` and `brake_valid` columns added via migration (2025-11-03)
+- Migration script: `backend/migrations/add_qualifying_columns.py`
+- Older frozen results will have NULL values for these columns
+- Re-running qualifying and freezing will populate them correctly
 
 ### 7.5 Convenience Views
 

@@ -422,35 +422,83 @@ Look at the footer of the Operator UI - it always shows the **Effective Engine**
 ### Demote (presentation aid)
 Temporarily move an out-of-place entrant down the order for the display while you fix data (e.g., tag merge). Raw pass history remains intact.
 
-## 13.1 Qualifying Races and Grid Freezing
+## 13.1 Qualifying Races and Grid Freezing (2025-11-03)
 
-When you run a **qualifying race**, ChronoCore can freeze the grid standings to set the starting order for subsequent races.
+ChronoCore supports a complete qualifying workflow where you can set the starting grid for races based on qualifying session results.
 
-**How It Works:**
-1. Set up a race with race type "qualifying" (in Race Setup)
-2. Run the qualifying session normally
-3. Throw the **checkered flag** when time expires
-4. A **"Freeze Grid Standings"** button appears (orange, breathing animation)
-5. Click it and choose a brake test failure policy:
-   - **demote** - Failed entrants start at the back of the grid
-   - **use_next_valid** - Use their second-best lap time
-   - **exclude** - Remove them from the grid entirely
-6. Grid is frozen and saved to the event config
+### Running a Qualifying Session
 
-**Using the Frozen Grid:**
-- When you load subsequent races in the same event, the starting grid will automatically follow the qualifying order
-- Entrants are sorted by their best lap time from qualifying
-- The Race Setup page shows "Grid: frozen" when a qualifying order is active
+1. **Set up the race** - In Race Setup, select race type "qualifying"
+2. **Set brake test flags** - During or after qualifying, use the Race Control page to mark each driver's brake test status (pass/fail) using the brake flag button
+3. **Run the session** - Let drivers complete their qualifying laps
+4. **Throw checkered** - When time expires, hit the checkered flag
+5. **Freeze the grid** - An orange "Freeze Grid Standings" button appears with a breathing animation
 
-**Resetting the Grid:**
-- **Run another qualifying race** - freezing new results overwrites the old grid
-- **Delete the qualifying race** - go to Results & Exports, delete the qualifying heat, and the frozen grid is automatically cleared
-- The system won't leave orphaned qualifying data when you delete a heat
+### Freezing the Grid
 
-**Notes:**
-- Brake test verdicts (pass/fail) are manually set per entrant during or after qualifying
-- If no brake verdict is recorded, the entrant's fastest lap is used with no penalty
-- The frozen grid persists in the event config and applies to all heats in that event until cleared
+When you click "Freeze Grid Standings":
+
+1. The system captures:
+   - Each driver's best lap time
+   - Their brake test status (pass/fail/null)
+   - Their qualifying position
+
+2. You choose a **brake test failure policy**:
+   - **demote** - Drivers who failed (or have no brake test result) move to the back of the grid, sorted by best lap time
+   - **warn** - Show brake test badge but don't affect grid position (display only)
+
+3. The grid is saved to the event config and persists across sessions
+
+### Applying the Frozen Grid
+
+Once frozen, the grid automatically applies to subsequent races:
+
+- **Race Control** - Standings and Seen tables show drivers in grid order
+- **Grid order priority**: Drivers with passing brake tests appear first (by qualifying position), then non-qualified drivers, then drivers who failed brake tests (sorted by best lap)
+- **Race Setup page** displays "Grid: frozen" indicator
+- **Results page** shows each driver's grid position and brake test status with Pass/Fail badges
+
+### Grid Sorting Rules
+
+When a qualifying grid is active and policy is "demote":
+
+1. **Enabled status** - Enabled drivers always sort before disabled
+2. **Passing brake test** - Drivers with passing brake tests appear first, sorted by qualifying position (1, 2, 3...)
+3. **Non-qualified drivers** - Drivers who didn't participate in qualifying appear next
+4. **Failed brake test** - Drivers who failed (or have null results) appear at the back, sorted by best lap time (fastest first)
+
+Note: Null/missing brake test results are treated as failures per the policy setting.
+
+### Resetting or Updating the Grid
+
+You have three options:
+
+1. **Run another qualifying session** - Freezing new results completely replaces the old grid
+2. **Delete the qualifying race** - In Results & Exports, delete the qualifying heat. The system automatically clears the frozen grid from the event config
+3. **Manual config edit** - Advanced users can edit `events.config_json` in the database directly
+
+### Persistence and Display
+
+- **Database**: Grid data persists in `result_standings` table with `grid_index` and `brake_valid` columns
+- **Event config**: Grid metadata stored in `events.config_json` as `{"qualifying": {"grid": [...]}}`
+- **CSV exports**: Include `grid_index` and `brake_valid` columns in standings exports
+- **Live display**: Both Standings and Seen tables on Race Control show proper grid order
+
+### Troubleshooting
+
+**Grid not applying to new race:**
+- Check that you're loading a race in the same event as the qualifying session
+- Verify the "Grid: frozen" indicator appears on Race Setup page
+- Look for grid application log messages in server output
+
+**Brake test badges not showing:**
+- Make sure you set brake flags during/after qualifying using the brake button
+- Check the Results page - it should show Pass/Fail badges for each driver
+- Brake test data persists with the frozen results
+
+**Grid positions show as blank:**
+- This happens for results frozen before the grid feature was added
+- Re-run qualifying and freeze again to populate grid_index properly
 
 ## 14. Diagnostics / Live Sensors
 
