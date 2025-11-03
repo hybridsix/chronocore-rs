@@ -690,6 +690,7 @@ function selectHeat(heatOrId) {
       const bestMs = e.best_ms ?? (e.best != null ? Math.round(Number(e.best) * 1000) : null);
       const lastMs = e.last_ms ?? (e.last != null ? Math.round(Number(e.last) * 1000) : null);
       const gapMs  = e.gap_ms  ?? (e.gap_s != null ? Math.round(Number(e.gap_s) * 1000) : null);
+      const paceMs = e.pace_5 != null ? Math.round(Number(e.pace_5) * 1000) : null;
 
       // Format brake status
       let brakeHtml = '-';
@@ -708,7 +709,6 @@ function selectHeat(heatOrId) {
           <td>${e.lap_deficit ?? 0}</td>
           <td>${fmtSec(lastMs)}</td>
           <td>${fmtSec(bestMs)}</td>
-          <td>${fmtSec(null) /* Pace-5 not yet computed */}</td>
           <td>${e.grid_index ?? '-'}</td>
           <td>${brakeHtml}</td>
           <td>${e.pit_count ?? 0}</td>
