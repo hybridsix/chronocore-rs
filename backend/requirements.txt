@@ -16,6 +16,9 @@ requests>=2.32.0,<3
 # --- Hardware Interfaces ---
 pyserial>=3.5,<4
 
+# --- Integrations (OSC Lighting) ---
+python-osc>=1.8.0,<2
+
 # --- Data Handling & Import/Export ---
 pandas>=2.2.0,<3
 openpyxl>=3.1.0,<4
