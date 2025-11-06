@@ -1,0 +1,234 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE Workspace>
+<Workspace xmlns="http://www.qlcplus.org/Workspace" CurrentWindow="VirtualConsole">
+ <Creator>
+  <Name>Q Light Controller Plus</Name>
+  <Version>4.12.7</Version>
+  <Author>Powerwheels</Author>
+ </Creator>
+ <Engine>
+  <InputOutputMap>
+   <Universe Name="Universe 1" ID="0">
+    <Output Plugin="DMX USB" UID="FT232R USB UART (S/N: B000SI4F)" Line="0">
+     <PluginParameters UniverseChannels="25"/>
+    </Output>
+   </Universe>
+   <Universe Name="Universe 2" ID="1"/>
+   <Universe Name="Universe 3" ID="2"/>
+   <Universe Name="Universe 4" ID="3"/>
+  </InputOutputMap>
+  <Fixture>
+   <Manufacturer>King</Manufacturer>
+   <Model>LEDBar24RGBA</Model>
+   <Mode>16 Channel Mode (SplitHalves)</Mode>
+   <ID>0</ID>
+   <Name>LEDBar24RGBA</Name>
+   <Universe>0</Universe>
+   <Address>0</Address>
+   <Channels>16</Channels>
+  </Fixture>
+  <Fixture>
+   <Manufacturer>King</Manufacturer>
+   <Model>6Eye RGB</Model>
+   <Mode>6 Channel Mode</Mode>
+   <ID>1</ID>
+   <Name>6Eye RGB</Name>
+   <Universe>0</Universe>
+   <Address>19</Address>
+   <Channels>6</Channels>
+  </Fixture>
+  <Function ID="0" Type="Scene" Name="Green Means GO">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,255,1,0,2,0,3,255,4,0,5,0,6,0,7,255,8,0,9,0,10,255,11,0,12,0,13,0,14,2,15,0</FixtureVal>
+   <FixtureVal ID="1">0,255,1,0,2,255,3,0,4,0,5,0</FixtureVal>
+  </Function>
+  <Function ID="1" Type="Scene" Name="Red Means STOP">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,255,1,0,2,255,3,0,4,0,5,0,6,0,7,255,8,0,9,255,10,0,11,0,12,0,13,0,14,2,15,0</FixtureVal>
+   <FixtureVal ID="1">0,255,1,255,2,0,3,0,4,0,5,0</FixtureVal>
+  </Function>
+  <Function ID="2" Type="Scene" Name="Yellow = CAUTION(Lower)">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,255,1,255,2,0,3,50,4,0,5,255,6,0,7,255,8,0,9,0,10,0,11,0,12,0,13,0,14,2,15,0</FixtureVal>
+   <FixtureVal ID="1">0,255,1,255,2,200,3,0,4,245,5,0</FixtureVal>
+  </Function>
+  <Function ID="4" Type="Chaser" Name="CAUTION">
+   <Speed FadeIn="0" FadeOut="0" Duration="250"/>
+   <Direction>Forward</Direction>
+   <RunOrder>Loop</RunOrder>
+   <SpeedModes FadeIn="Default" FadeOut="Default" Duration="Common"/>
+   <Step Number="0" FadeIn="0" Hold="0" FadeOut="0">2</Step>
+   <Step Number="1" FadeIn="0" Hold="250" FadeOut="0">6</Step>
+   <Step Number="2" FadeIn="0" Hold="250" FadeOut="0">2</Step>
+   <Step Number="3" FadeIn="0" Hold="250" FadeOut="0">6</Step>
+  </Function>
+  <Function ID="5" Type="Scene" Name="BLACKOUT">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,0,1,0,2,0,3,0,4,0,5,0,6,0,7,0,8,0,9,0,10,0,11,0,12,0,13,0,14,2,15,0</FixtureVal>
+  </Function>
+  <Function ID="6" Type="Scene" Name="Yellow = CAUTION(Upper)">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,255,1,0,2,0,3,0,4,0,5,0,6,0,7,255,8,255,9,0,10,50,11,0,12,255,13,0,14,2,15,0</FixtureVal>
+   <FixtureVal ID="1">0,255,1,255,2,200,3,0,4,255,5,0</FixtureVal>
+  </Function>
+  <Function ID="7" Type="Scene" Name="Last LAP">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,255,1,0,2,255,3,255,4,200,5,255,6,0,7,255,8,0,9,255,10,255,11,200,12,255,13,0,14,2,15,0</FixtureVal>
+   <FixtureVal ID="1">0,255,1,255,2,255,3,200,4,0,5,0</FixtureVal>
+  </Function>
+  <Function ID="8" Type="Scene" Name="Race END (upper)">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,0,1,0,2,255,3,255,4,200,5,255,6,0,7,255,8,0,9,255,10,255,11,200,12,255,13,0,14,2,15,0</FixtureVal>
+  </Function>
+  <Function ID="9" Type="Scene" Name="Race END (lower)">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,255,1,0,2,255,3,255,4,200,5,255,6,0,7,0,8,0,9,255,10,255,11,200,12,255,13,0,14,2,15,0</FixtureVal>
+   <FixtureVal ID="1">0,255,1,255,2,255,3,101,4,255,5,0</FixtureVal>
+  </Function>
+  <Function ID="10" Type="Chaser" Name="RACE END">
+   <Speed FadeIn="0" FadeOut="0" Duration="250"/>
+   <Direction>Forward</Direction>
+   <RunOrder>Loop</RunOrder>
+   <SpeedModes FadeIn="Default" FadeOut="Default" Duration="Common"/>
+   <Step Number="0" FadeIn="0" Hold="250" FadeOut="0">8</Step>
+   <Step Number="1" FadeIn="0" Hold="250" FadeOut="0">9</Step>
+  </Function>
+  <Function ID="11" Type="Scene" Name="PARTY">
+   <Speed FadeIn="0" FadeOut="0" Duration="0"/>
+   <FixtureVal ID="0">0,255,1,0,2,0,3,0,4,0,5,0,6,0,7,255,8,0,9,0,10,0,11,0,12,0,13,0,14,141,15,200</FixtureVal>
+  </Function>
+ </Engine>
+ <VirtualConsole>
+  <Frame Caption="">
+   <Appearance>
+    <FrameStyle>None</FrameStyle>
+    <ForegroundColor>Default</ForegroundColor>
+    <BackgroundColor>Default</BackgroundColor>
+    <BackgroundImage>None</BackgroundImage>
+    <Font>Default</Font>
+   </Appearance>
+   <SoloFrame Caption="" ID="296">
+    <Appearance>
+     <FrameStyle>Sunken</FrameStyle>
+     <ForegroundColor>Default</ForegroundColor>
+     <BackgroundColor>Default</BackgroundColor>
+     <BackgroundImage>None</BackgroundImage>
+     <Font>Default</Font>
+    </Appearance>
+    <WindowState Visible="True" X="0" Y="0" Width="1855" Height="875"/>
+    <AllowChildren>True</AllowChildren>
+    <AllowResize>True</AllowResize>
+    <ShowHeader>True</ShowHeader>
+    <ShowEnableButton>True</ShowEnableButton>
+    <Mixing>False</Mixing>
+    <Collapsed>False</Collapsed>
+    <Disabled>False</Disabled>
+    <Button Caption="Green Means GO" ID="297" Icon="">
+     <WindowState Visible="True" X="20" Y="55" Width="365" Height="350"/>
+     <Appearance>
+      <FrameStyle>Raised</FrameStyle>
+      <ForegroundColor>Default</ForegroundColor>
+      <BackgroundColor>4278255360</BackgroundColor>
+      <BackgroundImage>None</BackgroundImage>
+      <Font>MS Shell Dlg 2,20,-1,5,50,0,0,0,0,0</Font>
+     </Appearance>
+     <Function ID="0"/>
+     <Action>Toggle</Action>
+     <Key>G</Key>
+     <Intensity Adjust="False">100</Intensity>
+    </Button>
+    <Button Caption="Red Means STOP" ID="298" Icon="">
+     <WindowState Visible="True" X="1390" Y="40" Width="460" Height="830"/>
+     <Appearance>
+      <FrameStyle>None</FrameStyle>
+      <ForegroundColor>Default</ForegroundColor>
+      <BackgroundColor>4294901760</BackgroundColor>
+      <BackgroundImage>None</BackgroundImage>
+      <Font>MS Shell Dlg 2,28,-1,5,50,0,0,0,0,0</Font>
+     </Appearance>
+     <Function ID="1"/>
+     <Action>Toggle</Action>
+     <Key>R</Key>
+     <Intensity Adjust="False">100</Intensity>
+    </Button>
+    <Button Caption="Yellow = CAUTION" ID="299" Icon="">
+     <WindowState Visible="True" X="395" Y="55" Width="365" Height="350"/>
+     <Appearance>
+      <FrameStyle>None</FrameStyle>
+      <ForegroundColor>Default</ForegroundColor>
+      <BackgroundColor>4294967040</BackgroundColor>
+      <BackgroundImage>None</BackgroundImage>
+      <Font>MS Shell Dlg 2,20,-1,5,50,0,0,0,0,0</Font>
+     </Appearance>
+     <Function ID="4"/>
+     <Action>Toggle</Action>
+     <Key>Y</Key>
+     <Intensity Adjust="False">100</Intensity>
+    </Button>
+    <Button Caption="FINAL LAP" ID="300" Icon="">
+     <WindowState Visible="True" X="25" Y="415" Width="365" Height="350"/>
+     <Appearance>
+      <FrameStyle>None</FrameStyle>
+      <ForegroundColor>Default</ForegroundColor>
+      <BackgroundColor>4289374847</BackgroundColor>
+      <BackgroundImage>None</BackgroundImage>
+      <Font>MS Shell Dlg 2,20,-1,5,50,0,0,0,0,0</Font>
+     </Appearance>
+     <Function ID="7"/>
+     <Action>Toggle</Action>
+     <Key>F</Key>
+     <Intensity Adjust="False">100</Intensity>
+    </Button>
+    <Button Caption="RACE END" ID="301" Icon="">
+     <WindowState Visible="True" X="395" Y="415" Width="365" Height="350"/>
+     <Appearance>
+      <FrameStyle>None</FrameStyle>
+      <ForegroundColor>Default</ForegroundColor>
+      <BackgroundColor>4285676202</BackgroundColor>
+      <BackgroundImage>None</BackgroundImage>
+      <Font>MS Shell Dlg 2,20,-1,5,50,0,0,0,0,0</Font>
+     </Appearance>
+     <Function ID="10"/>
+     <Action>Toggle</Action>
+     <Key>E</Key>
+     <Intensity Adjust="False">100</Intensity>
+    </Button>
+    <Button Caption="PARTY" ID="302" Icon="">
+     <WindowState Visible="True" X="900" Y="50" Width="365" Height="350"/>
+     <Appearance>
+      <FrameStyle>None</FrameStyle>
+      <ForegroundColor>Default</ForegroundColor>
+      <BackgroundColor>4278201770</BackgroundColor>
+      <BackgroundImage>None</BackgroundImage>
+      <Font>MS Shell Dlg 2,20,-1,5,50,0,0,0,0,0</Font>
+     </Appearance>
+     <Function ID="11"/>
+     <Action>Toggle</Action>
+     <Key>P</Key>
+     <Intensity Adjust="False">100</Intensity>
+    </Button>
+    <Button Caption="BLACKOUT" ID="0" Icon="">
+     <WindowState Visible="True" X="900" Y="415" Width="365" Height="350"/>
+     <Appearance>
+      <FrameStyle>None</FrameStyle>
+      <ForegroundColor>4294967295</ForegroundColor>
+      <BackgroundColor>4278190080</BackgroundColor>
+      <BackgroundImage>None</BackgroundImage>
+      <Font>MS Shell Dlg 2,22,-1,5,50,0,0,0,0,0</Font>
+     </Appearance>
+     <Function ID="5"/>
+     <Action>Toggle</Action>
+     <Key>B</Key>
+     <Intensity Adjust="False">100</Intensity>
+    </Button>
+   </SoloFrame>
+  </Frame>
+  <Properties>
+   <Size Width="1920" Height="1080"/>
+   <GrandMaster ChannelMode="Intensity" ValueMode="Reduce" SliderMode="Normal"/>
+  </Properties>
+ </VirtualConsole>
+ <SimpleDesk>
+  <Engine/>
+ </SimpleDesk>
+</Workspace>

@@ -1322,7 +1322,14 @@ function updateClockModeButton(st) {
 
     // Results button
     if (els.btnResults) {
-      els.btnResults.addEventListener('click', () => {
+      els.btnResults.addEventListener('click', async () => {
+        // Trigger blackout before navigating to results
+        try {
+          await fetch(CCRS.url('/race/control/open_results'), { method: 'POST' });
+        } catch (e) {
+          console.warn('Failed to trigger blackout for results:', e);
+        }
+        
         // Prefer live state; fall back to what Race Setup cached
         const rid = (window.lastState && lastState.race_id) ||
                     Number(localStorage.getItem('rc.race_id') || 0);

@@ -753,9 +753,9 @@ When deleting frozen results via `DELETE /results/{race_id}`:
 
 ---
 
-## 8. Frontend Clients
+## 10. Frontend Clients
 
-### 8.1 Polling Strategy
+### 10.1 Polling Strategy
 
 The Operator and Spectator UIs are static HTML/CSS/JS clients that poll the `/race/state` endpoint for live updates.
 
@@ -768,7 +768,7 @@ The Operator and Spectator UIs are static HTML/CSS/JS clients that poll the `/ra
 - "Connecting..." - initial startup
 - "Disconnected - retrying..." - network error or server unreachable
 
-### 8.2 State Synchronization
+### 10.2 State Synchronization
 
 Both UIs consume the same `/race/state` snapshot which includes:
 - `flag` - current race flag (PRE, GREEN, YELLOW, RED, BLUE, WHITE, CHECKERED)
@@ -780,7 +780,7 @@ Both UIs consume the same `/race/state` snapshot which includes:
 - `features` - capability flags (e.g., `pit_timing`)
 - `limit` - race limit configuration (type: time|laps, value, remaining_ms)
 
-### 8.3 Flag Banner Logic
+### 10.3 Flag Banner Logic
 
 The flag banner uses CSS classes derived from the snapshot:
 
@@ -795,7 +795,7 @@ The flag banner uses CSS classes derived from the snapshot:
 
 **Accessibility:** Banner includes `aria-label` with format: `"{Color} - {Meaning}"` (e.g., "White - Final Lap", "Blue - Driver Swap")
 
-### 8.4 Leaderboard Updates
+### 10.4 Leaderboard Updates
 
 Standings are rendered directly from the `/race/state` response:
 - **PRE/COUNTDOWN**: Sorted by qualifying grid order (frozen grid from event config)
@@ -815,11 +815,243 @@ Each standing row includes:
 
 ---
 
-## 10. Configuration (YAML keys of interest)
+## 9. OSC Lighting Integration
+
+The system provides bidirectional Open Sound Control (OSC) integration with QLC+ lighting software, enabling synchronized race flag lighting and operator-assisted flag controls.
+
+### 9.1 Architecture Overview
+
+**Protocol:** UDP-based OSC (Open Sound Control)  
+**Direction:** Bidirectional (CCRS ↔ QLC+)  
+**Threading Model:** OSC receiver runs on dedicated thread, callbacks marshaled to FastAPI event loop via `asyncio.call_soon_threadsafe`  
+**Safety Mechanism:** Phase-based guards prevent lighting operator from controlling critical timing events (race start/end)
+
+**Dependencies:**
+- `pythonosc.udp_client.SimpleUDPClient` - Outbound OSC messages
+- `pythonosc.osc_server.ThreadingOSCUDPServer` - Inbound OSC listener
+- `pythonosc.dispatcher.Dispatcher` - Message routing
+
+**Modules:**
+- `backend/osc_out.py` - Sends flag/blackout commands to QLC+
+- `backend/osc_in.py` - Receives flag/blackout signals from QLC+ operator buttons
+- `backend/server.py` - Integration points and lifecycle management
+
+### 9.2 OSC Output (osc_out.py)
+
+**Purpose:** Send real-time lighting commands from CCRS to QLC+ based on race state changes.
+
+**Key Components:**
+```python
+class OscLightingOut:
+    def __init__(self, cfg: dict)
+    def send_flag(self, flag: str)          # GREEN, YELLOW, RED, etc.
+    def send_blackout(self, active: bool)   # True=off, False=on
+    def cleanup()
+```
+
+**Message Format:**
+- Flag messages: `/{address}/{flag_name}` → `1` (integer)
+- Blackout messages: `/{address}` → `1` (on) or `0` (off)
+
+**UDP Reliability Strategy:**
+- Each message sent **3 times** with 5ms delay between repeats (configurable via `send_repeat`)
+- Compensates for UDP packet loss without requiring ACK protocol
+- Low latency impact (~10ms total per command)
+
+**Configuration Reference:**
+```yaml
+integrations:
+  lighting:
+    osc_out:
+      enabled: true
+      host: "192.168.1.101"    # QLC+ listening IP
+      port: 9000               # QLC+ listening port
+      send_repeat: 3           # UDP redundancy count
+      addresses:
+        flags: "/ccrs/flag"    # Base path for flag messages
+        blackout: "/ccrs/blackout"
+```
+
+**Trigger Points:**
+- Auto-green countdown completion → `GREEN`
+- Manual start race → `GREEN`
+- Flag changes via `/race/control/flag` → respective color
+- End race → `CHECKERED`
+- Abort/reset → `PRE` + blackout
+- Race setup screen → blackout
+- Open results screen → blackout
+
+### 9.3 OSC Input (osc_in.py)
+
+**Purpose:** Receive flag and blackout commands from QLC+ operator buttons, enabling lighting operator to assist with flag changes without controlling race timing.
+
+**Key Components:**
+```python
+class OscInbound:
+    def __init__(self, cfg: dict, on_flag: Callable, on_blackout: Callable)
+    def start()                                    # Spawns listener thread
+    def stop()                                     # Graceful shutdown
+    def _handle_default(self, addr, *values)       # Processes flag messages
+    def _handle_blackout(self, addr, *values)      # Processes blackout messages
+```
+
+**Threading Model:**
+- `ThreadingOSCUDPServer` runs on dedicated background thread
+- Callbacks execute on OSC thread, NOT main event loop
+- Server integration uses `asyncio.call_soon_threadsafe()` to marshal callbacks safely
+
+**Message Processing:**
+- **Flag messages**: Expects path like `/ccrs/flag/YELLOW`, extracts flag name from last segment
+- **Blackout messages**: Expects path `/ccrs/blackout` with integer value (1=on, 0=off)
+- **Debouncing**: Blackout-off messages debounced by 500ms to prevent flicker (configurable via `debounce_off_ms`)
+- **Threshold**: Flag/blackout-on messages require value ≥0.7 (configurable via `threshold_on`)
+
+**Configuration Reference:**
+```yaml
+integrations:
+  lighting:
+    osc_in:
+      enabled: true
+      host: "0.0.0.0"          # Bind to all interfaces
+      port: 9010               # CCRS listening port
+      paths:
+        flags: "/ccrs/flag/*"  # Wildcard pattern for flag messages
+        blackout: "/ccrs/blackout"
+      threshold_on: 0.7        # Minimum value to trigger
+      debounce_off_ms: 500     # Blackout-off debounce delay
+```
+
+### 9.4 Server Integration Points
+
+**Lifecycle Management (server.py):**
+
+```python
+# Startup handler (line ~3410)
+@app.on_event("startup")
+async def start_osc_lighting():
+    # Initializes _osc_out and _osc_in globals
+    # Starts OSC receiver thread via _osc_in.start()
+    # Registers async callbacks for flag/blackout handling
+
+# Shutdown handler (line ~3528)
+@app.on_event("shutdown")
+async def stop_osc_lighting():
+    # Gracefully stops receiver thread
+    # Cleans up UDP sockets
+```
+
+**Helper Functions:**
+- `_send_flag_to_lighting(flag: str)` - Send flag change to QLC+ (wrapped in try/except)
+- `_send_blackout_to_lighting(active: bool)` - Send blackout state to QLC+
+- `_send_countdown_to_lighting()` - Send RED flag during countdown staging
+- `_handle_flag_from_qlc(flag: str)` - Process incoming flag from QLC+, includes safety guards
+- `_handle_blackout_from_qlc(active: bool)` - Process incoming blackout from QLC+
+
+**Integration Points:**
+- Line ~370: `_auto_go_green()` - Countdown completion → GREEN lighting
+- Line ~2541: `/race/control/start_race` - Manual start → GREEN lighting
+- Line ~2564: `/race/control/end_race` - Race end → CHECKERED lighting
+- Line ~2582: `/race/control/abort_reset` - Abort → PRE lighting + blackout
+- Line ~2048: `/race/setup` - Setup screen → blackout
+- Lines ~2648-2658: `/race/control/open_results` - Results screen → blackout
+- Line ~2456: `/race/control/flag` - Manual flag changes → respective lighting
+
+**Frontend Integration:**
+- `ui/js/race_control.js` (~1324-1338): Results button calls `/race/control/open_results` before navigation to ensure blackout triggers before page transition
+
+### 9.5 Safety Mechanisms
+
+**Phase-Based Guards (in `_handle_flag_from_qlc`):**
+
+```python
+# Prevent lighting operator from starting race
+if flag == "GREEN" and engine.phase in ("pre", "countdown"):
+    logger.warning("Lighting operator cannot start race (phase=%s)", engine.phase)
+    return  # Silently reject
+
+# Prevent lighting operator from ending race
+if flag == "CHECKERED" and engine.phase not in ("green", "white"):
+    logger.warning("Lighting operator cannot end race during phase=%s", engine.phase)
+    return  # Silently reject
+```
+
+**Rationale:**
+- Race timing integrity requires server-controlled start/end (precise timestamps)
+- Lighting operator can assist with YELLOW/RED/BLUE/WHITE flags (safety/procedure)
+- Guards ensure lighting hardware failures never corrupt race results
+- Violations logged but not surfaced to operator (prevent confusion)
+
+**Non-Critical Failure Handling:**
+- All `_send_*_to_lighting()` calls wrapped in try/except
+- OSC failures never propagate to race control endpoints
+- Lighting becomes "best-effort" if QLC+ unreachable
+- Diagnostics SSE streams report OSC errors for troubleshooting
+
+### 9.6 Configuration Reference
+
+**Complete YAML Block:**
+```yaml
+integrations:
+  lighting:
+    # === OSC OUTPUT (CCRS → QLC+) ===
+    osc_out:
+      enabled: true
+      host: "192.168.1.101"         # QLC+ OSC input IP
+      port: 9000                    # QLC+ OSC input port
+      send_repeat: 3                # Send each message N times (UDP reliability)
+      addresses:
+        flags: "/ccrs/flag"         # Base OSC path for flag messages
+        blackout: "/ccrs/blackout"  # OSC path for blackout control
+    
+    # === OSC INPUT (QLC+ → CCRS) ===
+    osc_in:
+      enabled: true
+      host: "0.0.0.0"               # Bind address (0.0.0.0 = all interfaces)
+      port: 9010                    # CCRS listening port
+      paths:
+        flags: "/ccrs/flag/*"       # Wildcard pattern for incoming flags
+        blackout: "/ccrs/blackout"  # Path for incoming blackout
+      threshold_on: 0.7             # Minimum value to trigger (0.0-1.0)
+      debounce_off_ms: 500          # Debounce blackout-off messages
+```
+
+**Network Requirements:**
+- CCRS and QLC+ must be on same network or have routed UDP connectivity
+- Firewall rules must allow outbound UDP to QLC+ port (9000) and inbound UDP on CCRS port (9010)
+- QLC+ virtual console widgets must be configured with matching OSC paths and feedback channels
+
+**QLC+ Configuration:**
+- Create OSC output profile pointing to CCRS IP:9010
+- Create OSC input profile listening on 0.0.0.0:9000
+- Button widgets send to `/ccrs/flag/{COLOR}` with value 1
+- Button feedback channels listen to `/ccrs/flag/{COLOR}` for state sync
+- Blackout widget sends to `/ccrs/blackout` with values 0/1
+- See operators guide section 8.2 for complete QLC+ setup instructions
+
+### 9.7 Message Timing and Performance
+
+**Latency Characteristics:**
+- OSC output: <5ms per command (blocking UDP send × repeat count)
+- OSC input: <10ms callback latency (thread → event loop marshaling)
+- Total round-trip (CCRS → QLC+ → CCRS): ~15-30ms depending on network
+
+**Impact on Race Timing:**
+- Flag changes remain server-authoritative (lighting never blocks endpoints)
+- Countdown auto-green timing unaffected (lighting called after state transition)
+- Manual flag changes may show UI update before lighting completes (acceptable UX trade-off)
+
+**Diagnostic Tools:**
+- `/diagnostics/stream` SSE endpoint includes OSC events
+- Server logs show all OSC send/receive activity at INFO level
+- Lighting failures logged at WARNING level with exception details
+
+---
+
+## 11. Configuration (YAML keys of interest)
 
 The system uses a single unified configuration file: `config/config.yaml`
 
-### 10.1 Core Structure
+### 11.1 Core Structure
 
 ```yaml
 app:
@@ -925,14 +1157,14 @@ journaling:
   table: passes_journal                 # table name for raw pass log
 ```
 
-### 10.2 Path Resolution
+### 11.2 Path Resolution
 
 - Relative paths resolve against repo root
 - `sqlite_path` is **required** - engine will not start without it
 - Sound files searched in: `config/sounds/` then `assets/sounds/` (fallback)
 - Static UI assets served from: `ui/` directory
 
-### 10.3 Important Defaults
+### 11.3 Important Defaults
 
 - **Minimum lap time**: 10s (rejects faster laps as duplicates or errors)
 - **Duplicate window**: 0.5s (same tag ignored if seen within 500ms)
@@ -942,9 +1174,9 @@ journaling:
 
 ---
 
-## 11. Simulation Tools
+## 12. Simulation Tools
 
-### 11.1 Mock Decoder
+### 12.1 Mock Decoder
 
 The system includes a built-in mock decoder for testing without hardware:
 
@@ -1010,7 +1242,7 @@ python backend/tools/sim_feed.py --entrants 10 --duration 300 --mean-lap 45
 
 ---
 
-## 12. Engine Host Discovery
+## 13. Engine Host Discovery
 
 ## Background
 
@@ -1084,7 +1316,7 @@ app:
 
 ---
 
-## 13. Requirements & Runtime
+## 14. Requirements & Runtime
 
 - **Python**: 3.12
 - **Core deps**: fastapi, starlette, uvicorn[standard], httpx, aiosqlite, pyyaml, pyserial, pandas, openpyxl
@@ -1092,7 +1324,7 @@ app:
 
 ---
 
-## 14. Appendices
+## 15. Appendices
 
 - Migration scripts (e.g., `migrate_add_car_num.py`)  
 - Dummy loaders (`load_dummy_from_xlsx.py`)  

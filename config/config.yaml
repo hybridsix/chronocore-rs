@@ -1,119 +1,209 @@
+# ============================================================================
+# ChronoCore Race Software - Main Configuration
+# ============================================================================
+# This file contains the unified configuration for CCRS including:
+#   - Application metadata and environment settings
+#   - Race engine configuration (persistence, scoring, ingest)
+#   - Hardware setup (decoders, scanners, track locations)
+#   - UI/client preferences and theming
+#   - External integrations (OSC lighting control)
+#
+# IMPORTANT: The application expects this file to exist and be valid.
+# Missing required sections will cause startup failures with clear error messages.
+#
+# See docs/technical_reference.md for detailed documentation.
+# ============================================================================
+
+# ----------------------------------------------------------------------------
+# Application Settings
+# ----------------------------------------------------------------------------
 app:
   name: ChronoCore Race Software
   version: 0.9.0-dev
-  environment: development
+  environment: development  # development | production
+  
+  # Client engine connection mode
+  # Client engine connection mode
   client:
     engine:
-      mode: localhost
+      mode: localhost           # localhost | fixed_host | same_origin
       fixed_host: 127.0.0.1:8000
       prefer_same_origin: false
       allow_client_override: true
+  
+  # Race engine core configuration
   engine:
+    # Event metadata
     event:
       id: 1
       name: Maker Faire Orlando
       date: '2025-11-08'
       location: Orlando, FL
+    
+    # Minimum lap time (seconds) - laps faster than this are rejected
     default_min_lap_s: 10
+    
+    # Qualifying session behavior
     qualifying:
-      brake_test_policy: demote
+      brake_test_policy: demote  # demote | reject | allow
+    
+    # Pass detection and debouncing
+    # Pass detection and debouncing
     ingest:
-      debounce_ms: 250
-      per_location_debounce_ms: {}
+      debounce_ms: 250           # Global debounce: ignore duplicate tag within this window
+      per_location_debounce_ms: {}  # Optional per-location overrides
+    
+    # Handling of unknown/unregistered tags
     unknown_tags:
-      allow: true
-      auto_create_name: Unknown
+      allow: true                # Accept passes from tags not in roster
+      auto_create_name: Unknown  # Prefix for auto-created entrants
+    
+    # Database persistence settings
     persistence:
       enabled: true
       sqlite_path: backend/db/laps.sqlite
-      journal_passes: true
-      snapshot_on_checkered: true
-      checkpoint_s: 15
-      batch_ms: 200
-      batch_max: 50
-      fsync: true
-      recreate_on_boot: false
+      journal_passes: true              # Log all passes to database
+      snapshot_on_checkered: true       # Save race state when checkered flag
+      checkpoint_s: 15                  # Auto-checkpoint interval (seconds)
+      batch_ms: 200                     # Batch writes for performance
+      batch_max: 50                     # Max batch size
+      fsync: true                       # Force disk sync (safer but slower)
+      recreate_on_boot: false           # Drop and recreate DB on startup (dev only!)
+    
+    # Live diagnostics and audio feedback
+    # Live diagnostics and audio feedback
     diagnostics:
       enabled: true
-      buffer_size: 500
+      buffer_size: 500           # Number of diagnostic events to buffer
       stream:
-        transport: sse
+        transport: sse           # Server-sent events for live updates
       beep:
-        max_per_sec: 5
+        max_per_sec: 5           # Rate limit audio beeps
+    
+    # Scoring and results calculation
     scoring:
-      break_ties_by_best_lap: true
-      include_pit_time_in_total: true
+      break_ties_by_best_lap: true      # Use best lap time as tiebreaker
+      include_pit_time_in_total: true   # Count pit time in total race time
+  
+  # Hardware decoder configuration
   hardware:
     decoders:
+      # MyLaps iLap decoder via serial
       ilap_serial:
         port: COM3
         baudrate: 9600
-        init_7digit: true
+        init_7digit: true        # Send 7-digit mode command on init
         min_lap_s: 10
+      
+      # AMBrc decoder via serial
       ambrc_serial:
         port: COM4
         baudrate: 19200
         min_lap_s: 10
+    
+    # Pit timing configuration
     pits:
       enabled: false
-      receivers: null
+      receivers: null            # List of pit receivers when enabled
+  
+  # Track layout and timing locations
   track:
     locations:
       SF: Start/Finish
       PIT_IN: Pit In
       PIT_OUT: Pit Out
       X1: Crossing X
+  
+  # Race control settings
+  # Race control settings
   race:
     flags:
+      # Flags that won't trigger automatic state inference
       inference_blocklist:
       - YELLOW
       - RED
       - SC
-      post_green_grace_ms: 3000
+      post_green_grace_ms: 3000  # Grace period after green flag for timing adjustments
+    
+    # Missed lap detection (statistical outlier detection)
     missed_lap:
       enabled: false
-      apply_mode: propose
-      window_laps: 5
-      sigma_k: 2
-      min_gap_ms: 8000
+      apply_mode: propose        # propose | auto
+      window_laps: 5             # Number of laps to analyze
+      sigma_k: 2                 # Standard deviation multiplier for outliers
+      min_gap_ms: 8000           # Minimum gap to consider as missed lap
       max_consecutive_inferred: 1
-      mark_inferred: true
+      mark_inferred: true        # Flag inferred laps in results
+  
+  # UI appearance and behavior
   ui:
     theme: default-dark
-    show_sim_pill: true
+    show_sim_pill: true          # Show simulation indicator
     net_status_text:
       ok: OK
       connecting: Connecting…
       disconnected: Disconnected - retrying…
+
+# ----------------------------------------------------------------------------
+# Client (Browser) Settings
+# ----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# Client (Browser) Settings
+# ----------------------------------------------------------------------------
 client:
-  default_page: entrants
+  default_page: entrants         # Landing page for operator UI
   theme:
-    mode: dark
-    accent: '#00b4ff'
-    secondary: '#22c55e'
+    mode: dark                   # dark | light
+    accent: '#00b4ff'           # Primary accent color
+    secondary: '#22c55e'        # Secondary accent color
   backend_base_url: http://127.0.0.1:8000
+
+# ----------------------------------------------------------------------------
+# Scanner Configuration (for embedded scanner processes)
+# ----------------------------------------------------------------------------
 scanner:
-  source: ilap.serial
-  decoder: ilap_serial
-  role: track
-  min_tag_len: 7
-  duplicate_window_sec: 0.5
-  rate_limit_per_sec: 20
+  source: ilap.serial            # Decoder source type
+  decoder: ilap_serial           # Reference to hardware.decoders config
+  role: track                    # track | pit
+  min_tag_len: 7                 # Minimum valid tag length
+  duplicate_window_sec: 0.5      # Scanner-level duplicate detection
+  rate_limit_per_sec: 20         # Max detections per second
+  
+  # Serial decoder connection
   serial:
     port: COM3
     baud: 9600
+  
+  # UDP decoder connection (alternative)
   udp:
     host: 0.0.0.0
     port: 5000
+
+# ----------------------------------------------------------------------------
+# Publisher Configuration (how scanner sends data to backend)
+# ----------------------------------------------------------------------------
 publisher:
-  mode: http
+  mode: http                     # http | mqtt | file
   http:
     base_url: http://127.0.0.1:8000
     timeout_ms: 500
+
+# ----------------------------------------------------------------------------
+# Logging
+# ----------------------------------------------------------------------------
 log:
-  level: info
+  level: info                    # debug | info | warning | error
+
+# ----------------------------------------------------------------------------
+# Track Topology (decoder-to-location bindings)
+# ----------------------------------------------------------------------------
+# ----------------------------------------------------------------------------
+# Track Topology (decoder-to-location bindings)
+# ----------------------------------------------------------------------------
 track:
   bindings:
+  # Map physical decoders to track locations
+  # Format: computer_id, decoder_id, port (serial/UDP), location_id
   - computer_id: race_control
     decoder_id: ilap-210
     port: COM3
@@ -130,12 +220,17 @@ track:
     decoder_id: ilap-099
     port: /dev/ttyUSB0
     location_id: X1
+
+# ----------------------------------------------------------------------------
+# Audio / Sound Effects
+# ----------------------------------------------------------------------------
 sounds:
   volume:
-    master: 1
+    master: 1                    # 0.0 to 1.0
     horns: 1
     beeps: 1
   files:
+    # Map events to audio files (relative to assets/sounds/)
     lap_indication: lap_beep.wav
     countdown: countdown_beep.wav
     start: start_horn.wav
@@ -144,6 +239,41 @@ sounds:
     checkered: checkered_flag.wav
     rank_change: rank_change.wav
     best_lap: best_lap.wav
+
+# ----------------------------------------------------------------------------
+# Database Journaling (legacy/experimental)
+# ----------------------------------------------------------------------------
 journaling:
   enabled: false
   table: passes_journal
+
+# ----------------------------------------------------------------------------
+# External Integrations
+# ----------------------------------------------------------------------------
+integrations:
+  lighting:             # OSC lighting control for flags - using QLC+
+    osc_out:
+      enabled: true     # Enable OSC output, set to false to disable
+      host: 127.0.0.1  # QLC+ box (or 127.0.0.1 same PC)
+      port: 9000
+      send_repeat:
+        count: 1              # Total sends (1 original + 1 repeat)
+        interval_ms: 50       # Spacing between sends
+      addresses:
+        flag:
+          green:     "/ccrs/flag/green"
+          yellow:    "/ccrs/flag/yellow"
+          red:       "/ccrs/flag/red"
+          white:     "/ccrs/flag/white"
+          checkered: "/ccrs/flag/checkered"
+          blue:      "/ccrs/flag/blue"      # NEW: driver-change / blue flag
+        blackout:    "/ccrs/blackout"        # keep if you want the hard kill
+    osc_in:
+      enabled: true     # are we listening for OSC feedback?
+      host: 127.0.0.1                 # Port to listen for feedback on, localhost
+      port: 9010
+      paths:
+        flag_prefix: "/ccrs/flag/"
+        blackout: "/ccrs/blackout"
+      threshold_on: 0.5
+      debounce_off_ms: 250

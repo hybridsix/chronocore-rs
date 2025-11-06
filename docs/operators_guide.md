@@ -217,6 +217,101 @@ Behind the scenes, the race goes through different **phases**, and only certain 
 
 ---
 
+## 8.2 Lighting Integration with QLC+ (OSC Control)
+
+ChronoCore can control professional lighting via QLC+ lighting software using OSC (Open Sound Control) protocol. This allows race flags to automatically trigger lighting cues, creating a synchronized visual experience for spectators.
+
+### How It Works
+
+**Bidirectional Communication:**
+- **CCRS → QLC+** (Outbound): Flag changes in Race Control automatically send commands to lighting
+- **QLC+ → CCRS** (Inbound): Lighting operator can trigger cautions/flags from lighting console
+
+**What Gets Synchronized:**
+- All race flags (GREEN, YELLOW, RED, WHITE, CHECKERED, BLUE)
+- Countdown/staging (RED lights during countdown)
+- Blackout (lights off during transitions/resets)
+
+### Configuration
+
+Edit `config/config.yaml` to enable OSC lighting:
+
+```yaml
+integrations:
+  lighting:
+    osc_out:
+      enabled: true
+      host: 192.168.1.101      # QLC+ computer IP
+      port: 9000               # QLC+ OSC input port
+      send_repeat:
+        count: 2               # Send twice for UDP reliability
+        interval_ms: 50
+      addresses:
+        flag:
+          green:     "/ccrs/flag/green"
+          yellow:    "/ccrs/flag/yellow"
+          red:       "/ccrs/flag/red"
+          white:     "/ccrs/flag/white"
+          checkered: "/ccrs/flag/checkered"
+          blue:      "/ccrs/flag/blue"
+        blackout:    "/ccrs/blackout"
+    
+    osc_in:
+      enabled: true
+      host: 0.0.0.0            # Listen on all network interfaces
+      port: 9010               # CCRS OSC input port
+      paths:
+        flag_prefix: "/ccrs/flag/"
+        blackout: "/ccrs/blackout"
+      threshold_on: 0.5        # Button value >= 0.5 = ON
+      debounce_off_ms: 250     # Ignore OFF when switching flags
+```
+
+### When Lights Trigger
+
+**Automatic Triggers (CCRS → QLC+):**
+- **Race Start** → GREEN lights
+- **Countdown** → RED lights (staging)
+- **Flag Changes** → Corresponding flag color
+- **Race End** → CHECKERED lights
+- **Abort/Reset** → BLACKOUT (all off)
+- **Open Results** → BLACKOUT (all off)
+
+**Lighting Operator Control (QLC+ → CCRS):**
+- Can trigger **cautions** (YELLOW, RED) during active race
+- Can change flags (GREEN ↔ YELLOW) for caution periods
+- **Cannot** start race (GREEN blocked during PRE/COUNTDOWN)
+- **Cannot** end race prematurely (CHECKERED blocked unless racing)
+
+### Safety Features
+
+The system prevents lighting operators from accidentally controlling race timing:
+- ✅ **Can** call cautions during race
+- ✅ **Can** switch between racing flags (GREEN/YELLOW/RED/BLUE)
+- ❌ **Cannot** start the race from QLC+
+- ❌ **Cannot** end the race from QLC+
+
+**Example:** If lighting operator clicks GREEN during pre-race, the system logs a warning and ignores it. Race Control must click "Start Race" to begin.
+
+### Troubleshooting Lighting
+
+**Lights not responding to flag changes?**
+- Check that QLC+ is running and listening on the configured port
+- Verify network connectivity between CCRS and QLC+ computers
+- Check server logs for OSC errors
+- Lighting failures never break race control - timing continues normally
+
+**Lighting triggering unwanted flag changes?**
+- Verify OSC feedback is configured correctly in QLC+
+- Check threshold_on setting (default 0.5)
+- Confirm QLC+ output port matches CCRS osc_in port
+
+**No blackout on reset?**
+- Check that blackout address is configured in both CCRS and QLC+
+- Verify blackout button/function exists in QLC+ workspace
+
+---
+
 ## 9. Choosing and Using Timing Hardware
 
 Your race timing system can work with several different hardware decoders. You only need one active at a time, and this is controlled in your configuration file.

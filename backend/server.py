@@ -52,6 +52,8 @@ from .db_schema import ensure_schema, tag_conflicts, get_event_config
 from .config_loader import get_db_path, get_scanner_cfg, CONFIG
 from backend.qualifying import qual, qual_brake
 from .app_results_api import router as app_results_router
+from .osc_out import OscLightingOut
+from .osc_in import OscInbound, OscInConfig
 
 
 # log = logging.getLogger("uvicorn.error")
@@ -298,6 +300,12 @@ _CURRENT_ENTRANTS_ENGINE: List[Dict[str, Any]] = []  # last entrants mapped to E
 _LAST_ENGINE_LOAD: dict | None = None
 _COUNTDOWN_TASK: asyncio.Task | None = None
 
+# -----------------------------------------------------------------------------
+# OSC Lighting Integration (QLC+)
+# -----------------------------------------------------------------------------
+_osc_out: Optional[OscLightingOut] = None
+_osc_in: Optional[OscInbound] = None
+
 def _get(d: Dict[str, Any], path: str, default=None):
     cur = d
     for part in path.split('.'):
@@ -359,6 +367,7 @@ async def _auto_go_green(after_s: int) -> None:
         if hasattr(ENGINE, "set_flag"):
             try: ENGINE.set_flag("GREEN")
             except Exception: pass
+        _send_flag_to_lighting("GREEN")  # Sync lighting on countdown green
         log.info(f"[COUNTDOWN] -> GREEN; start_at={_RACE_STATE['start_at']:.3f}")
     except asyncio.CancelledError:
         log.info("[COUNTDOWN] cancelled (end/abort)")
@@ -2031,6 +2040,9 @@ async def race_setup(
         # Derived shape for Race Control (if you have this helper)
         derived = _derive_for_control(_CURRENT_SESSION) if "_derive_for_control" in globals() else {}
 
+        # Blackout lights when starting a new race control session
+        _send_blackout_to_lighting(True)
+
         return JSONResponse({
             "ok": True,
             "session_id": _CURRENT_RACE_ID,
@@ -2249,6 +2261,119 @@ async def engine_pass(payload: Dict[str, Any]):
  """
 
 # ------------------------------------------------------------
+# OSC Lighting Integration Helpers
+# ------------------------------------------------------------
+def _handle_flag_from_qlc(name: str):
+    """
+    Handle flag button press from QLC+ lighting console.
+    
+    Called via call_soon_threadsafe when QLC+ sends an OSC message.
+    Updates the engine flag state to match the lighting console.
+    
+    RESTRICTIONS (to prevent lighting operator from controlling race timing):
+    - Cannot set GREEN unless race is already running (prevents starting race)
+    - Cannot set CHECKERED unless race is already running (prevents ending race)
+    - CAN change flags during race (e.g., YELLOW ↔ GREEN for cautions)
+    - CAN change other informational flags (BLUE, WHITE, RED, PRE)
+    
+    Args:
+        name: Flag name (green, yellow, red, white, checkered, blue)
+    """
+    try:
+        flag_upper = name.upper()
+        current_phase = str(_RACE_STATE.get("phase", "pre")).lower()
+        
+        # Guard: Prevent lighting from starting the race
+        if flag_upper == "GREEN" and current_phase in ("pre", "countdown"):
+            log.warning("QLC+ attempted to set GREEN during %s - ignoring (race not started)", current_phase)
+            return
+        
+        # Guard: Prevent lighting from ending the race
+        if flag_upper == "CHECKERED" and current_phase not in ("green", "white"):
+            log.warning("QLC+ attempted to set CHECKERED during %s - ignoring (race not running)", current_phase)
+            return
+        
+        # Allow: Flag changes during active race
+        if hasattr(ENGINE, "set_flag"):
+            ENGINE.set_flag(flag_upper)
+        _RACE_STATE["flag"] = flag_upper
+        log.info("Flag changed from QLC+: %s", flag_upper)
+    except Exception:
+        log.exception("Failed to handle flag from QLC+: %s", name)
+
+def _handle_blackout_from_qlc(enabled: bool):
+    """
+    Handle blackout button press from QLC+ lighting console.
+    
+    Called via call_soon_threadsafe when QLC+ sends an OSC message.
+    Stores blackout state for UI consumption.
+    
+    Args:
+        enabled: True if blackout is active, False if off
+    """
+    try:
+        _RACE_STATE["blackout"] = enabled
+        log.info("Blackout changed from QLC+: %s", enabled)
+    except Exception:
+        log.exception("Failed to handle blackout from QLC+: %s", enabled)
+
+def _send_flag_to_lighting(flag_name: str):
+    """
+    Send flag change to OSC lighting system (QLC+).
+    
+    Called whenever CCRS changes a flag to sync lighting.
+    Safe to call even if OSC is disabled - will no-op gracefully.
+    
+    Args:
+        flag_name: Flag name (GREEN, YELLOW, RED, WHITE, CHECKERED, BLUE, etc.)
+    """
+    if _osc_out:
+        try:
+            _osc_out.send_flag(flag_name.lower(), on=True)
+        except Exception:
+            # Never let lighting failures break race control
+            log.exception("Failed to send flag to lighting: %s", flag_name)
+
+def _send_blackout_to_lighting(enabled: bool):
+    """
+    Send blackout state to OSC lighting system (QLC+).
+    
+    Blackout is a "hard kill" that turns off all lighting.
+    Typically used when resetting, aborting, or transitioning out of race control.
+    Safe to call even if OSC is disabled - will no-op gracefully.
+    
+    Args:
+        enabled: True to enable blackout (lights off), False to disable
+    """
+    if _osc_out:
+        try:
+            _osc_out.send_blackout(enabled)
+            _RACE_STATE["blackout"] = enabled
+        except Exception:
+            # Never let lighting failures break race control
+            log.exception("Failed to send blackout to lighting: %s", enabled)
+
+def _send_countdown_to_lighting():
+    """
+    Send countdown state to lighting system (QLC+).
+    
+    Called when race enters countdown phase before green flag.
+    Currently sends RED flag as a visual indicator that countdown is active.
+    
+    Future enhancements could include:
+    - Custom countdown OSC messages
+    - Progressive color changes (red → yellow → green)
+    - Synchronization with audio countdown beeps
+    - Strobe/flash patterns
+    
+    Safe to call even if OSC is disabled - will no-op gracefully.
+    """
+    # For now, use RED flag during countdown as a "staging" indicator
+    # This keeps lights on but signals "not yet racing"
+    _send_flag_to_lighting("RED")
+    log.info("Countdown active - lighting set to RED (staging)")
+
+# ------------------------------------------------------------
 # Endpoints - flag / state / reset (lightweight, engine-aware)
 # Race Control Endpoints
 # ------------------------------------------------------------
@@ -2311,7 +2436,10 @@ async def engine_set_flag(req: FlagReq):
         _RACE_STATE["phase"] = Phase.PRE.value
         # (intentionally not clearing start_at; abort/reset endpoint handles full reset)
 
-    # 5) Prefer engine snapshot; augment with local phase/flag/clock for UI
+    # 5) Send flag change to lighting system (QLC+)
+    _send_flag_to_lighting(req_flag)
+
+    # 6) Prefer engine snapshot; augment with local phase/flag/clock for UI
     if hasattr(ENGINE, "snapshot"):
         try:
             snap = ENGINE.snapshot()
@@ -2456,6 +2584,9 @@ async def race_start_race():
         # >>> REQUIRED for the UI to show T-minus and for /race/state to tick
         _RACE_STATE["countdown_anchor_s"] = time.time() + cd
 
+        # Signal lighting that countdown has started
+        _send_countdown_to_lighting()
+
         _cancel_task(_COUNTDOWN_TASK)
         log.info(f"[START] COUNTDOWN armed for {cd}s; anchor={_RACE_STATE['countdown_anchor_s']:.3f}")
         _COUNTDOWN_TASK = asyncio.get_running_loop().create_task(_auto_go_green(cd))
@@ -2469,6 +2600,7 @@ async def race_start_race():
     if hasattr(ENGINE, "set_flag"):
         try: ENGINE.set_flag("GREEN")
         except Exception: pass
+    _send_flag_to_lighting("GREEN")  # Sync lighting on immediate green
     log.info(f"[START] GREEN immediately; start_at={_RACE_STATE['start_at']:.3f}")
     return {"ok": True, "phase": _RACE_STATE["phase"], "start_at": _RACE_STATE["start_at"]}
 
@@ -2493,6 +2625,7 @@ def race_end_race():
             ENGINE.set_flag("CHECKERED")
         except Exception:
             pass
+    _send_flag_to_lighting("CHECKERED")  # Sync lighting on race end
     return {"ok": True, "phase": _RACE_STATE["phase"]}
 
 # ---------------------- Abort & Reset route ----------------------
@@ -2508,6 +2641,9 @@ async def race_abort_reset():
     _RACE_STATE["phase"]    = Phase.PRE.value
     _RACE_STATE["flag"]     = "PRE"
     _RACE_STATE["start_at"] = None
+    
+    _send_flag_to_lighting("PRE")  # Sync lighting on abort/reset
+    _send_blackout_to_lighting(True)  # Kill all lights on abort/reset
 
     # Best-effort engine reset
     reset_fn = getattr(ENGINE, "reset_session", None)
@@ -2551,6 +2687,18 @@ async def race_abort_reset():
     # Optional: clear in-memory seen counters if you keep them
     _reseed_seen_roster(_RACE_STATE.get("entrants") or [])
     return {"ok": True, "phase": _RACE_STATE["phase"]}
+
+
+# ---------------------- Open Results (transition from race control) ----------------------
+@app.post("/race/control/open_results")
+def race_open_results():
+    """
+    Triggered when user clicks "Open Results & Exports" button.
+    Activates blackout (kills all lighting) as we transition out of race control.
+    """
+    _send_blackout_to_lighting(True)
+    log.info("Blackout activated for results transition")
+    return {"ok": True, "blackout": True}
 
 
 # ---------------------- Backward-compatible reset route ----------------------
@@ -3341,6 +3489,87 @@ async def start_scanner():
     except Exception:
         log.exception("Failed to start scanner")
 
+@app.on_event("startup")
+async def start_osc_lighting():
+    """
+    Initialize OSC lighting integration for QLC+ control.
+    
+    Sets up bidirectional OSC communication:
+    - OUT: CCRS → QLC+ (sends flag cues when race flags change)
+    - IN: QLC+ → CCRS (receives feedback when QLC+ buttons are clicked)
+    
+    Configuration is loaded from config.yaml -> integrations.lighting
+    """
+    global _osc_out, _osc_in
+    
+    try:
+        # Extract lighting config from main config
+        lighting_cfg = ((CONFIG.get("integrations") or {}).get("lighting") or {})
+        
+        if not lighting_cfg:
+            log.info("OSC lighting integration disabled (no config)")
+            return
+        
+        # -------------------------------------------------------------------------
+        # OSC OUT: CCRS → QLC+ (send flag cues to lights)
+        # -------------------------------------------------------------------------
+        osc_out_cfg = lighting_cfg.get("osc_out")
+        if osc_out_cfg and osc_out_cfg.get("enabled"):
+            _osc_out = OscLightingOut(osc_out_cfg)
+            _osc_out.start()
+            log.info(
+                "OSC OUT enabled: %s:%s (flags → lighting)",
+                _osc_out.host,
+                _osc_out.port,
+            )
+        else:
+            log.info("OSC OUT disabled")
+        
+        # -------------------------------------------------------------------------
+        # OSC IN: QLC+ → CCRS (receive flag button feedback from lights)
+        # -------------------------------------------------------------------------
+        in_raw = lighting_cfg.get("osc_in") or {}
+        if in_raw.get("enabled"):
+            # Build config from YAML
+            osc_in_cfg = OscInConfig(
+                host=in_raw.get("host", "0.0.0.0"),
+                port=int(in_raw.get("port", 9010)),
+                flag_prefix=((in_raw.get("paths") or {}).get("flag_prefix", "/ccrs/flag/")),
+                path_blackout=((in_raw.get("paths") or {}).get("blackout", "/ccrs/blackout")),
+                threshold_on=float(in_raw.get("threshold_on", 0.5)),
+                debounce_off_ms=int(in_raw.get("debounce_off_ms", 250)),
+            )
+            
+            # Callback: QLC+ button clicked → update CCRS flag
+            def _osc_on_flag(name: str):
+                """Thread-safe callback when QLC+ sends a flag button press."""
+                loop = asyncio.get_event_loop()
+                loop.call_soon_threadsafe(_handle_flag_from_qlc, name)
+            
+            # Callback: QLC+ blackout button clicked → update CCRS blackout state
+            def _osc_on_blackout(enabled: bool):
+                """Thread-safe callback when QLC+ sends blackout state change."""
+                loop = asyncio.get_event_loop()
+                loop.call_soon_threadsafe(_handle_blackout_from_qlc, enabled)
+            
+            _osc_in = OscInbound(
+                cfg=osc_in_cfg,
+                on_flag=_osc_on_flag,
+                on_blackout=_osc_on_blackout,
+                on_any=None,  # Could log all OSC messages for debugging
+            )
+            _osc_in.start()
+            log.info(
+                "OSC IN enabled: %s:%s (lighting → flags)",
+                osc_in_cfg.host,
+                osc_in_cfg.port,
+            )
+        else:
+            log.info("OSC IN disabled")
+    
+    except Exception:
+        log.exception("Failed to initialize OSC lighting integration")
+
 @app.on_event("shutdown")
 async def stop_scanner():
     """
@@ -3365,6 +3594,28 @@ async def stop_scanner():
 
     _SCANNER_TASKS.clear()
     log.info("All background tasks stopped cleanly.")
+
+@app.on_event("shutdown")
+async def stop_osc_lighting():
+    """
+    Cleanup OSC lighting integration on server shutdown.
+    
+    Stops both inbound and outbound OSC connections gracefully.
+    """
+    global _osc_out, _osc_in
+    
+    try:
+        if _osc_in:
+            _osc_in.stop()
+            log.info("OSC IN stopped")
+        if _osc_out:
+            _osc_out.stop()
+            log.info("OSC OUT stopped")
+    except Exception:
+        log.exception("Error stopping OSC lighting integration")
+    finally:
+        _osc_in = None
+        _osc_out = None
 
 # ------------------------------------------------------------
 # Diagnostics / Live Sensors - SSE stream for diag.html

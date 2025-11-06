@@ -1341,6 +1341,7 @@ function initFieldHintsAsTooltips() {
     btn.className = 'info-tip-btn';
     btn.setAttribute('aria-label', 'Show help');
     btn.setAttribute('aria-expanded', 'false');
+    btn.setAttribute('tabindex', '-1');  // Remove from tab order
     btn.textContent = 'i'; // simple glyph; easy to read outdoors
 
     // Create the popover; positioned relative to the field wrapper
