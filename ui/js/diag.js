@@ -46,13 +46,46 @@
   let currentSecond   = 0;     // track 1s windows
 
   let es = null; // EventSource instance
+  let pageLoadTime = null; // Track when page loads to filter old data
 
   // ---------------------------------------------------------------------
   // Boot sequence
   // ---------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', init);
+  
+  // Handle browser back/forward cache (bfcache) - clear when page is restored
+  window.addEventListener('pageshow', (event) => {
+    if (event.persisted) {
+      // Page was restored from bfcache, clear the table
+      console.log('[diag] Page restored from cache, clearing table');
+      const tbody = document.getElementById('liveBody');
+      if (tbody) {
+        tbody.innerHTML = '';
+        tbody.textContent = '';
+        while (tbody.firstChild) {
+          tbody.removeChild(tbody.firstChild);
+        }
+      }
+    }
+  });
 
   async function init() {
+    // Record page load time to filter out old data
+    pageLoadTime = Date.now();
+    console.log('[diag] Page load time:', new Date(pageLoadTime).toISOString());
+    
+    // Clear any leftover data from previous session - do this first before anything else
+    const tbody = document.getElementById('liveBody');
+    if (tbody) {
+      // Use multiple methods to ensure clearing
+      tbody.innerHTML = '';
+      tbody.textContent = '';
+      while (tbody.firstChild) {
+        tbody.removeChild(tbody.firstChild);
+      }
+      console.log('[diag] Table cleared on init, row count:', tbody.rows?.length || 0);
+    }
+    
     // Populate header pill if helper available
     if (typeof CCRS.effectiveEngineLabel === 'function' && engineLabel) {
       engineLabel.textContent = 'Engine: ' + CCRS.effectiveEngineLabel();
@@ -78,12 +111,15 @@
       chkShowRssi.addEventListener('change', () => toggleRSSI(chkShowRssi.checked));
     }
 
-    // Start stream if diagnostics are enabled
-    if (diagnosticsOn) {
-      openStream();
-    } else {
-      diagWarn && (diagWarn.hidden = false);
-    }
+    // Delay stream start slightly to ensure clear completes
+    setTimeout(() => {
+      // Start stream if diagnostics are enabled
+      if (diagnosticsOn) {
+        openStream();
+      } else {
+        diagWarn && (diagWarn.hidden = false);
+      }
+    }, 100);
 
     // Clear when leaving; quiet warm-up when returning
     document.addEventListener('visibilitychange', () => {
@@ -93,7 +129,23 @@
         beginWarmup();
       }
     });
-    window.addEventListener('pagehide', clearRows);
+    window.addEventListener('pagehide', handlePageExit);
+    window.addEventListener('beforeunload', handlePageExit);
+  }
+
+  // ---------------------------------------------------------------------
+  // --- Page exit handler - clear data and close connection -------------
+  // ---------------------------------------------------------------------
+  function handlePageExit() {
+    clearRows();
+    if (es) {
+      try {
+        es.close();
+        es = null;
+      } catch (err) {
+        console.warn('[diag] failed to close EventSource', err);
+      }
+    }
   }
 
   // ---------------------------------------------------------------------
@@ -154,6 +206,18 @@
   // ---------------------------------------------------------------------
   function handleDetection(evt) {
     if (paused) return;
+
+    // Filter out detections from before page load (ignore buffered historical data)
+    if (evt.time && pageLoadTime) {
+      try {
+        const detectionTime = new Date(evt.time).getTime();
+        if (detectionTime < pageLoadTime) {
+          return; // Silently drop old detections
+        }
+      } catch (err) {
+        // If we can't parse the time, allow it through
+      }
+    }
 
     // Filter out unknown entrants if checkbox is active
     const known = !!(evt.entrant && (evt.entrant.name || evt.entrant.number || evt.entrant.num));

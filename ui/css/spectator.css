@@ -3,28 +3,36 @@
   - leaderboard grid + two-column layout
   - flag colors & animations
   - PB flash effects
+  - Clock font for lap times
+  - Zero-lap detection dimming
   --------------------------------------------------------------------- */
+
+/* Clock font variable (matching race_control.css) */
+:root {
+  --clock-font: "SF Mono", "Roboto Mono", Consolas, "Liberation Mono", Menlo, monospace;
+  --rowH: 54px;  /* Adjusted to fit 16 rows + header in 1080p */
+}
 
 /* ---------- Race clock cluster (right side of header) ---------- */
 .raceclock-wrap {
   display: grid;
-  grid-template-columns: auto auto;   /* [race-type] [clock] */
+  grid-template-columns: auto auto;   /* [label] [clock] */
   grid-auto-rows: auto;
-  column-gap: 10px;
-  row-gap: 4px;
+  column-gap: 12px;
   align-items: center;
   margin-left: auto;                  /* dock to the right */
 }
 .raceclock-label {
-  grid-column: 2;
+  grid-column: 1;
   grid-row: 1;
-  justify-self: center;
+  justify-self: end;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  font-size: 12px;
+  font-size: 13px;
   line-height: 1;
-  opacity: 0.8;
+  opacity: 0.85;
   margin: 0;
+  white-space: nowrap;
 }
 .race-type {
   grid-column: 1;
@@ -38,13 +46,29 @@
 }
 #raceClock {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 1;
   justify-self: end;
+  font-size: 32px;
+  padding: 10px 18px;
+  font-family: var(--clock-font);
+  letter-spacing: 0.05em;
+}
+
+/* ---------- Race info pill (in header, center) ---------- */
+.pill-info {
+  font-size: 15px;
+  padding: 8px 20px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(0, 180, 255, 0.3);
+  color: #e0f2fe;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  margin: 0 auto;  /* center in header flex layout */
 }
 
 /* =========================================================
    Leaderboard table grid (Position | Car # | Team | Laps | Last | Best)
-   Column widths are driven by CSS vars to avoid first-paint “snap”.
+   Column widths are driven by CSS vars to avoid first-paint "snap".
    ========================================================= */
 
 /* Base column widths (single column mode) */
@@ -55,13 +79,15 @@
   --c-name: 1fr;
   --c-laps: 110px;
   --c-last: 120px;
+  --c-pace: 120px;
   --c-best: 120px;
 }
 
 .thead,
 .row {
   display: grid;
-  grid-template-columns: var(--c-pos) var(--c-car) var(--c-name) var(--c-laps) var(--c-last) var(--c-best);
+  grid-template-columns: var(--c-pos) var(--c-car) var(--c-name) var(--c-laps) var(--c-last) var(--c-pace) var(--c-best);
+  column-gap: 12px;
   align-items: center;
 }
 
@@ -75,18 +101,32 @@
 }
 .thead > :nth-child(2) { text-align: center; padding-right: 24px; }
 
-.rows { position: relative; }
+/* Center the time column headers (Last Lap, Pace, Best Lap) */
+.thead > :nth-child(5),
+.thead > :nth-child(6),
+.thead > :nth-child(7) {
+  text-align: center;
+}
+
+.rows { 
+  position: relative;
+  min-height: calc(var(--rowH) * 16); /* Reserve space for 16 rows */
+}
 
 .row {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   height: var(--rowH);
   padding: 0 12px;
-  border-bottom: 1px solid #0f141a;
+  background: rgba(0, 0, 0, 0.45);
+  border-bottom: 1px solid rgba(59, 130, 246, 0.15);
   transition:
     transform .8s cubic-bezier(.2, 0, 0, 1),
     background-color .4s ease;
   will-change: transform;
 }
-.row:nth-child(odd) { background: #151a20; }
 
 .name {
   overflow: hidden;
@@ -101,6 +141,12 @@
   font-size: var(--fs-base);
   font-variant-numeric: tabular-nums;   /* fixed-width digits */
 }
+/* Apply clock font to time columns (Last Lap, Best Lap) */
+.right.time {
+  font-family: var(--clock-font);
+  font-size: var(--fs-base);
+  letter-spacing: 0.02em;
+}
 .car { text-align: center; padding-right: 24px; }
 
 /* Position delta arrows */
@@ -112,6 +158,24 @@
 }
 .up   { color: var(--ok); }
 .down { color: var(--error); }
+
+/* Zero-lap detection: dimming for entrants awaiting first detection */
+.row.is-awaiting-detect {
+  color: #99a7b4;
+  opacity: .72;
+}
+.row.is-awaiting-detect div {
+  color: inherit;
+}
+
+/* Best lap glow effect - override base.css transition to prevent blip */
+.row .best.glow-flash {
+  border-radius: 6px;
+  border: 1px solid transparent;
+  padding: 4px 8px;
+  margin: -4px -8px;
+  transition: none; /* Prevent transition blip after animation */
+}
 
 /* Center the LAPS column (4th col) for ALL tables (left & right) */
 .table .thead > :nth-child(4),
@@ -160,6 +224,7 @@
   --c-name: 1.25fr;  /* give Team/Driver more room */
   --c-laps: 110px;   /* keep consistent to align across halves */
   --c-last: 120px;
+  --c-pace: 120px;
   --c-best: 120px;
 
   position: relative;

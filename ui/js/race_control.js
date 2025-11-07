@@ -1325,7 +1325,7 @@ function updateClockModeButton(st) {
       els.btnResults.addEventListener('click', async () => {
         // Trigger blackout before navigating to results
         try {
-          await fetch(CCRS.url('/race/control/open_results'), { method: 'POST' });
+          await fetch('/race/control/open_results', { method: 'POST' });
         } catch (e) {
           console.warn('Failed to trigger blackout for results:', e);
         }

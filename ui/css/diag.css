@@ -112,6 +112,12 @@
 .newRow td {
   animation: flashRow 480ms ease-out;
 }
+
+/* Override base.css transition to prevent blip after flash animation */
+.liveTable .glow-flash {
+  transition: none !important;
+}
+
 /* Override the default left-align for headers on these two */
 .liveTable thead .col-num,
 .liveTable thead .col-rssi {
