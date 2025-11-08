@@ -427,6 +427,9 @@ class RaceEngine:
                 if not self.running:
                     self.running = True
                     self.clock_start_monotonic = time.perf_counter()
+                    # Clear any pre-race crossing timestamps to prevent short first laps
+                    for ent in self.entrants.values():
+                        ent._last_hit_ms = None
             elif f_lower == "checkered":
                 # Freeze clock at current time
                 self._update_clock()

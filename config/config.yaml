@@ -26,7 +26,7 @@ app:
   # Client engine connection mode
   client:
     engine:
-      mode: localhost           # localhost | fixed_host | same_origin
+      mode: same_origin         # localhost | fixed_host | same_origin
       fixed_host: 127.0.0.1:8000
       prefer_same_origin: false
       allow_client_override: true
@@ -254,7 +254,7 @@ integrations:
   lighting:             # OSC lighting control for flags - using QLC+
     osc_out:
       enabled: true     # Enable OSC output, set to false to disable
-      host: 127.0.0.1  # QLC+ box (or 127.0.0.1 same PC)
+      host: 10.0.0.25  # QLC+ box (or 127.0.0.1 same PC)
       port: 9000
       send_repeat:
         count: 1              # Total sends (1 original + 1 repeat)
@@ -270,7 +270,7 @@ integrations:
         blackout:    "/ccrs/blackout"        # keep if you want the hard kill
     osc_in:
       enabled: true     # are we listening for OSC feedback?
-      host: 127.0.0.1                 # Port to listen for feedback on, localhost
+      host: 0.0.0.0                 # Port to listen for feedback on, localhost
       port: 9010
       paths:
         flag_prefix: "/ccrs/flag/"

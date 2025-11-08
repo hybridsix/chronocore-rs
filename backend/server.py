@@ -1112,11 +1112,21 @@ def grid_index_map(db: sqlite3.Connection, event_id: int) -> Dict[int, int]:
 
 def compute_standings(db: sqlite3.Connection, heat_id: int) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
     heat = db.execute(
-        "SELECT heat_id, event_id, name, status, started_utc, finished_utc FROM heats WHERE heat_id = ?",
+        "SELECT heat_id, event_id, name, status, started_utc, finished_utc, config_json FROM heats WHERE heat_id = ?",
         (heat_id,),
     ).fetchone()
     if not heat:
         raise HTTPException(status_code=404, detail="Heat not found")
+    
+    # Check if this is a qualifying session
+    is_qualifying = False
+    if heat["config_json"]:
+        try:
+            heat_config = json.loads(heat["config_json"])
+            session_type = heat_config.get("session_type", "").lower()
+            is_qualifying = session_type == "qualifying"
+        except Exception:
+            pass
 
     flags = fetch_flags(db, heat_id)
     laps = fetch_laps(db, heat_id)
@@ -1203,7 +1213,13 @@ def compute_standings(db: sqlite3.Connection, heat_id: int) -> Tuple[Dict[str, A
         grid_candidate = row.get("grid_index")
         grid_val = int(grid_candidate) if grid_candidate is not None else 1_000_000
         entrant_id = int(row.get("entrant_id", 0))
-        return (-laps, pace_val, grid_val, entrant_id)
+        
+        # Qualifying: sort by best lap time only (ignore lap count)
+        # Race: sort by laps first, then pace
+        if is_qualifying:
+            return (pace_val, entrant_id, 0, 0)
+        else:
+            return (-laps, pace_val, grid_val, entrant_id)
 
     standings.sort(key=sort_key)
     for idx, row in enumerate(standings, start=1):
@@ -2330,6 +2346,7 @@ def _send_flag_to_lighting(flag_name: str):
     if _osc_out:
         try:
             _osc_out.send_flag(flag_name.lower(), on=True)
+            log.debug("Sent flag '%s' to lighting", flag_name)
         except Exception:
             # Never let lighting failures break race control
             log.exception("Failed to send flag to lighting: %s", flag_name)
@@ -3565,6 +3582,9 @@ async def start_osc_lighting():
     """
     global _osc_out, _osc_in
     
+    import logging as _logging
+    uvlog = _logging.getLogger("uvicorn.error")
+    
     try:
         # Extract lighting config from main config
         lighting_cfg = ((CONFIG.get("integrations") or {}).get("lighting") or {})
@@ -3580,13 +3600,13 @@ async def start_osc_lighting():
         if osc_out_cfg and osc_out_cfg.get("enabled"):
             _osc_out = OscLightingOut(osc_out_cfg)
             _osc_out.start()
-            log.info(
+            uvlog.info(
                 "OSC OUT enabled: %s:%s (flags → lighting)",
                 _osc_out.host,
                 _osc_out.port,
             )
         else:
-            log.info("OSC OUT disabled")
+            uvlog.info("OSC OUT disabled")
         
         # -------------------------------------------------------------------------
         # OSC IN: QLC+ → CCRS (receive flag button feedback from lights)
@@ -3622,16 +3642,16 @@ async def start_osc_lighting():
                 on_any=None,  # Could log all OSC messages for debugging
             )
             _osc_in.start()
-            log.info(
+            uvlog.info(
                 "OSC IN enabled: %s:%s (lighting → flags)",
                 osc_in_cfg.host,
                 osc_in_cfg.port,
             )
         else:
-            log.info("OSC IN disabled")
+            uvlog.info("OSC IN disabled")
     
     except Exception:
-        log.exception("Failed to initialize OSC lighting integration")
+        uvlog.exception("Failed to initialize OSC lighting integration")
 
 @app.on_event("shutdown")
 async def stop_scanner():
