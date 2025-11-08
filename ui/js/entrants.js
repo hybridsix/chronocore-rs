@@ -155,6 +155,7 @@ window.normalizeEntrant = window.normalizeEntrant || function normalizeEntrant(r
 
     // modals
     importBtn:   $('#importBtn'),
+    exportBtn:   $('#exportBtn'),
     importModal: $('#importModal'),
 
     quickCreateModal: $('#quickCreateModal'),
@@ -1109,6 +1110,11 @@ ALL = data;
     // Refresh & bulk stub
     els.refreshBtn.addEventListener('click', loadEntrants);
     els.importBtn.addEventListener('click', () => els.importModal.showModal());
+    els.exportBtn.addEventListener('click', () => {
+      // Trigger CSV download
+      const timestamp = Date.now();
+      window.location.href = `/admin/entrants/export.csv?_=${timestamp}`;
+    });
 
     // Quick-create modal
     els.qcCreate.addEventListener('click', (e) => { e.preventDefault(); createFromQuick(); });

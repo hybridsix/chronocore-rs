@@ -2853,6 +2853,69 @@ async def admin_list_entrants():
         return out
 
 
+@app.get("/admin/entrants/export.csv")
+async def admin_export_entrants_csv():
+    """
+    Export all entrants as CSV for download.
+    """
+    async with aiosqlite.connect(DB_PATH) as db:
+        db.row_factory = aiosqlite.Row
+        cur = await db.execute("""
+            SELECT
+              entrant_id, number, name, tag, enabled,
+              status, organization, spoken_name, color,
+              updated_at
+            FROM entrants
+            ORDER BY CAST(number AS INTEGER) NULLS LAST, name
+        """)
+        rows = await cur.fetchall()
+        await cur.close()
+
+        def gen():
+            from datetime import datetime
+            
+            # Header row
+            yield from csv_stream([[
+                "entrant_id", "number", "name", "tag", "enabled",
+                "status", "organization", "spoken_name", "color", "updated_at"
+            ]])
+            # Data rows
+            for r in rows:
+                # Format updated_at as ISO8601 if it's a Unix timestamp
+                updated_at_str = ""
+                if r["updated_at"]:
+                    try:
+                        # Assuming updated_at is stored as Unix timestamp (seconds)
+                        dt = datetime.fromtimestamp(float(r["updated_at"]))
+                        updated_at_str = dt.isoformat()
+                    except (ValueError, TypeError):
+                        # If it's already a string or invalid, use as-is
+                        updated_at_str = str(r["updated_at"])
+                
+                yield from csv_stream([[
+                    r["entrant_id"],
+                    r["number"],
+                    r["name"],
+                    r["tag"] or "",
+                    1 if r["enabled"] else 0,
+                    r["status"] or "",
+                    r["organization"] or "",
+                    r["spoken_name"] or "",
+                    r["color"] or "",
+                    updated_at_str
+                ]])
+
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"entrants_{timestamp}.csv"
+
+        return StreamingResponse(
+            gen(),
+            media_type="text/csv; charset=utf-8",
+            headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+        )
+
+
 @app.post("/admin/entrants")
 async def admin_upsert_entrants(payload: Dict[str, Any]):
     """
