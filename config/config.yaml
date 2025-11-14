@@ -23,7 +23,6 @@ app:
   environment: development  # development | production
   
   # Client engine connection mode
-  # Client engine connection mode
   client:
     engine:
       mode: same_origin         # localhost | fixed_host | same_origin
@@ -48,7 +47,6 @@ app:
       brake_test_policy: demote  # demote | reject | allow
     
     # Pass detection and debouncing
-    # Pass detection and debouncing
     ingest:
       debounce_ms: 250           # Global debounce: ignore duplicate tag within this window
       per_location_debounce_ms: {}  # Optional per-location overrides
@@ -70,7 +68,6 @@ app:
       fsync: true                       # Force disk sync (safer but slower)
       recreate_on_boot: false           # Drop and recreate DB on startup (dev only!)
     
-    # Live diagnostics and audio feedback
     # Live diagnostics and audio feedback
     diagnostics:
       enabled: true
@@ -121,7 +118,6 @@ app:
       PIT_OUT: Pit Out
       X1: Crossing X
   
-  # Race control settings
   # Race control settings
   race:
     flags:
@@ -198,9 +194,6 @@ publisher:
 log:
   level: info                    # debug | info | warning | error
 
-# ----------------------------------------------------------------------------
-# Track Topology (decoder-to-location bindings)
-# ----------------------------------------------------------------------------
 # ----------------------------------------------------------------------------
 # Track Topology (decoder-to-location bindings)
 # ----------------------------------------------------------------------------
