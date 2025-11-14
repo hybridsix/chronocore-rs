@@ -84,6 +84,13 @@ app:
     scoring:
       break_ties_by_best_lap: true      # Use best lap time as tiebreaker
       include_pit_time_in_total: true   # Count pit time in total race time
+      
+      # Moxie Board integration
+      moxie:
+        enabled: true                   # Enable Moxie Board scoring integration
+        auto_update: true               # Automatically update moxie scores on button press
+        total_points: 300               # Total points available for distribution (typically 300)
+        board_positions: 20             # Number of positions on the moxie board (18, 20, or 24 typically)
   
   # Hardware decoder configuration
   hardware:

@@ -111,6 +111,8 @@
             <button class="btn" onclick="goto('results')">Results</button>
             <button class="btn" onclick="goto('diag')">Diagnostics / Live Sensors</button>
             <button class="btn" onclick="goto('settings')">Setup & Devices</button>
+            <!-- Moxie Board button (conditionally shown) -->
+            <button class="btn moxie-board-btn" onclick="goto('moxie_board')" style="display: none;">Moxie Board</button>
             <!-- Separator between operator tools and spectator link -->
             <hr class="section-sep">
             <button class="btn" onclick="openSpectator()">Open Spectator View</button>
@@ -131,7 +133,7 @@
     </footer>
 
     <!-- Build version indicator -->
-    <div class="version-pill" onclick="goto('about')">v0.1 Preview</div>
+    <div class="version-pill" onclick="goto('about')">v0.1.1 Build</div>
 
 
 
@@ -190,8 +192,30 @@
           }, ms);
         }
 
+        /**
+         * Check UI feature configuration and show/hide conditional elements
+         */
+        async function checkUIFeatures() {
+          try {
+            const url = window.CCRS.apiUrl('/config/ui_features');
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (r.ok) {
+              const config = await r.json();
+              
+              // Show/hide Moxie Board button based on config
+              const moxieBtn = document.querySelector('.moxie-board-btn');
+              if (moxieBtn && config.moxie_board?.enabled) {
+                moxieBtn.style.display = 'block';
+              }
+            }
+          } catch (err) {
+            console.warn('Failed to load UI features config:', err?.message || err);
+          }
+        }
+
         setNetStatus('connecting');
         startReachabilityPoll(2000);
+        checkUIFeatures();
       });
     </script>
   </body>

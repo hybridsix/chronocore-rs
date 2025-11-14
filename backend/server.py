@@ -2091,6 +2091,27 @@ def health_alias():
     # UI expects /health; you also expose /healthz and /readyz.
     return {"status": "ok", "service": "ccrs-backend"}
 
+@app.get("/config/ui_features")
+def get_ui_features():
+    """Return UI feature flags based on configuration."""
+    from .config_loader import CONFIG
+    
+    moxie_config = (
+        CONFIG.get("app", {})
+              .get("engine", {})
+              .get("scoring", {})
+              .get("moxie", {})
+    )
+    
+    return {
+        "moxie_board": {
+            "enabled": bool(moxie_config.get("enabled", False)),
+            "auto_update": bool(moxie_config.get("auto_update", True)),
+            "total_points": int(moxie_config.get("total_points", 300)),
+            "board_positions": int(moxie_config.get("board_positions", 20))
+        }
+    }
+
 @app.get("/admin/entrants/enabled_count")
 async def entrants_enabled_count():
     async with aiosqlite.connect(DB_PATH) as db:

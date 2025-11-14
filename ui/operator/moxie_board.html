@@ -1,0 +1,94 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ChronoCore - Moxie Board</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="../css/base.css" />
+  <link rel="stylesheet" href="../css/operator.css" />
+  <script src="../js/base.js" defer></script>
+  <script>
+    async function home(){ 
+      if (window.pywebview?.api?.goto) { 
+        await window.pywebview.api.goto('home'); 
+      } else { 
+        location.href='index.html'; 
+      } 
+    }
+  </script>
+</head>
+<body>
+  <header class="app-header">
+    <div class="title">Moxie Board</div>
+    <button class="tag" onclick="home()">← Back</button>
+  </header>
+
+  <main class="wrap">
+    <section class="card" style="padding:16px">
+      <h2>Moxie Board Scoring</h2>
+      <p>This feature is under development. Moxie Board integration will provide button-press based scoring:</p>
+      <ul>
+        <li>Pure count scoring based on wireless moxie board button presses</li>
+        <li>Real-time moxie score tracking and display</li>
+        <li>Integration with race timing system</li>
+        <li>Configurable total points and board positions</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="app-footer">
+    <div class="footer-left">
+      <div class="status-dot" id="netDot"></div>
+      <div id="netMsg"></div>
+    </div>
+    <div id="wallClock" class="pill">--:--:--</div>
+  </footer>
+
+  <!-- PAGE WIRING -->
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      // Initialize network status and wall clock
+      const { setNetStatus } = window.CCRS;
+
+      // Simple wall clock
+      function startWallClock(selector) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        const fmt = (n) => String(n).padStart(2, '0');
+        function tick() {
+          const d = new Date();
+          el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
+        }
+        tick();
+        setInterval(tick, 1000);
+      }
+
+      startWallClock('#wallClock');
+
+      // Basic connectivity check
+      let reachTimer = null;
+      let reachFailures = 0;
+      function startReachabilityPoll(ms = 2000) {
+        if (reachTimer) clearInterval(reachTimer);
+        reachTimer = setInterval(async () => {
+          try {
+            const url = window.CCRS.apiUrl('/healthz');
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
+
+            reachFailures = 0;
+            setNetStatus('ok');
+          } catch (err) {
+            reachFailures++;
+            if (reachFailures >= 2) setNetStatus('disconnected');
+            console.warn('reachability failed:', err?.message || err);
+          }
+        }, ms);
+      }
+
+      setNetStatus('connecting');
+      startReachabilityPoll(2000);
+    });
+  </script>
+</body>
+</html>
