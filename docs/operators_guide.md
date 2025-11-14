@@ -4,10 +4,11 @@ Welcome! This guide will help you run ChronoCore on race day. We'll cover everyt
 
 ---
 
-## 0. What's New (2025-11-02)
+## 0. What's New (2025-11-13)
 
 Here's what changed in the latest update:
 
+- **Moxie Board Integration (2025-11-13)**: Added support for wireless Moxie Board scoring with configurable point pools and display positions. Enable via config.yaml to show moxie scoring in the operator UI.
 - The header and footer now look the same across all pages. The **DB: Ready** indicator moved to the center of the footer, and we added a home icon plus hamburger menu at the top.
 - New **Diagnostics / Live Sensors** page shows you a live stream of transponder reads. You can pause, clear the log, and even enable a beep sound for each detection.
 - We clarified the difference between **Freeze** (when you take a snapshot) and **Frozen** (when the race automatically locks after the leader crosses under the checkered flag).
@@ -622,7 +623,98 @@ You have three options:
 ### Copy/Download
 Buttons provide clipboard copy or file download for quick posting.
 
-## 16. Appendix - Versioned Settings Summary
+---
+
+## 16. Moxie Board Scoring (2025-11-13)
+
+The Moxie Board is a fun crowd engagement feature at Power Racing Series events. It's a physical display board that shows which teams are getting the most "moxie points" from spectators and officials based on button presses.
+
+### What is Moxie Scoring?
+
+Unlike race results which are based on laps and times, moxie scoring is **pure button-press counting**. Spectators and officials press buttons on wireless controllers to give moxie points to their favorite teams. The more button presses a team gets, the higher their moxie score.
+
+**Important:** Moxie scoring is completely separate from race results. It's about showmanship, creativity, and crowd appeal - not racing performance!
+
+### How It Works
+
+- A fixed pool of points (typically 300) is distributed among all active teams
+- Each team's share is proportional to how many button presses they received
+- The physical moxie board displays the top teams (usually 18-24 positions depending on the board)
+- Scores update in real-time as people press buttons
+
+**Example:**
+If Team A gets 50 button presses and Team B gets 30 presses out of 100 total:
+- Team A gets: (50 ÷ 100) × 300 = 150 moxie points
+- Team B gets: (30 ÷ 100) × 300 = 90 moxie points
+
+### Enabling Moxie Board
+
+To turn on moxie board features:
+
+1. **Open your config file** (`config/config.yaml`)
+2. **Find the moxie section** under `app.engine.scoring`:
+   ```yaml
+   app:
+     engine:
+       scoring:
+         moxie:
+           enabled: true              # Turn this on!
+           auto_update: true          # Real-time updates
+           total_points: 300          # Point pool to distribute
+           board_positions: 20        # How many teams fit on your board
+   ```
+3. **Save and restart** the backend server
+
+### Using the Moxie Board Page
+
+Once enabled, you'll see a **Moxie Board** button on the main operator page (between "Setup & Devices" and "Open Spectator View").
+
+**Current Features:**
+- View moxie scores for all active teams
+- See which teams are displayed on the physical board
+- Monitor button press counts in real-time
+
+**Coming Soon:**
+- Manual score adjustments
+- Export moxie scores with race results
+- Historical moxie scoring data
+
+### Configuration Options
+
+**`total_points`** - The point pool to distribute (typically 300)
+- Smaller events might use 100 or 200
+- Larger events might use 500 or more
+- This is just for display - the actual button press counts are what matter
+
+**`board_positions`** - How many teams your physical board can show
+- 18 positions: Smaller/compact boards
+- 20 positions: Standard PRS setup
+- 24 positions: Larger events
+
+Only the top N teams (by button presses) get displayed on the physical board, but the operator UI shows everyone's scores.
+
+### Tips for Running Moxie
+
+- Announce moxie scoring during driver introductions so people know to vote
+- Remind spectators to keep voting throughout the event
+- Watch for technical creativity, paint jobs, and driver showmanship - that's what moxie is about!
+- Moxie awards are typically separate from race trophies
+
+### Troubleshooting
+
+**Moxie Board button doesn't appear:**
+- Check that `moxie.enabled: true` in your config
+- Restart the backend after changing config
+- Verify at `/config/ui_features` that moxie_board.enabled returns true
+
+**Scores not updating:**
+- Confirm `auto_update: true` in config
+- Check that button press hardware is connected and communicating
+- Look for errors in server logs
+
+---
+
+## 17. Appendix - Versioned Settings Summary
 
 Relevant keys (see `config/config.yaml`):
 ```yaml
@@ -667,4 +759,4 @@ ui:
 ```
 
 
-_Last updated: 2025-11-02_
+_Last updated: 2025-11-13_

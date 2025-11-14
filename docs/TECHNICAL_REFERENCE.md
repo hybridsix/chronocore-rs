@@ -104,6 +104,7 @@ The following describes the authoritative race loop and how it processes events 
 2. **Flags and Clock (`engine.set_flag`)**  
    Race control sets flags (pre, green, yellow, red, white, checkered).  
    - First transition to green starts the race clock (monotonic timer).  
+   - **First lap fix (2025-10-31)**: When green flag is set, all entrant crossing timestamps are cleared (`_last_hit_ms = None`) to prevent artificially short first laps caused by pre-race parade lap crossings.  
    - Red flag: laps still count, but marshals manage discipline.  
    - Yellow flag: no special logic; cars may pass if needed.  
    - Checkered: when the leader next crosses, the race clock and standings freeze.
@@ -113,7 +114,18 @@ The following describes the authoritative race loop and how it processes events 
    - If the tag belongs to an enabled entrant, it is processed.  
    - If unknown and `auto_provisional = true`, a new provisional entrant is created as `"Unknown ####"`.  
    - If the entrant is disabled, the pass is ignored.  
-   - **Track passes**: compute lap time, apply filters (`min_lap_s`, `min_lap_s_dup`), update `laps/last/best/pace_5`.  
+   - **Track passes**: compute lap time, apply filters (`min_lap_s`, `min_lap_dup`), update `laps/last/best/pace_5`.  
+   
+   **Lap Crediting Logic (2025-10-31 race weekend fix):**
+   - **First crossing after GREEN**: Sets the start mark (`_last_hit_ms`). No lap credited yet - this is the "arming" pass.
+   - **Second and subsequent crossings**: Calculate delta time since last crossing.
+     - If delta < `min_lap_dup` (default 1.0s): Rejected as duplicate, no lap credited
+     - If delta < `min_lap_s` (default 5.0s): Rejected as too fast, no lap credited  
+     - If delta >= `min_lap_s`: **Lap credited**, increment lap counter, update last/best/pace times
+   - **Best lap tracking**: If credited lap time < current best (or best is null), update `best_s`
+   - **Pre-race crossings**: Any passes during PRE/COUNTDOWN are ignored for lap counting but visible in diagnostics
+   - **Green flag reset**: When transitioning to GREEN, all `_last_hit_ms` timestamps are cleared to ensure first racing lap has accurate timing
+   
    - **Pit passes** (if pit_timing enabled): `pit_in` starts a pit window; `pit_out` closes the window, computes pit time, increments `pit_count`.
 
 4. **Standings Calculation (`engine.snapshot`)**  
@@ -1047,6 +1059,124 @@ integrations:
 
 ---
 
+## 10. Moxie Board Scoring Integration (2025-11-13)
+
+ChronoCore includes integration support for wireless Moxie Board scoring systems used at Power Racing Series events. Moxie scoring is **purely button-press based** - it tracks crowd votes via wireless button presses on the physical moxie board, independent of race performance metrics.
+
+### 10.1 Overview
+
+The Moxie Board is a physical display showing entrant positions and scores based on button presses from spectators and officials. The scoring is a simple count - each button press adds to an entrant's moxie score. The system distributes a fixed total number of points (typically 300) among all active entrants based on their button press counts.
+
+**Key Characteristics:**
+- **Pure count system**: Moxie scores = number of button presses received
+- **Not calculated**: Unlike lap-based scoring, moxie has no relation to lap times, positions, or race performance
+- **Configurable positions**: Boards typically support 18, 20, or 24 display positions
+- **Fixed point pool**: Total points (typically 300) are distributed proportionally among entrants
+
+### 10.2 Configuration
+
+Moxie Board integration is controlled via `config/config.yaml`:
+
+```yaml
+app:
+  engine:
+    scoring:
+      break_ties_by_best_lap: true
+      include_pit_time_in_total: true
+      
+      # Moxie Board integration
+      moxie:
+        enabled: true                   # Enable Moxie Board scoring integration
+        auto_update: true               # Automatically update moxie scores on button press
+        total_points: 300               # Total points available for distribution (typically 300)
+        board_positions: 20             # Number of positions on the moxie board (18, 20, or 24 typically)
+```
+
+**Configuration Parameters:**
+- `enabled` (boolean): Controls whether moxie board features appear in the UI
+- `auto_update` (boolean): When true, moxie scores update in real-time as button presses are received
+- `total_points` (integer): The pool of points to be distributed among entrants based on button press ratios
+- `board_positions` (integer): How many top entrants can be displayed on the physical moxie board
+
+### 10.3 API Endpoint
+
+The backend exposes moxie configuration to frontends via:
+
+**`GET /config/ui_features`**
+
+Response:
+```json
+{
+  "moxie_board": {
+    "enabled": true,
+    "auto_update": true,
+    "total_points": 300,
+    "board_positions": 20
+  }
+}
+```
+
+This endpoint is polled by the operator UI on startup to determine whether to show the moxie board navigation button.
+
+### 10.4 UI Integration
+
+When `moxie.enabled = true`:
+- Operator index page displays a "Moxie Board" button in the main navigation
+- Button appears between "Setup & Devices" and "Open Spectator View"
+- Clicking the button navigates to `/ui/operator/moxie_board.html`
+
+The moxie board page (currently in development) will provide:
+- Real-time display of button press counts per entrant
+- Calculated point distribution based on `total_points` configuration
+- Top-N display showing which entrants appear on the physical board (based on `board_positions`)
+- Manual score adjustment controls for operator overrides
+
+### 10.5 Scoring Algorithm
+
+The moxie score for each entrant is calculated as:
+
+```
+entrant_moxie_points = (entrant_button_presses / total_button_presses) * total_points
+```
+
+Where:
+- `entrant_button_presses` = count of button presses received by this entrant
+- `total_button_presses` = sum of all button presses across all entrants
+- `total_points` = configured point pool (default 300)
+
+**Example:**
+With `total_points: 300` and 3 entrants:
+- Entrant A: 50 presses → (50/100) × 300 = 150 points
+- Entrant B: 30 presses → (30/100) × 300 = 90 points
+- Entrant C: 20 presses → (20/100) × 300 = 60 points
+
+### 10.6 Physical Board Display
+
+The `board_positions` parameter determines how many entrants can be shown on the physical moxie board hardware. Common values:
+- **18 positions**: Smaller events or compact boards
+- **20 positions**: Standard PRS configuration
+- **24 positions**: Larger events with extended grids
+
+Only the top N entrants (by moxie score) are sent to the physical display hardware. The operator UI shows all entrants with their scores and indicates which ones are currently displayed on the board.
+
+### 10.7 Implementation Status
+
+**Currently Available (v0.1.1):**
+- Configuration framework in `config.yaml`
+- UI feature flag endpoint (`/config/ui_features`)
+- Conditional navigation button on operator index page
+- Placeholder moxie board page
+
+**Planned Features:**
+- WebSocket or SSE stream for real-time button press events
+- Backend endpoint for recording button presses
+- Score calculation and distribution engine
+- Physical board hardware communication protocol
+- Historical moxie scoring data persistence
+- Export moxie scores to CSV alongside race results
+
+---
+
 ## 11. Configuration (YAML keys of interest)
 
 The system uses a single unified configuration file: `config/config.yaml`
@@ -1324,7 +1454,135 @@ app:
 
 ---
 
-## 15. Appendices
+## 16. Troubleshooting Lap Crediting Issues (2025-10-31)
+
+During race weekend testing, several scenarios were identified where transponder reads appeared in diagnostics but laps weren't being credited. This section documents common gating conditions and diagnostic procedures.
+
+### 16.1 Common Gating Conditions
+
+**Laps will NOT be credited if:**
+
+1. **Phase is not GREEN/WHITE**
+   - During PRE/COUNTDOWN: Passes are logged but don't count as laps
+   - After CHECKERED: No new laps are credited (race frozen)
+   - Check `/race/state` → `flag` and `phase` fields
+
+2. **Minimum lap time not met** (`min_lap_s`)
+   - Default: 10 seconds (configurable in `config.yaml`)
+   - Passes faster than this threshold are rejected as errors or duplicates
+   - Common during bench testing with rapid manual tag presentations
+   - Check: Diagnostics page shows rejection reason "min_lap"
+
+3. **Duplicate window filter** (`min_lap_dup`)
+   - Default: 1.0 seconds
+   - Same tag seen twice within this window = duplicate, second read ignored
+   - Check: Diagnostics page shows rejection reason "dup"
+
+4. **Source role mismatch**
+   - Only `source="track"` passes credit laps for Start/Finish
+   - Pit passes (`pit_in`/`pit_out`) use explicit roles and don't credit laps
+   - Check: Diagnostics SSE stream shows `source` field for each pass
+
+5. **Entrant not enabled or not ACTIVE**
+   - Disabled entrants: passes logged but ignored for scoring
+   - Status must be `ACTIVE` (not `DNF`, `DQ`, `DISABLED`)
+   - Check: Entrants page, verify "Entrant Enabled" toggle is ON
+
+6. **First crossing after GREEN**
+   - The first pass after green flag **arms** the lap timer but doesn't credit a lap
+   - Second pass (if >= `min_lap_s`) credits Lap 1
+   - This is expected behavior - not a bug
+
+### 16.2 Diagnostic Procedures
+
+**When laps aren't counting but diagnostics shows passes:**
+
+1. **Check race phase**
+   ```
+   GET /race/state
+   Verify: "flag": "green" and "running": true
+   ```
+
+2. **Verify minimum lap time**
+   ```
+   Check config.yaml → app.engine.default_min_lap_s
+   Typical racing: 10-30 seconds
+   Bench testing: reduce to 2-5 seconds
+   ```
+
+3. **Review detection vs lap count**
+   - Race Control → Seen table shows `reads` (detection count)
+   - Standings table shows `laps` (credited laps)
+   - `reads > 0` but `laps = 0` indicates gating condition is active
+
+4. **Enable detailed logging**
+   ```yaml
+   log:
+     level: debug  # Shows per-detection decision reasons
+   ```
+
+5. **Check persistence path**
+   - Verify `lap_events` table is being written
+   - Standings won't update if persistence is failing silently
+   - Check server logs for database errors
+
+### 16.3 Race Weekend Fix (October 31, 2025)
+
+**Problem identified:**
+- Pre-race parade laps set crossing timestamps (`_last_hit_ms`)
+- When green flag dropped, first racing pass calculated delta from parade lap
+- Result: Artificially short "first lap" (e.g., 2-3 seconds instead of 45 seconds)
+- These short laps were correctly rejected by `min_lap_s` filter
+- Drivers appeared to complete first lap but lap counter stayed at 0
+
+**Solution implemented:**
+- When `set_flag("green")` is called, all `_last_hit_ms` timestamps are cleared
+- First pass after green sets fresh timestamp (arming pass)
+- Second pass calculates accurate lap time from green flag start
+- No more phantom short first laps from pre-race activity
+
+**Code location:** `backend/race_engine.py` line ~430
+```python
+if f_lower == "green":
+    if not self.running:
+        # Clear any pre-race crossing timestamps to prevent short first laps
+        for ent in self.entrants.values():
+            ent._last_hit_ms = None
+```
+
+### 16.4 Bench Testing Recommendations
+
+When testing timing hardware without actual racing:
+
+1. **Reduce minimum lap time**
+   ```yaml
+   app:
+     engine:
+       default_min_lap_s: 2  # Allow fast manual tag presentations
+   ```
+
+2. **Watch diagnostics stream**
+   - Navigate to Diagnostics / Live Sensors page
+   - Enable beep for audio feedback
+   - Look for rejection reasons in real-time
+
+3. **Use mock decoder for UI testing**
+   ```yaml
+   scanner:
+     source: mock
+     mock_tag: "3000999"
+     mock_period_s: 6.0
+   ```
+
+4. **Check effective configuration**
+   ```
+   GET /race/state
+   Verify min_lap_s matches your expectations
+   ```
+
+---
+
+## 17. Appendices
 
 - Migration scripts (e.g., `migrate_add_car_num.py`)  
 - Dummy loaders (`load_dummy_from_xlsx.py`)  
@@ -1333,4 +1591,4 @@ app:
 
 ---
 
-_Last updated: 2025-11-02_
+_Last updated: 2025-11-13_
