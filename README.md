@@ -238,7 +238,7 @@ Invoke-RestMethod http://localhost:8000/race/state
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 Contributions welcome! Please:
 1. Fork the repository
@@ -249,22 +249,14 @@ Contributions welcome! Please:
 
 ---
 
-## 📝 License
+## License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
 - Built for the Power Racing Series community
 - Supports iLap timing hardware (PRS standard)
-- Compatible with AMB/MyLaps, Trackmate, and other timing systems
-
----
-
-## 📞 Support
-
-- **Documentation:** [GitHub Pages](https://hybridsix.github.io/chronocore-rs/)
-- **Issues:** [GitHub Issues](https://github.com/hybridsix/chronocore-rs/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/hybridsix/chronocore-rs/discussions)
+- Future compatibility with AMB/MyLaps, Trackmate, and other timing systems
