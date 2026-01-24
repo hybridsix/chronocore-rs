@@ -76,6 +76,11 @@ python -m uvicorn backend.server:app --reload --port 8000
 - **Desktop Application:** Native Windows app with splash screen (pywebview)
 - **Remote Spectator:** Fullscreen Chrome display for separate screens (Windows/Linux)
 
+### Integration
+- **OSC Output:** Real-time Open Sound Control messages for lighting systems (QLC+, etc.)
+- **Flag Events:** Broadcast flag changes for automated lighting cues
+- **Lap Events:** Send lap completion and position updates
+
 ---
 
 ## Documentation
