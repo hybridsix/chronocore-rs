@@ -9,7 +9,7 @@ Designed for Power Racing Series (PRS) and adaptable to karts, RC cars, boats, a
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 **Windows (Recommended):**
 ```powershell
@@ -42,7 +42,7 @@ python -m uvicorn backend.server:app --reload --port 8000
 
 ---
 
-## ✨ Key Features
+## Key Features
 
 ### Race Management
 - **Multiple Race Modes:** Sprint (time-limited), endurance (lap-limited), qualifying sessions
@@ -78,7 +78,7 @@ python -m uvicorn backend.server:app --reload --port 8000
 
 ---
 
-## 📚 Documentation
+## Documentation
 
 - **[Operator's Guide](docs/operators_guide.md)** - Setup, race day operations, troubleshooting
 - **[Technical Reference](docs/technical_reference.md)** - Architecture, API, configuration
@@ -88,7 +88,7 @@ python -m uvicorn backend.server:app --reload --port 8000
 
 ---
 
-## 🖥️ Startup Options
+## Startup Options
 
 ### Option 1: Browser-Based Server (Recommended for Multi-Display)
 ```powershell
@@ -123,7 +123,7 @@ python -m uvicorn backend.server:app --reload --port 8000
 
 ---
 
-## 🔧 Configuration
+## Configuration
 
 Edit `config/config.yaml` to configure:
 - **Database:** SQLite path and persistence settings
@@ -145,7 +145,7 @@ See [Technical Reference](docs/technical_reference.md#3-decoder-subsystems) for 
 
 ---
 
-## 🎮 API Examples
+## API Examples
 
 ### Load a Race
 ```powershell
@@ -188,7 +188,7 @@ Invoke-RestMethod http://localhost:8000/race/state
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
