@@ -22,13 +22,70 @@ Here's what changed in the latest update:
 
 ### 1.1 Installing and Starting the Software (Python 3.12 Required)
 
-First, you'll need to install Python 3.12 if you haven't already. Then follow these steps:
+ChronoCore provides several startup options depending on how you want to run the system.
+
+#### Option 1: Browser-Based Server (Recommended for Multi-Display Setups)
+
+Use this when you want to access the UI from multiple devices/browsers.
+
+**On Windows:**
+```powershell
+.\scripts\Run-Server.ps1
+```
+
+This script will:
+- Validate your Python environment (create with `python -m venv .venv` if needed)
+- Auto-configure Windows Firewall rules (requires admin on first run)
+- Launch the lap logger in a separate window
+- Start the FastAPI server on port 8000
+
+**Access the UIs:**
+- Operator: `http://localhost:8000/ui/operator/`
+- Spectator: `http://localhost:8000/ui/spectator/`
+- Health check: `http://localhost:8000/healthz`
+
+#### Option 2: Desktop Application (Single Operator Station)
+
+Use this for a standalone operator console with native window controls.
+
+**On Windows:**
+```powershell
+.\scripts\Run-Operator.ps1          # Normal mode
+.\scripts\Run-Operator.ps1 -Debug   # With DevTools enabled
+```
+
+This script will:
+- Auto-install pywebview and PySide6 if needed
+- Start the backend server automatically
+- Launch the lap logger
+- Open the Operator UI in a native desktop window with splash screen
+
+#### Option 3: Remote Spectator Display
+
+Use this to show race results on a separate display or machine.
+
+**On Windows:**
+```powershell
+.\scripts\Run-Spectator.ps1 -Server 192.168.1.100
+```
+
+**On Linux (Debian/Ubuntu):**
+```bash
+chmod +x scripts/Run-Spectator.sh
+./scripts/Run-Spectator.sh 192.168.1.100
+```
+
+Opens the spectator UI in Chrome fullscreen mode (press F11 to exit).
+
+#### Manual Installation (Advanced)
+
+If you prefer to set up manually:
 
 **On Windows (PowerShell):**
 ```bash
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 python -m uvicorn backend.server:app --reload --port 8000
 ```
 
@@ -36,11 +93,9 @@ python -m uvicorn backend.server:app --reload --port 8000
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
+pip install -r backend/requirements.txt
 python -m uvicorn backend.server:app --reload --port 8000
 ```
-
-**Quick health check:** Open your browser to `http://localhost:8000/health` and you should see `{"ok": true}`. The main UI is at `http://localhost:8000/ui`.
 
 ### 1.2 Pre-Race Checklist
 
