@@ -35,6 +35,7 @@ import os
 import sys
 import json
 import time
+import threading
 import subprocess
 import urllib.request
 import urllib.error
@@ -117,8 +118,8 @@ SCREENS = {
 }
 
 # Uvicorn app target. Adjust if you've renamed things.
-# The canonical app is APP in backend/server.py → "backend.server:APP"
-UVICORN_APP = os.environ.get("CCRS_UVICORN_APP", "backend.server:APP")
+# The canonical app is 'app' (lowercase) in backend/server.py → "backend.server:app"
+UVICORN_APP = os.environ.get("CCRS_UVICORN_APP", "backend.server:app")
 
 # Give ourselves a global handle for cleanup & API plumbing
 _backend_proc: Optional[subprocess.Popen] = None
@@ -386,11 +387,20 @@ def _start_backend(timeout_s: float = 15.0) -> None:
         time.sleep(0.2)
 
     # If we reach here, we didn't get healthy in time - show context for debugging.
-    _log(f"Timed out waiting for backend to become healthy after {timeout_s:.1f}s.")
+    _log(f"ERROR: Timed out waiting for backend to become healthy after {timeout_s:.1f}s.")
+    _log("")
     if line_cache:
         _log("Recent backend logs:")
         for ln in line_cache[-20:]:
             _log(f"> {ln.rstrip()}")
+    else:
+        _log("No backend output captured - process may have failed immediately.")
+    _log("")
+    _log("TROUBLESHOOTING:")
+    _log("1. Check that config/config.yaml exists and is valid")
+    _log("2. Verify Python dependencies: pip install -r backend/requirements.txt")
+    _log("3. Try running the server manually: python -m uvicorn backend.server:app --port 8000")
+    _log("")
 
 
 def _stop_backend() -> None:
@@ -443,40 +453,51 @@ class Api:
     # --------------------
     # Navigation helpers
     # --------------------
-    def goto(self, screen_id: str) -> bool:
+    def goto(self, screen_id: str) -> str:
         """
         Navigate to a different operator page.
         Logic:
           - If backend is healthy, prefer SERVED URL so fetch('/...') stays same-origin.
           - Else, fall back to file:// so we can still show the requested page.
+        
+        Returns: "ok" string immediately, schedules navigation on a background thread
+                 to avoid pywebview callback race conditions.
         """
-        if screen_id not in SCREENS:
-            return False
-        if not self.window:
-            return False
+        if screen_id not in SCREENS or not self.window:
+            return "ok"
 
-        # Prefer served page if possible (specific file, e.g. entrants.html)
+        # Determine target URL
         if _backend_healthy():
-            served_url = _serve_url(f"/ui/operator/{SCREENS[screen_id].name}")
-            self.window.load_url(served_url)
-            return True
+            target_url = _serve_url(f"/ui/operator/{SCREENS[screen_id].name}")
+        else:
+            target_url = SCREENS[screen_id].resolve().as_uri()
 
-        # Fallback to file:// path
-        self.window.load_url(SCREENS[screen_id].resolve().as_uri())
-        return True
+        # Schedule navigation on background thread after return value is sent
+        def _navigate():
+            time.sleep(0.05)  # Small delay to let callback complete
+            try:
+                self.window.load_url(target_url)
+            except Exception:
+                pass
+
+        threading.Thread(target=_navigate, daemon=True).start()
+        return "ok"
 
     # --------------------
     # External links
     # --------------------
-    def open_external(self, url: str) -> bool:
-        """Open a URL in the system default browser (used for docs, GitHub, etc.)."""
+    def open_external(self, url: str) -> str:
+        """
+        Open a URL in the user's default browser (safely).
+        Returns "ok" to satisfy pywebview's callback system.
+        """
         try:
-            webbrowser.open(url, new=2)
-            return True
+            webbrowser.open(url)
         except Exception:
-            return False
+            pass
+        return "ok"
 
-    def open_spectator(self) -> bool:
+    def open_spectator(self) -> str:
         """Convenience to open the spectator page in the system browser."""
         return self.open_external(SPECTATOR_URL)
 
@@ -547,8 +568,9 @@ def main():
 
     # Start GUI with Qt only (no confusing fallbacks), run bootstrap in the background.
     try:
-        # debug=False → production-ish. Flip to True when you want DevTools.
-        webview.start(gui="qt", http_server=False, debug=False, func=_bootstrap)
+        # Check if debug mode is enabled via environment variable
+        debug_mode = bool(os.environ.get("CCRS_DEBUG", ""))
+        webview.start(gui="qt", http_server=False, debug=debug_mode, func=_bootstrap)
     finally:
         _stop_logger()
         _stop_backend()
