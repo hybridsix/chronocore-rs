@@ -1498,7 +1498,82 @@ The mock decoder emits a fixed tag at regular intervals, useful for:
 - CI/CD integration testing
 - Demo modes at events
 
-### 11.2 Simulator Scripts
+### 11.2 Startup Scripts
+
+ChronoCore provides production-ready startup scripts for different deployment scenarios:
+
+**Run-Server.ps1** (Windows browser-based deployment):
+- **Purpose:** Multi-device access via web browsers
+- **Features:**
+  - Validates Python environment and config file
+  - Auto-creates Windows Firewall rules (requires admin on first run)
+  - Launches lap logger in separate PowerShell window
+  - Starts FastAPI server with uvicorn
+- **Usage:**
+  ```powershell
+  .\scripts\Run-Server.ps1          # Default: port 8000, auto-reload
+  .\scripts\Run-Server.ps1 -Port 8080 -NoReload  # Custom port, no reload
+  ```
+- **Firewall rules created:**
+  - Inbound: "ChronoCoreRS Server (Inbound)" - HTTP connections
+  - Outbound: "ChronoCoreRS OSC Output (Outbound)" - UDP lighting control
+- **Access points:**
+  - Operator UI: `http://localhost:8000/ui/operator/`
+  - Spectator UI: `http://localhost:8000/ui/spectator/`
+  - Health check: `http://localhost:8000/healthz`
+
+**Run-Operator.ps1** (Windows desktop application):
+- **Purpose:** Standalone operator station with native window
+- **Features:**
+  - Auto-installs pywebview and PySide6 dependencies
+  - Launches FastAPI backend as subprocess
+  - Shows splash screen during startup
+  - Opens Operator UI in native Qt window
+  - Auto-stops backend on window close
+- **Usage:**
+  ```powershell
+  .\scripts\Run-Operator.ps1        # Production mode
+  .\scripts\Run-Operator.ps1 -Debug # With DevTools enabled
+  ```
+- **Technical details:**
+  - Uses `operator_launcher.py` for backend management
+  - Navigation uses delayed threading to avoid pywebview callback races
+  - Serves UI from backend (same-origin) with file:// fallback
+  - Backend health checks before window creation
+
+**Run-Spectator.ps1** (Windows remote display):
+- **Purpose:** Spectator display on separate Windows machines
+- **Features:**
+  - Auto-detects Chrome or Edge browser
+  - Tests server connectivity before launch
+  - Opens in fullscreen (not kiosk) mode
+  - User can exit with F11 or Alt+F4
+- **Usage:**
+  ```powershell
+  .\scripts\Run-Spectator.ps1                      # localhost:8000
+  .\scripts\Run-Spectator.ps1 -Server 192.168.1.100  # Remote server
+  .\scripts\Run-Spectator.ps1 -Server 10.0.0.5 -Port 8080  # Custom port
+  ```
+
+**Run-Spectator.sh** (Linux remote display):
+- **Purpose:** Spectator display on Debian/Ubuntu Linux boxes
+- **Features:**
+  - Auto-detects google-chrome, chromium, or chromium-browser
+  - Tests connectivity with curl
+  - Fullscreen mode with minimal Chrome flags
+- **Usage:**
+  ```bash
+  chmod +x scripts/Run-Spectator.sh
+  ./scripts/Run-Spectator.sh                    # localhost:8000
+  ./scripts/Run-Spectator.sh 192.168.1.100      # Remote server
+  ./scripts/Run-Spectator.sh 192.168.1.100 8080 # Custom port
+  ```
+- **Common deployment:** Small Linux machine (e.g., Raspberry Pi) connected to display
+
+**Venv Path Workaround:**
+All scripts use `python.exe -m <module>` pattern instead of wrapper executables to handle broken venv shebang paths. This allows using existing venvs without recreation.
+
+### 11.3 Simulator Scripts
 
 **Sprint Simulator** (`scripts/Run-SimSprint.ps1`):
 - Simulates a time-limited sprint race
@@ -1510,7 +1585,7 @@ The mock decoder emits a fixed tag at regular intervals, useful for:
 - Tests pit timing features
 - Demonstrates multi-hour race scenarios
 
-### 11.3 Dummy Data Loader
+### 11.4 Dummy Data Loader
 
 **`backend/tools/load_dummy_from_xlsx.py`**:
 - Imports entrant rosters from Excel spreadsheets
@@ -1522,7 +1597,7 @@ The mock decoder emits a fixed tag at regular intervals, useful for:
 python backend/tools/load_dummy_from_xlsx.py roster.xlsx
 ```
 
-### 11.4 Feed Simulator
+### 11.5 Feed Simulator
 
 **`backend/tools/sim_feed.py`**:
 - Generates synthetic timing passes
@@ -1625,7 +1700,11 @@ app:
 
 - **Python**: 3.12
 - **Core deps**: fastapi, starlette, uvicorn[standard], httpx, aiosqlite, pyyaml, pyserial, pandas, openpyxl
-- Launch: `python -m uvicorn backend.server:app --reload --port 8000`
+- Launch options:
+  - **Browser-based server:** `.\scripts\Run-Server.ps1` (Windows) - Launches server + lap logger with firewall auto-config
+  - **Desktop application:** `.\scripts\Run-Operator.ps1` (Windows) - Native pywebview window with auto-start backend
+  - **Remote spectator:** `.\scripts\Run-Spectator.ps1 -Server <IP>` (Windows) or `./scripts/Run-Spectator.sh <IP>` (Linux)
+  - **Manual:** `python -m uvicorn backend.server:app --reload --port 8000`
 
 ---
 
