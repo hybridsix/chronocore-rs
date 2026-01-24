@@ -635,6 +635,181 @@ The race controller maintains both a **phase** (coarse lifecycle) and a **flag**
 - `white`: final lap window. Semantics mirror `green`, but UI may highlight the banner.
 - `checkered`: race frozen. Clock and classification lock until the session resets or a new race loads.
 
+### 8.4.1 Soft-End Mode (2026-01-24)
+
+Soft-end mode decouples the **visual finish** (CHECKERED flag) from **race completion** (final freeze). This allows drivers to complete their current lap after the time/lap limit is reached, creating more natural race finishes and accurate lap counts.
+
+**Key Concepts:**
+
+- **WHITE Flag** = Warning indicator at traditional times (T-60s for time races, lap N-1 for lap races)
+- **CHECKERED Flag** = Visual finish marker at limit (T=0 or lap N), triggers lights/sounds
+- **Soft-End Window** = Configurable timeout (default 30s) after CHECKERED where lap counting continues
+- **finish_order** = Sequential counter tracking crossing order after limit reached
+- **Race Freeze** = Automatic closure after soft_end_timeout_s expires
+
+**Behavior Comparison:**
+
+| Aspect | Hard-End (soft_end: false) | Soft-End (soft_end: true) |
+|--------|---------------------------|---------------------------|
+| WHITE flag timing | T-60s / lap N-1 | T-60s / lap N-1 (same) |
+| CHECKERED flag timing | T=0 / lap N | T=0 / lap N (same) |
+| Lap counting after CHECKERED | Stops immediately | Continues for timeout period |
+| Race freeze | Immediate on CHECKERED | After soft_end_timeout_s expires |
+| Finish order tracking | Not used | Sequential crossing order |
+| Standings sort | Laps → best → last | Laps → finish_order → best → last |
+
+**Configuration (config/race_modes.yaml):**
+
+```yaml
+sprint_10_laps:
+  label: "10 Lap Sprint"
+  min_lap_s: 5.0
+  limit:
+    type: laps
+    value: 10
+    soft_end: true              # Enable soft-end mode
+    soft_end_timeout_s: 30      # Timeout in seconds (default: 30)
+  scoring:
+    method: position
+
+endurance_30min:
+  label: "30 Minute Endurance"
+  min_lap_s: 8.0
+  limit:
+    type: time
+    value_s: 1800               # 30 minutes
+    soft_end: true
+    soft_end_timeout_s: 45      # Longer timeout for endurance
+  scoring:
+    method: laps_then_time
+```
+
+**Engine State Tracking:**
+
+```python
+# Added to RaceEngine.reset():
+self.soft_end: bool = False                          # Mode flag from config
+self.soft_end_timeout_s: int = 30                    # Configurable timeout
+self._checkered_flag_start_ms: Optional[int] = None  # Track CHECKERED start
+
+# Added to Entrant:
+self.finish_order: Optional[int] = None              # Crossing position after limit
+self.soft_end_completed: bool = False                # Has entrant finished final lap?
+```
+
+**Automatic Flag Behavior:**
+
+1. **WHITE Flag (Warning)**:
+   - Time races: Thrown automatically at T-60s (if race ≥ 60s total)
+   - Lap races: Thrown automatically when leader reaches lap N-1
+   - Behavior identical for both soft-end and hard-end modes
+   - Operator can manually throw WHITE at any time
+
+2. **CHECKERED Flag (Finish)**:
+   - Time races: Thrown automatically at T=0 (clock reaches limit)
+   - Lap races: Thrown automatically when leader crosses at lap N
+   - Triggers lights/sounds via OSC integration
+   - Records `_checkered_flag_start_ms` for timeout tracking
+
+**Lap Counting Logic After CHECKERED:**
+
+```python
+# In ingest_pass():
+if self.flag == "checkered" and not self.soft_end:
+    return {"ok": True, "reason": "checkered_freeze"}  # Hard-end: stop immediately
+
+if self.soft_end and self.flag == "checkered" and ent.soft_end_completed:
+    return {"ok": True, "reason": "soft_end_completed"}  # Entrant already finished
+
+# Count lap and track finish order:
+ent.laps += 1
+if self.flag == "checkered" and ent.finish_order is None:
+    self._finish_order_counter += 1
+    ent.finish_order = self._finish_order_counter
+    if self.soft_end:
+        ent.soft_end_completed = True  # Block future laps for this entrant
+```
+
+**Timeout Enforcement:**
+
+```python
+# In _update_clock():
+if (self.flag == "checkered"
+    and self.soft_end
+    and self._checkered_flag_start_ms is not None
+    and self.soft_end_timeout_s > 0):
+    
+    checkered_duration_ms = self.clock_ms - self._checkered_flag_start_ms
+    timeout_ms = self.soft_end_timeout_s * 1000
+    
+    if checkered_duration_ms >= timeout_ms:
+        # Freeze race after timeout expires
+        self.running = False
+        self.clock_start_monotonic = None
+        self.clock_ms_frozen = self.clock_ms
+```
+
+**Standings Sort Order:**
+
+```python
+def sort_key(e: Entrant):
+    best = e.best_s if e.best_s is not None else 9e9
+    last = e.last_s if e.last_s is not None else 9e9
+    finish = e.finish_order if e.finish_order is not None else 9e9
+    
+    if self.soft_end:
+        # Soft-end: use finish_order as primary tiebreaker after laps
+        return (-e.laps, finish, best, last, e.entrant_id)
+    else:
+        # Hard-end: traditional sort (no finish order)
+        return (-e.laps, best, last, e.entrant_id)
+```
+
+**Race Timeline Example (10-lap race, 30s timeout):**
+
+```
+Lap 9:  WHITE flag thrown (leader reaches lap 9)
+Lap 10: Leader crosses → CHECKERED flag thrown
+        - Leader assigned finish_order = 1
+        - Timer starts: _checkered_flag_start_ms = 600000
+        - Race continues running (running = True)
++5s:    P2 crosses at lap 10 → finish_order = 2, soft_end_completed = True
++8s:    P3 crosses at lap 9 → finish_order = 3, soft_end_completed = True
++12s:   P4 crosses at lap 9 → finish_order = 4, soft_end_completed = True
++30s:   Timeout expires → Race freezes (running = False)
+        - Final standings: sorted by (laps desc, finish_order asc)
+```
+
+**Persistence:**
+
+- finish_order values are **not** persisted to database (runtime-only for UI sorting)
+- soft_end configuration comes from race_modes.yaml and session config
+- Final frozen results reflect lap counts and times as of timeout expiration
+- Journal includes all lap events during soft-end window for post-race analysis
+
+**Session Config Override:**
+
+```python
+# In /engine/load endpoint:
+session_config = {
+    "limit": {
+        "type": "time",
+        "value_s": 1200,       # 20 minutes
+        "soft_end": False      # Override mode's soft_end setting
+    }
+}
+# If soft_end key present in session_config, it overrides race mode config
+# Otherwise, race mode config value is preserved
+```
+
+**UI Implications:**
+
+- Standings continue updating during soft-end window
+- Clock continues ticking until timeout expires
+- finish_order field can be displayed in standings tables (if desired)
+- "Race Running" indicator stays active until freeze
+- OSC lighting: CHECKERED lights triggered at limit, not at timeout
+
 ### Allowed flag transitions
 
 | Current phase | Accepted flags | Notes |
