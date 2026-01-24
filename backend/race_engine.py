@@ -22,7 +22,7 @@ ALLOWED_STATUS = {"ACTIVE","DISABLED","DNF","DQ"}
 class Entrant:
     __slots__ = ("entrant_id","enabled","status","tag","number","name",
                  "laps","last_s","best_s","pace_buf","pit_open_at_ms",
-                 "pit_count","last_pit_s","_last_hit_ms","grid_index","brake_valid")
+                 "pit_count","last_pit_s","_last_hit_ms","grid_index","brake_valid","finish_order","soft_end_completed")
     def __init__(self, entrant_id:int, enabled:bool=True, status:str="ACTIVE",
                  tag:Optional[str]=None, number:Optional[str]=None, name:str="",
                  grid_index:Optional[int]=None, brake_valid:Optional[bool]=None):
@@ -45,6 +45,8 @@ class Entrant:
         self.last_pit_s: Optional[float] = None
 
         self._last_hit_ms: Optional[int] = None
+        self.finish_order: Optional[int] = None  # Position crossing S/F after time expires
+        self.soft_end_completed: bool = False  # Has this entrant finished their final lap in soft_end?
     def as_snapshot(self, leader_best_s: Optional[float], leader_laps:int) -> Dict:
         # gap_s only meaningful on same-lap cohort; else 0 with lap_deficit>0
         lap_deficit = max(0, leader_laps - self.laps)
@@ -234,7 +236,8 @@ class RaceEngine:
             self.soft_end: bool = False
             self._white_window_begun = False
             self._white_set = False
-
+            self.soft_end_timeout_s: int = 30  # Default soft_end timeout in seconds
+            self._checkered_flag_start_ms: Optional[int] = None  # Track when CHECKERED flag was thrown for soft_end timeout
 
 
             self.entrants: Dict[int, Entrant] = {}
@@ -242,6 +245,7 @@ class RaceEngine:
             self._lap_history: Dict[int, List[int]] = {}
             self._next_provisional_id = 1
             self._provisional_cap = 50
+            self._finish_order_counter: int = 0  # Counter for finish order in timed/lap races
 
             self._last_update_utc = 0
             self._events_ring: List[dict] = []  # in-memory trace for debug
@@ -290,9 +294,11 @@ class RaceEngine:
                 self._lap_limit = int(float(value)) if value not in (None, "") else 0
                 self._time_limit_s = 0
 
-            # Soft-end (time mode only)
-            self.soft_end = bool((session_config or {}).get("limit", {}).get("soft_end", False)) \
-                            if self._limit_type == "time" else False
+            # Soft-end: session_config overrides mode config, else keep mode config value
+            if isinstance(session_config, dict) and isinstance(session_config.get("limit"), dict):
+                if "soft_end" in session_config["limit"]:
+                    self.soft_end = bool(session_config["limit"]["soft_end"])
+            # else: keep soft_end value set by _apply_mode_cfg
 
             # Make enforcement + snapshot reflect session_config if provided
             if self._limit_type == "time" and self._time_limit_s > 0:
@@ -359,6 +365,10 @@ class RaceEngine:
         if "min_lap_s" in m:
             self.min_lap_s = float(m["min_lap_s"])
 
+        # soft_end timeout (applies to both time and lap races)
+        lim = m.get("limit") or {}
+        self.soft_end_timeout_s = int(lim.get("soft_end_timeout_s", 30))
+
         # light snapshot for UIs/exports
         self._active_mode = {
             "name": mode_name,
@@ -368,19 +378,26 @@ class RaceEngine:
         }
 
         # extract limit for enforcement
-        lim = m.get("limit") or {}
         ltype = str(lim.get("type", "")).lower()
-        lval = lim.get("value")
+        # Handle both value_s/value_laps (YAML) and value (normalized)
+        lval = lim.get("value") or lim.get("value_s") or lim.get("value_laps")
 
         if ltype in {"time", "laps"} and isinstance(lval, (int, float)) and lval > 0:
-            self._limit = {"type": ltype, "value": lval}
+            self._limit = {"type": ltype, "value": lval}  # Normalize to "value" key
+            self._limit_type = ltype  # Set limit type
             if ltype == "time":
                 self._limit_ms = int(float(lval) * 1000)
                 self._limit_laps = None
+                self._time_limit_s = int(float(lval))
+                self._lap_limit = 0
             else:
                 self._limit_laps = int(lval)
                 self._limit_ms = None
+                self._lap_limit = int(lval)
+                self._time_limit_s = 0
             self._limit_reached = False
+            # Also set soft_end from mode config
+            self.soft_end = bool(lim.get("soft_end", False))
         else:
             # no valid limit configured
             self._limit = None
@@ -417,6 +434,9 @@ class RaceEngine:
             elif f_lower == "checkered":
                 # Finishing guarantees no future auto-white
                 self._white_set = True
+                # Track when CHECKERED flag started for soft_end timeout enforcement
+                if self._checkered_flag_start_ms is None:
+                    self._checkered_flag_start_ms = self.clock_ms
             elif f_lower == "white":
                 # Operator threw WHITE manually: mark it as set to avoid redundant re-sets
                 self._white_set = True
@@ -433,10 +453,12 @@ class RaceEngine:
             elif f_lower == "checkered":
                 # Freeze clock at current time
                 self._update_clock()
-                self.running = False
-                self.clock_start_monotonic = None
-                self.clock_ms_frozen = self.clock_ms
                 self._limit_reached = True
+                # For hard-end races, freeze immediately. For soft-end, we keep running.
+                if not self.soft_end:
+                    self.running = False
+                    self.clock_start_monotonic = None
+                    self.clock_ms_frozen = self.clock_ms
                 lap_history_copy = {eid: list(laps) for eid, laps in self._lap_history.items()}
                 persist_needed = True
             else:
@@ -481,15 +503,28 @@ class RaceEngine:
 
             self.clock_start_monotonic = now
 
-            # Time-limit enforcement
+            # Time-limit enforcement: CHECKERED at T=0
             if (not self._limit_reached
                 and self._limit_ms is not None
                 and self.flag != "checkered"
                 and self._limit_type == "time"
                 and self._time_limit_s > 0
-                and not self.soft_end
                 and self.clock_ms >= self._limit_ms):
+                # Throw CHECKERED at time limit (triggers lights/sounds)
                 self._auto_checkered("time_limit")
+
+            # Soft-end timeout enforcement: stop the race after timeout expires
+            if (self.flag == "checkered"
+                and self.soft_end
+                and self._checkered_flag_start_ms is not None
+                and self.soft_end_timeout_s > 0):
+                checkered_duration_ms = self.clock_ms - self._checkered_flag_start_ms
+                timeout_ms = self.soft_end_timeout_s * 1000
+                if checkered_duration_ms >= timeout_ms:
+                    # Actually freeze the race after timeout
+                    self.running = False
+                    self.clock_start_monotonic = None
+                    self.clock_ms_frozen = self.clock_ms
 
     # ---------- passes & pits ----------
     def ingest_pass(self, tag:str, ts_ns:Optional[int]=None, source:str="track", device_id:Optional[str]=None) -> dict:
@@ -549,11 +584,18 @@ class RaceEngine:
                         ent.pit_open_at_ms = None
                 return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "pit_event"}
 
-            # track (lap) logic - red still counts per your rule. checkered freezes (no increments)
-            if self.flag == "checkered":
+            # track (lap) logic - checkered behavior depends on soft_end
+            if self.flag == "checkered" and not self.soft_end:
+                # Hard-end: no more laps after CHECKERED
                 return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "checkered_freeze"}
 
-            # derive lap time from entrant’s last hit; we measure by engine clock deltas
+            # Soft-end: after first crossing during CHECKERED, stop counting laps for this entrant
+            if (self.soft_end
+                and self.flag == "checkered"
+                and ent.soft_end_completed):
+                return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "soft_end_completed"}
+
+            # derive lap time from entrant's last hit; we measure by engine clock deltas
             prev_mark = ent._last_hit_ms
             ent._last_hit_ms = self.clock_ms
 
@@ -579,11 +621,28 @@ class RaceEngine:
                 self._maybe_auto_white_lap()
                 lap_added = True
                 lap_time_s = round(delta_s, 3)
-                # Lap-limit enforcement
+                
+                # Track finish order after CHECKERED flag is thrown
+                if (self.flag == "checkered"
+                    and ent.finish_order is None):
+                    self._finish_order_counter += 1
+                    ent.finish_order = self._finish_order_counter
+                    # Mark as completed during soft_end to prevent further lap increments
+                    if self.soft_end:
+                        ent.soft_end_completed = True
+                
+                # Lap-limit enforcement: CHECKERED when leader reaches lap count
                 if (not self._limit_reached
                     and self._limit_laps is not None
                     and self.flag != "checkered"
                     and ent.laps >= self._limit_laps):
+                    # Assign finish_order to the leader who triggers CHECKERED
+                    if ent.finish_order is None:
+                        self._finish_order_counter += 1
+                        ent.finish_order = self._finish_order_counter
+                        if self.soft_end:
+                            ent.soft_end_completed = True
+                    # Always throw CHECKERED at lap limit (triggers lights/sounds)
                     self._auto_checkered("lap_limit")
             # else: first crossing sets start mark; no lap yet
 
@@ -659,7 +718,7 @@ class RaceEngine:
             return 0
 
     def _maybe_auto_white_time(self) -> None:
-        """Time mode: throw WHITE at T-60s (skip if T<60 or soft/free play)."""
+        """Time mode: throw WHITE at T-60s (skip if T<60)."""
         if getattr(self, "_white_set", False):
             return
 
@@ -667,8 +726,6 @@ class RaceEngine:
         if flag in {"checkered", "red", "yellow", "blue"}:
             return
         if getattr(self, "_limit_type", "") != "time" or getattr(self, "_time_limit_s", 0) <= 0:
-            return
-        if bool(getattr(self, "soft_end", False)):
             return
 
         rem = float(self._time_limit_s) - float(self._elapsed_s())
@@ -826,11 +883,19 @@ class RaceEngine:
             # ordering
             entrants = list(self.entrants.values())
 
-            # sort: laps desc → best asc → last asc → entrant_id asc
+            # sort: laps desc → finish_order asc (when soft_end) → best asc → last asc → entrant_id asc
             def sort_key(e: Entrant):
                 best = e.best_s if e.best_s is not None else 9e9
                 last = e.last_s if e.last_s is not None else 9e9
-                return (-e.laps, best, last, e.entrant_id)
+                # For races with soft_end, use finish order as primary tiebreaker after lap count
+                # Lower finish_order = crossed S/F first after limit reached = better position
+                finish = e.finish_order if e.finish_order is not None else 9e9
+                if self.soft_end:
+                    # Both time and lap races use finish_order when soft_end is enabled
+                    return (-e.laps, finish, best, last, e.entrant_id)
+                else:
+                    # Hard-end races use traditional sort (no finish order)
+                    return (-e.laps, best, last, e.entrant_id)
 
             entrants.sort(key=sort_key)
 

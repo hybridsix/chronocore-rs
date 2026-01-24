@@ -109,13 +109,96 @@ While the race is running, you can use different flags to manage the action:
 
 ## 5. Ending the Race (Flag = Checkered)
 
-When it's time to finish:
+### 5.1 Understanding Race Finish Modes
 
-1. Click the **CHECKERED** flag button
-2. Watch for the leader to cross the finish line
-3. As soon as the leader crosses under checkered, the race **freezes** - the clock stops and the final order locks in
-4. Any transponder reads after this point are ignored
-5. The frozen snapshot is now your official result
+ChronoCore supports two different race finish behaviors:
+
+**Hard-End Mode (Traditional):**
+- Click **CHECKERED** flag button
+- Leader crosses the finish line
+- Race **freezes immediately** - clock stops, standings lock
+- Any transponder reads after this point are ignored
+
+**Soft-End Mode (Recommended for Most Races):**
+- System automatically throws **WHITE** flag at T-60s (time races) or lap N-1 (lap races) as a warning
+- System automatically throws **CHECKERED** flag when time expires (T=0) or leader completes final lap
+- Race **continues counting laps** for a configurable timeout period (default: 30 seconds)
+- Drivers can finish their current lap and cross the line
+- System tracks the order drivers cross after the limit is reached
+- Race **freezes automatically** after the timeout expires
+
+### 5.2 How Soft-End Works (Step by Step)
+
+Let's say you're running a 10-lap race with soft-end enabled:
+
+1. **Lap 9**: Leader completes lap 9
+   - System automatically throws **WHITE** flag (warning: final lap coming)
+   - Lights/sounds indicate final lap situation
+
+2. **Lap 10**: Leader crosses at lap 10
+   - System automatically throws **CHECKERED** flag
+   - Checkered lights come on
+   - Race **keeps running** - clock continues, lap counting continues
+   - Leader gets finishing position #1
+
+3. **During the 30-second window**:
+   - Other drivers complete their current lap and cross the line
+   - Each driver gets a finishing position based on when they cross: #2, #3, #4, etc.
+   - System prevents drivers from starting additional laps (one crossing per driver)
+   - Standings update to show final positions
+
+4. **After 30 seconds**: Race freezes automatically
+   - Clock stops at the timeout moment
+   - Final standings locked
+   - Official results ready
+
+### 5.3 Why Use Soft-End?
+
+**Advantages:**
+- More accurate lap counts (drivers get credit for laps in progress)
+- Natural race finish (no sudden cutoff mid-lap)
+- Fair classification (finishing order based on actual crossing times)
+- Better spectator experience (watch everyone finish)
+
+**When to Use Hard-End:**
+- Qualifying sessions where only best lap matters
+- Practice sessions
+- When you need immediate freeze for time-critical scheduling
+
+### 5.4 What You'll See
+
+During soft-end mode:
+- **Flag banner**: Shows CHECKERED (race has finished)
+- **Race clock**: Continues ticking up to the timeout
+- **Standings**: Update as drivers cross the finish line
+- **Position numbers**: Reflect finishing order, not just lap count
+- **Running indicator**: Shows "Race Running" until timeout expires
+
+### 5.5 Manual Override
+
+You can still manually throw flags during soft-end:
+- **YELLOW/RED**: Stop action if there's an incident
+- **Checkered stays active**: You can't un-throw the checkered flag
+- Race will still freeze after the configured timeout
+
+### 5.6 Configuration
+
+Soft-end is configured per race mode in `config/race_modes.yaml`:
+
+```yaml
+sprint_10_laps:
+  label: "10 Lap Sprint"
+  limit:
+    type: laps
+    value: 10
+    soft_end: true              # Enable soft-end
+    soft_end_timeout_s: 30      # 30 second window
+```
+
+Common timeout values:
+- **Sprint races**: 30 seconds (default)
+- **Endurance races**: 45-60 seconds (longer laps)
+- **Club races**: 30-45 seconds
 
 Easy as that!
 

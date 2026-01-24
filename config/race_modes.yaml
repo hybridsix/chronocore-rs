@@ -14,7 +14,8 @@ modes:
       timeout_s: 0
     label: 3min Test
     limit:
-      soft_end: false
+      soft_end: true
+      soft_end_timeout_s: 30
       type: time
       value_s: 180
     min_lap_s: 4.1
@@ -32,17 +33,44 @@ modes:
       start_enabled: true
       start_from_s: 10
       timeout_pad_s: 0
-    hot_lap_10m: null
+    label: Endurance Race (75 min)
+    limit:
+      soft_end: true
+      soft_end_timeout_s: 30
+      type: time
+      value_s: 4500
+    min_lap_s: 4.1
+    rank_method: total_laps
+    relay:
+      change_horn: true
+      driver_change_interval_s: 900
+    sounds:
+      checkered_horn: false
+      countdown_beep_last_s: 0
+      starting_horn: false
+      white_flag:
+        mode: auto
+  hot_lap:
+    announcements:
+      best_lap_speech: false
+      lap_indication: beep
+      rank_change_speech: false
+      rank_enabled: false
+      rank_interval_laps: 0
+    countdown:
+      end_enabled: false
+      end_from_s: 10
+      start_enabled: true
+      start_from_s: 10
+      timeout_pad_s: 0
     label: Hot-Lap Challenge (10 min)
     limit:
-      soft_end: false
+      soft_end: true
+      soft_end_timeout_s: 30
       type: time
       value_s: 600
     min_lap_s: 4.1
     rank_method: best_lap
-    relay:
-      change_horn: true
-      driver_change_interval_s: 900
     sounds:
       checkered_horn: false
       countdown_beep_last_s: 0
@@ -91,6 +119,7 @@ modes:
     label: Qualifying (1 hr, soft)
     limit:
       soft_end: true
+      soft_end_timeout_s: 0
       type: time
       value_s: 3600
     min_lap_s: 4.1
@@ -116,7 +145,8 @@ modes:
       timeout_pad_s: 0
     label: Sprint (15 min)
     limit:
-      soft_end: false
+      soft_end: true
+      soft_end_timeout_s: 30
       type: time
       value_s: 900
     min_lap_s: 4.1
@@ -142,6 +172,8 @@ modes:
       timeout_pad_s: 0
     label: Sprint (10 laps)
     limit:
+      soft_end: true
+      soft_end_timeout_s: 30
       type: laps
       value_laps: 10
     min_lap_s: 4.1
