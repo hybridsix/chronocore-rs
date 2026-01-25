@@ -104,7 +104,7 @@ try:
 except Exception:
     DB_PATH = Path(REPO_ROOT / "backend" / "db" / "laps.sqlite").resolve()
 
-# Build the SCREENS mapping to LOCAL FILES (these stay as-is - we won’t break them)
+# Build the SCREENS mapping to LOCAL FILES (these stay as-is - we won't break them)
 # Note: These are used for the splash screen and as a fallback when backend is unreachable.
 SCREENS = {
     "splash": (UI_DIR / "splash.html"),      # Small frameless splash while services warm up
@@ -115,6 +115,10 @@ SCREENS = {
     "race_setup": (UI_DIR / "race_setup.html"),
     "race_control": (UI_DIR / "race_control.html"),
     "settings": (UI_DIR / "settings.html"),
+    "diag": (UI_DIR / "diag.html"),
+    "moxie_board": (UI_DIR / "moxie_board.html"),
+    "control": (UI_DIR / "control.html"),
+    "mock_showcase": (UI_DIR / "mock_showcase.html"),
 }
 
 # Uvicorn app target. Adjust if you've renamed things.
