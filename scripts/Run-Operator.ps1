@@ -12,15 +12,38 @@ Write-Host "=== ChronoCore Operator Console ===" -ForegroundColor Cyan
 Write-Host "Starting desktop application..." -ForegroundColor Green
 Write-Host ""
 
-# Check for Python virtual environment
-if (-not (Test-Path "$Root\.venv\Scripts\Activate.ps1")) {
-    Write-Host "ERROR: Python virtual environment not found at $Root\.venv" -ForegroundColor Red
+# Check/create venv if it doesn't exist
+$VenvPython = "$Root\.venv\Scripts\python.exe"
+if (-not (Test-Path $VenvPython)) {
+    Write-Host "Virtual environment not found. Creating..." -ForegroundColor Yellow
+    
+    # Check if Python is available
+    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $pythonCmd) {
+        Write-Host "ERROR: Python not found in PATH!" -ForegroundColor Red
+        Write-Host "Please install Python 3.12+ and ensure it's in your PATH." -ForegroundColor Yellow
+        exit 1
+    }
+    
+    Write-Host "Creating virtual environment at: $Root\.venv" -ForegroundColor Cyan
+    & python -m venv "$Root\.venv"
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to create virtual environment" -ForegroundColor Red
+        exit 1
+    }
+    
+    Write-Host "Installing dependencies from backend/requirements.txt..." -ForegroundColor Cyan
+    & "$VenvPython" -m pip install --upgrade pip
+    & "$VenvPython" -m pip install -r "$Root\backend\requirements.txt"
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to install dependencies" -ForegroundColor Red
+        exit 1
+    }
+    
+    Write-Host "Virtual environment created successfully!" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Run the following commands to set up:" -ForegroundColor Yellow
-    Write-Host "  python -m venv .venv" -ForegroundColor White
-    Write-Host "  .\.venv\Scripts\Activate.ps1" -ForegroundColor White
-    Write-Host "  pip install -r backend\requirements.txt" -ForegroundColor White
-    exit 1
 }
 
 # Check for config file
@@ -31,7 +54,7 @@ if (-not (Test-Path "$Root\config\config.yaml")) {
 
 # Check if pywebview is installed
 Write-Host "Checking dependencies..." -ForegroundColor Gray
-$pythonExe = "$Root\.venv\Scripts\python.exe"
+$pythonExe = "$VenvPython"
 
 try {
     & $pythonExe -c "import webview" 2>$null

@@ -25,15 +25,37 @@ $VenvPython = "$Root\.venv\Scripts\python.exe"
 Write-Host "=== ChronoCoreRS Server Startup ===" -ForegroundColor Cyan
 Write-Host ""
 
-# Check venv exists (don't recreate - just use what's there)
+# Check/create venv if it doesn't exist
 if (-not (Test-Path $VenvPython)) {
-    Write-Host "ERROR: Python virtual environment not found at: $VenvPython" -ForegroundColor Red
+    Write-Host "Virtual environment not found. Creating..." -ForegroundColor Yellow
+    
+    # Check if Python is available
+    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
+    if (-not $pythonCmd) {
+        Write-Host "ERROR: Python not found in PATH!" -ForegroundColor Red
+        Write-Host "Please install Python 3.12+ and ensure it's in your PATH." -ForegroundColor Yellow
+        exit 1
+    }
+    
+    Write-Host "Creating virtual environment at: $Root\.venv" -ForegroundColor Cyan
+    & python -m venv "$Root\.venv"
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to create virtual environment" -ForegroundColor Red
+        exit 1
+    }
+    
+    Write-Host "Installing dependencies from backend/requirements.txt..." -ForegroundColor Cyan
+    & "$VenvPython" -m pip install --upgrade pip
+    & "$VenvPython" -m pip install -r "$Root\backend\requirements.txt"
+    
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to install dependencies" -ForegroundColor Red
+        exit 1
+    }
+    
+    Write-Host "Virtual environment created successfully!" -ForegroundColor Green
     Write-Host ""
-    Write-Host "Create venv with:" -ForegroundColor Yellow
-    Write-Host "  python -m venv .venv" -ForegroundColor Yellow
-    Write-Host "  .\.venv\Scripts\Activate.ps1" -ForegroundColor Yellow
-    Write-Host "  pip install -r requirements.txt" -ForegroundColor Yellow
-    exit 1
 }
 
 # Check config file exists
