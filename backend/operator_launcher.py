@@ -505,6 +505,41 @@ class Api:
         """Convenience to open the spectator page in the system browser."""
         return self.open_external(SPECTATOR_URL)
 
+    # --------------------
+    # Window controls
+    # --------------------
+    def toggle_fullscreen(self) -> str:
+        """Toggle fullscreen mode. Returns 'ok' immediately."""
+        if not self.window:
+            return "ok"
+
+        def _toggle():
+            time.sleep(0.02)  # Small delay to let callback complete
+            try:
+                self.window.toggle_fullscreen()
+            except Exception as e:
+                _log(f"Fullscreen toggle failed: {e}")
+
+        threading.Thread(target=_toggle, daemon=True).start()
+        return "ok"
+
+    def exit_fullscreen(self) -> str:
+        """Exit fullscreen mode if currently fullscreen. Returns 'ok' immediately."""
+        if not self.window:
+            return "ok"
+
+        def _exit():
+            time.sleep(0.02)  # Small delay to let callback complete
+            try:
+                # pywebview doesn't have explicit exit_fullscreen, so we check and toggle if needed
+                # This is handled better by just toggling when already in fullscreen
+                self.window.toggle_fullscreen()
+            except Exception as e:
+                _log(f"Exit fullscreen failed: {e}")
+
+        threading.Thread(target=_exit, daemon=True).start()
+        return "ok"
+
 
 # --------------------------------------------------------------------------------------
 # Bootstrap: show splash, start backend, create main window, then remove splash

@@ -45,6 +45,41 @@
   ) => Array.from(root.querySelectorAll(selector));
 
   /* ------------------------------------------------------------------------
+     FULLSCREEN KEYBOARD CONTROLS
+     ------------------------------------------------------------------------
+     F11  - Toggle fullscreen mode (if pywebview API is available)
+     ESC  - Exit fullscreen mode (if pywebview API is available)
+     ------------------------------------------------------------------------ */
+  let isFullscreen = false;
+
+  document.addEventListener('keydown', (e) => {
+    // Check if pywebview API is available (only in desktop mode)
+    if (!window.pywebview || !window.pywebview.api) {
+      return;
+    }
+
+    // F11 key - toggle fullscreen
+    if (e.key === 'F11') {
+      e.preventDefault();
+      isFullscreen = !isFullscreen;
+      window.pywebview.api.toggle_fullscreen().catch(err => {
+        console.error('Fullscreen toggle failed:', err);
+      });
+      return;
+    }
+
+    // ESC key - exit fullscreen (only if currently fullscreen)
+    if (e.key === 'Escape' && isFullscreen) {
+      e.preventDefault();
+      isFullscreen = false;
+      window.pywebview.api.exit_fullscreen().catch(err => {
+        console.error('Exit fullscreen failed:', err);
+      });
+      return;
+    }
+  });
+
+  /* ------------------------------------------------------------------------
      NETWORK HELPERS
      ------------------------------------------------------------------------
      fetchJSON(url, init)

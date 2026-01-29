@@ -34,3 +34,4 @@ black>=24.8.0,<25
 # --- Operator Shell (WebView) ---
 pywebview>=4.4,<5
 PySide6>=6.6,<7
+qtpy>=2.4,<3
