@@ -88,7 +88,7 @@ JOURNALING_TABLE   = _CFG.get("journaling", {}).get("table", "passes_journal")
 # ------------------------------------------------------------
 # FastAPI app bootstrap
 # ------------------------------------------------------------
-app = FastAPI(title="CCRS Backend", version="0.2.1")
+app = FastAPI(title="CCRS Backend", version="0.2.1-alpha")
 
 # Register auxiliary routers
 app.include_router(qual)
