@@ -32,6 +32,8 @@ pytest>=8.3.0,<9
 black>=24.8.0,<25
 
 # --- Operator Shell (WebView) ---
+# Note: Python 3.13 with PySide6 6.8+ has known mouse event compatibility issues
+# causing harmless console spam. The application functions correctly despite the errors.
 pywebview>=4.4,<5
 PySide6>=6.6,<7
 qtpy>=2.4,<3

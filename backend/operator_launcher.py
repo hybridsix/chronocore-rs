@@ -567,13 +567,14 @@ def _bootstrap():
     # Create the main window using the BEST URL (served if possible, else file://)
     api = Api()
     _main_win = webview.create_window(
-    title="ChronoCoreRS - Operator Console",
+        title="ChronoCoreRS - Operator Console",
         url=_get_screen_url("home"),
         width=1920, height=1080,
         resizable=True,
         confirm_close=False,
         on_top=False,
         js_api=api,
+        maximized=True,  # Start maximized to ensure title bar is accessible
     )
     api.window = _main_win
 

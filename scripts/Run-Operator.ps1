@@ -21,8 +21,22 @@ if (-not (Test-Path $VenvPython)) {
     $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
     if (-not $pythonCmd) {
         Write-Host "ERROR: Python not found in PATH!" -ForegroundColor Red
-        Write-Host "Please install Python 3.12+ and ensure it's in your PATH." -ForegroundColor Yellow
+        Write-Host "Please install Python 3.12 or above and ensure it's in your PATH." -ForegroundColor Yellow
         exit 1
+    }
+    
+    # Verify Python version is 3.12 or above
+    $pythonVersion = & python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
+    if ($pythonVersion) {
+        $versionParts = $pythonVersion -split '\.'
+        $major = [int]$versionParts[0]
+        $minor = [int]$versionParts[1]
+        if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 12)) {
+            Write-Host "ERROR: Python $pythonVersion detected, but Python 3.12 or above is required!" -ForegroundColor Red
+            Write-Host "Please install Python 3.12+ from https://www.python.org/downloads/" -ForegroundColor Yellow
+            exit 1
+        }
+        Write-Host "Using Python $pythonVersion" -ForegroundColor Green
     }
     
     Write-Host "Creating virtual environment at: $Root\.venv" -ForegroundColor Cyan
