@@ -60,7 +60,6 @@
 
   <!-- ================= MAIN ================= -->
   <main class="container-fluid py-3 flex-grow-1 pb-5">
-
     <div class="row g-3">
 
       <!-- COLUMN 1 -->
@@ -69,9 +68,10 @@
 
           <!-- Event & Engine -->
           <section id="event" class="card border-secondary">
+            <div class="card-header border-secondary">
+              <span class="fw-semibold text-uppercase">Event &amp; Engine</span>
+            </div>
             <div class="card-body">
-              <h5 class="card-title mb-3">Event &amp; Engine</h5>
-
               <div class="row g-3">
                 <div class="col-12 col-md-6">
                   <label class="form-label" for="eventName">Event Name</label>
@@ -108,15 +108,15 @@
                   <div class="form-text">Display name for auto-created entrants</div>
                 </div>
               </div>
-
             </div>
           </section>
 
           <!-- Ingest & Timing -->
           <section id="ingest" class="card border-secondary">
+            <div class="card-header border-secondary">
+              <span class="fw-semibold text-uppercase">Ingest &amp; Timing</span>
+            </div>
             <div class="card-body">
-              <h5 class="card-title mb-3">Ingest &amp; Timing</h5>
-
               <div class="row g-3">
                 <div class="col-12 col-md-6">
                   <label class="form-label" for="debounceMs">Debounce Time (milliseconds)</label>
@@ -144,7 +144,43 @@
                   <div class="form-text">Rate limit for diagnostic beeps</div>
                 </div>
               </div>
+            </div>
+          </section>
 
+          <!-- UI & Sounds -->
+          <section id="ui" class="card border-secondary">
+            <div class="card-header border-secondary">
+              <span class="fw-semibold text-uppercase">UI &amp; Sounds</span>
+            </div>
+            <div class="card-body">
+              <div class="row g-3">
+
+                <div class="col-12 col-md-4">
+                  <label class="form-label" for="showSimPill">Show Simulation Pill</label>
+                  <select class="form-select" id="showSimPill">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+
+                <div class="col-12 col-md-4">
+                  <label class="form-label" for="soundVolumeMaster">Master Volume</label>
+                  <input type="number" class="form-control" id="soundVolumeMaster" min="0" max="1" step="0.1"
+                    placeholder="1.0">
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="soundVolumeHorns">Horns Volume</label>
+                  <input type="number" class="form-control" id="soundVolumeHorns" min="0" max="1" step="0.1"
+                    placeholder="1.0">
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="soundVolumeBeeps">Beeps Volume</label>
+                  <input type="number" class="form-control" id="soundVolumeBeeps" min="0" max="1" step="0.1"
+                    placeholder="1.0">
+                </div>
+              </div>
             </div>
           </section>
 
@@ -157,8 +193,10 @@
 
           <!-- Hardware & Decoders -->
           <section id="hardware" class="card border-secondary">
+            <div class="card-header border-secondary">
+              <span class="fw-semibold text-uppercase">Hardware &amp; Decoders</span>
+            </div>
             <div class="card-body">
-              <h5 class="card-title mb-3">Hardware &amp; Decoders</h5>
 
               <div class="row g-3">
                 <div class="col-12 col-md-6">
@@ -213,8 +251,10 @@
 
           <!-- Flags & Safety -->
           <section id="flags" class="card border-secondary">
+            <div class="card-header border-secondary">
+              <span class="fw-semibold text-uppercase">Flags &amp; Safety</span>
+            </div>
             <div class="card-body">
-              <h5 class="card-title mb-3">Flags &amp; Safety</h5>
 
               <div class="row g-3">
                 <div class="col-12 col-md-6">
@@ -283,9 +323,10 @@
 
           <!-- Qualifying -->
           <section id="qualifying" class="card border-secondary">
+            <div class="card-header border-secondary">
+              <span class="fw-semibold text-uppercase">Qualifying</span>
+            </div>
             <div class="card-body">
-              <h5 class="card-title mb-3">Qualifying</h5>
-
               <div class="row g-3">
                 <div class="col-12">
                   <label class="form-label" for="brakeTestPolicy">Brake Test Failure Policy</label>
@@ -298,7 +339,6 @@
                   </div>
                 </div>
               </div>
-
             </div>
           </section>
 
@@ -311,8 +351,10 @@
 
           <!-- Track & Locations -->
           <section id="track" class="card border-secondary">
+            <div class="card-header border-secondary">
+              <span class="fw-semibold text-uppercase">Track &amp; Locations</span>
+            </div>
             <div class="card-body">
-              <h5 class="card-title mb-3">Track &amp; Locations</h5>
 
               <h6 class="mb-2">Location Labels</h6>
               <div class="text-body-secondary small mb-2">Human-readable names for timing points</div>
@@ -459,67 +501,27 @@
             </div>
           </section>
 
-          <!-- UI & Sounds -->
-          <section id="ui" class="card border-secondary">
-            <div class="card-body">
-              <h5 class="card-title mb-3">UI &amp; Sounds</h5>
-
-              <div class="row g-3">
-                <div class="col-12 col-md-4">
-                  <label class="form-label" for="uiTheme">Theme</label>
-                  <input type="text" class="form-control" id="uiTheme" placeholder="default-dark">
-                </div>
-
-                <div class="col-12 col-md-4">
-                  <label class="form-label" for="showSimPill">Show Simulation Pill</label>
-                  <select class="form-select" id="showSimPill">
-                    <option value="true">Yes</option>
-                    <option value="false">No</option>
-                  </select>
-                </div>
-
-                <div class="col-12 col-md-4">
-                  <label class="form-label" for="soundVolumeMaster">Master Volume</label>
-                  <input type="number" class="form-control" id="soundVolumeMaster" min="0" max="1" step="0.1"
-                    placeholder="1.0">
-                </div>
-
-                <div class="col-12 col-md-6">
-                  <label class="form-label" for="soundVolumeHorns">Horns Volume</label>
-                  <input type="number" class="form-control" id="soundVolumeHorns" min="0" max="1" step="0.1"
-                    placeholder="1.0">
-                </div>
-
-                <div class="col-12 col-md-6">
-                  <label class="form-label" for="soundVolumeBeeps">Beeps Volume</label>
-                  <input type="number" class="form-control" id="soundVolumeBeeps" min="0" max="1" step="0.1"
-                    placeholder="1.0">
-                </div>
-              </div>
-
-            </div>
-          </section>
-
         </div>
       </div>
 
     </div>
   </main>
 
-  <!-- ================= FIXED SAVE BAR ================= -->
-  <div class="position-fixed bottom-0 start-0 end-0 border-top border-secondary">
-    <div class="container-fluid py-2">
-      <div class="d-flex align-items-center gap-2">
-        <div class="text-body-secondary small">
-          <span id="changeIndicator" class="d-none">● Unsaved changes</span>
-        </div>
-        <div class="ms-auto d-flex gap-2">
-          <button class="btn btn-outline-light btn-sm" id="cancelBtn" type="button">Cancel</button>
-          <button class="btn btn-primary btn-sm" id="saveBtn" type="button" disabled>Save Settings</button>
-        </div>
+  <!-- ================= STICKY SAVE BAR ================= -->
+<div class="sticky-bottom border-top border-secondary bg-body-tertiary">
+  <div class="container-fluid py-2">
+    <div class="d-flex align-items-center gap-2">
+      <div class="text-body-secondary small">
+        <span id="changeIndicator" class="d-none">● Unsaved changes</span>
+      </div>
+      <div class="ms-auto d-flex gap-2">
+        <button class="btn btn-outline-secondary btn-sm" id="cancelBtn" type="button">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="saveBtn" type="button" disabled>Save Settings</button>
       </div>
     </div>
   </div>
+</div>
+
 
   <!-- ================= FOOTER (canonical) ================= -->
   <footer class="mt-auto border-top">
