@@ -252,3 +252,69 @@
     }
   );
 })();
+
+// Theme (light/dark) toggle
+(function () {
+  const STORAGE_KEY = 'ccrs.theme';
+  const btn = document.getElementById('themeToggle');
+  if (!btn) return;
+
+  const root = document.documentElement;
+
+  function applyTheme(theme) {
+    root.setAttribute('data-bs-theme', theme);
+    btn.textContent = theme === 'dark' ? '🌙' : '☀️';
+    btn.setAttribute(
+      'aria-label',
+      theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+    );
+  }
+
+  function getInitialTheme() {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') return stored;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  }
+
+  let theme = getInitialTheme();
+  applyTheme(theme);
+
+  btn.addEventListener('click', () => {
+    theme = theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem(STORAGE_KEY, theme);
+    applyTheme(theme);
+  });
+})();
+
+
+// Navbar active link indicator
+(function () {
+  function normalize(path) {
+    // strip query, hash, trailing slash
+    return path.replace(/[?#].*$/, '').replace(/\/$/, '');
+  }
+
+  const current = normalize(window.location.pathname);
+
+  document.querySelectorAll('.navbar .nav-link[href]').forEach(link => {
+    const href = normalize(link.getAttribute('href'));
+
+    if (!href) return;
+
+    // Exact match OR index fallback
+    const isActive =
+      current === href ||
+      (href.endsWith('/index.html') && current.endsWith('/operator'));
+
+    if (isActive) {
+      link.classList.add('active');
+      link.setAttribute('aria-current', 'page');
+    } else {
+      link.classList.remove('active');
+      link.removeAttribute('aria-current');
+    }
+  });
+})();
+

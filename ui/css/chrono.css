@@ -1,0 +1,53 @@
+/* Base: keep Bootstrap behavior; only add what all flags need */
+.btn-flag {
+    /* keep bootstrap padding/line-height unless you want consistent tile sizing */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    font-weight: 700;
+    /* stronger label like a control pad */
+    text-transform: none;
+    /* keep readable words */
+    letter-spacing: 0.02em;
+
+    /* prevent “dimmed” look if you’re toggling disabled/opacities elsewhere */
+    opacity: 1;
+
+    /* increase tap target size */
+    --bs-btn-padding-y: 1.25rem;
+}
+
+/* Checkered: only what’s required for the pattern + legibility */
+.btn-flag-checkered {
+    position: relative;
+
+    /* keep Bootstrap borders but ensure contrast */
+    border-color: #4a5664;
+
+    /* checkered background */
+    background-image: repeating-linear-gradient(45deg,
+            #000 0 16px,
+            #fff 16px 32px);
+    background-size: auto;
+    background-repeat: repeat;
+
+    /* force text readable over both colors */
+    color: #000 !important;
+    font-weight: 800;
+
+    /* white outline for readability (same idea as your example, tighter) */
+    text-shadow:
+        -2px -2px 0 #fff,
+        2px -2px 0 #fff,
+        -2px 2px 0 #fff,
+        2px 2px 0 #fff,
+        0 -2px 0 #fff,
+        0 2px 0 #fff,
+        -2px 0 0 #fff,
+        2px 0 0 #fff;
+}
+
+.btn-flag-checkered:active {
+    filter: brightness(0.98) contrast(1.08);
+}

@@ -1,525 +1,632 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Settings – CCRS Operator</title>
-  <link rel="stylesheet" href="../css/base.css">
-  <link rel="stylesheet" href="../css/operator.css">
-  <link rel="stylesheet" href="../css/settings.css">
-  <script src="../js/base.js" defer></script>
-  <script src="../js/settings.js" defer></script>
+
+  <!-- Bootstrap only -->
+  <link rel="stylesheet" href="/ui/css/bootstrap.min.css" />
+
+  <!-- JS -->
+  <script src="/ui/js/base.js" defer></script>
+  <script src="/ui/js/settings.js" defer></script>
 </head>
 
-<body class="page settings op">
+<body class="min-vh-100 d-flex flex-column">
 
-  <!-- =================================================================
-    OPERATOR HEADER
-    ================================================================= -->
-  <header class="app-header">
-    <div class="brand">
-      <a class="brand-link" href="/ui/operator/index.html">
-        <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" />
-        <div class="brand__wordmark">
-          <div class="wordmark__top">
-            <span class="wordmark__big">CHRONO</span>
-            <span class="wordmark__big">CORE</span>
-          </div>
-          <div class="wordmark__bottom">RACE SOFTWARE</div>
-        </div>
-      </a>
-      <div class="page-label">Settings</div>
-    </div>
-
-    <div class="app-header__tools">
-      <nav class="app-nav">
-        <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
-          <svg class="icon">
-            <use href="../img/icons.svg#home"></use>
-          </svg>
-          <span class="sr-only">Home</span>
+  <!-- ================= HEADER (canonical) ================= -->
+  <header>
+    <!-- Theme-aware navbar: no navbar-dark/bg-dark -->
+    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
+      <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/ui/operator/index.html">
+          <img src="/ui/img/CCRS_Logo.svg" alt="CCRS Logo" class="d-inline-block" height="36">
+          <span class="lh-1">
+            <span class="d-block fw-bold text-uppercase">CHRONO</span>
+            <span class="d-block fw-bold text-uppercase">CORE</span>
+            <small class="d-block text-uppercase opacity-75" style="letter-spacing:.12em;">RACE SOFTWARE</small>
+          </span>
         </a>
 
-        <div class="app-nav__menu" id="appsMenu" data-open="false">
-          <button type="button" class="app-nav__btn" title="Menu">
-            <svg class="icon"><use href="../img/icons.svg#menu"></use></svg>
-            <span class="sr-only">Open menu</span>
-          </button>
-          <div class="app-nav__panel" id="appsPanel">
-            <a href="/ui/operator/race_setup.html">Race Setup</a>
-            <a href="/ui/operator/race_control.html">Race Control</a>
-            <a href="/ui/operator/entrants.html">Entrants &amp; Tags</a>
-            <a href="/ui/operator/results.html">Results</a>
-            <a href="/ui/operator/diag.html">Diagnostics</a>
-            <a href="/ui/operator/moxie_board.html">Moxie Board</a>
-            <a href="/ui/operator/settings.html">Settings</a>
-            <a href="/ui/operator/about.html">About</a>
-          </div>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#operatorNav"
+          aria-controls="operatorNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="operatorNav">
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+            <li class="nav-item"><a class="nav-link" aria-current="page" href="/ui/operator/index.html">Home</a>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_setup.html">Race Setup</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_control.html">Settings</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/entrants.html">Entrants &amp; Tags</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/results.html">Results</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/diag.html">Diagnostics</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/moxie_board.html">Moxie Board</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/settings.html">Settings</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/about.html">About</a></li>
+          </ul>
         </div>
-      </nav>
-    </div>
+        <!-- Theme toggle (theme-aware button; no outline-light) -->
+        <button id="themeToggle" type="button" class="btn btn-sm btn-outline-secondary ms-2"
+          title="Toggle light/dark theme" aria-label="Toggle theme">
+          🌙
+        </button>
+      </div>
+    </nav>
   </header>
 
-  <!-- =================================================================
-    SETTINGS CONTENT (FULL WIDTH)
-    ================================================================= -->
-  <main class="settingsWrap">
+  <!-- ================= MAIN ================= -->
+  <main class="container-fluid py-3 flex-grow-1 pb-5">
 
-    <!-- ===========================================================
-      THREE-COLUMN CARD GRID
-      =========================================================== -->
-        <div class="settings-grid">
+    <div class="row g-3">
 
-          <!-- COLUMN 1 -->
-          <div class="settings-column">
+      <!-- COLUMN 1 -->
+      <div class="col-12 col-xl-4">
+        <div class="d-flex flex-column gap-3">
 
-            <!-- ===========================================================
-              EVENT & ENGINE SECTION
-              =========================================================== -->
-            <section id="event" class="card">
-              <h2>Event & Engine</h2>
+          <!-- Event & Engine -->
+          <section id="event" class="card border-secondary">
+            <div class="card-body">
+              <h5 class="card-title mb-3">Event &amp; Engine</h5>
 
-              <div class="grid grid-2">
-            <!-- Event Identity -->
-            <div class="stack">
-              <label class="label" for="eventName">Event Name</label>
-              <input type="text" class="input" id="eventName" placeholder="e.g., Maker Faire Orlando">
-            </div>
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="eventName">Event Name</label>
+                  <input type="text" class="form-control" id="eventName" placeholder="e.g., Maker Faire Orlando">
+                </div>
 
-            <div class="stack">
-              <label class="label" for="eventDate">Event Date</label>
-              <input type="date" class="input" id="eventDate">
-            </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="eventDate">Event Date</label>
+                  <input type="date" class="form-control" id="eventDate">
+                </div>
 
-            <div class="stack">
-              <label class="label" for="eventLocation">Location</label>
-              <input type="text" class="input" id="eventLocation" placeholder="e.g., Orlando, FL">
-            </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="eventLocation">Location</label>
+                  <input type="text" class="form-control" id="eventLocation" placeholder="e.g., Orlando, FL">
+                </div>
 
-            <div class="stack">
-              <label class="label" for="defaultMinLap">Default Min Lap (seconds)</label>
-              <input type="number" class="input" id="defaultMinLap" min="5" step="1" placeholder="10">
-              <p class="help small">Global minimum lap time if mode doesn't specify</p>
-            </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="defaultMinLap">Default Min Lap (seconds)</label>
+                  <input type="number" class="form-control" id="defaultMinLap" min="5" step="1" placeholder="10">
+                  <div class="form-text">Global minimum lap time if mode doesn't specify</div>
+                </div>
 
-            <!-- Unknown Tags -->
-            <div class="stack">
-              <label class="label" for="allowUnknownTags">Allow Unknown Tags</label>
-              <select class="input" id="allowUnknownTags">
-                <option value="true">Yes - Auto-create entrant</option>
-                <option value="false">No - Reject unknown tags</option>
-              </select>
-            </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="allowUnknownTags">Allow Unknown Tags</label>
+                  <select class="form-select" id="allowUnknownTags">
+                    <option value="true">Yes - Auto-create entrant</option>
+                    <option value="false">No - Reject unknown tags</option>
+                  </select>
+                </div>
 
-            <div class="stack">
-              <label class="label" for="unknownTagName">Unknown Tag Name</label>
-              <input type="text" class="input" id="unknownTagName" placeholder="Unknown">
-              <p class="help small">Display name for auto-created entrants</p>
-            </div>
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="unknownTagName">Unknown Tag Name</label>
+                  <input type="text" class="form-control" id="unknownTagName" placeholder="Unknown">
+                  <div class="form-text">Display name for auto-created entrants</div>
+                </div>
+              </div>
+
             </div>
           </section>
 
-          <!-- ===========================================================
-            INGEST & TIMING SECTION
-            =========================================================== -->
-          <section id="ingest" class="card">
-            <h2>Ingest & Timing</h2>
+          <!-- Ingest & Timing -->
+          <section id="ingest" class="card border-secondary">
+            <div class="card-body">
+              <h5 class="card-title mb-3">Ingest &amp; Timing</h5>
 
-            <div class="grid grid-2">
-              <div class="stack">
-                <label class="label" for="debounceMs">Debounce Time (milliseconds)</label>
-                <input type="number" class="input" id="debounceMs" min="0" step="10" placeholder="250">
-                <p class="help small">Minimum time between reads of the same tag</p>
-              </div>
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="debounceMs">Debounce Time (milliseconds)</label>
+                  <input type="number" class="form-control" id="debounceMs" min="0" step="10" placeholder="250">
+                  <div class="form-text">Minimum time between reads of the same tag</div>
+                </div>
 
-              <div class="stack">
-                <label class="label" for="diagEnabled">Diagnostics Enabled</label>
-                <select class="input" id="diagEnabled">
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
-              </div>
-
-              <div class="stack">
-                <label class="label" for="diagBuffer">Diagnostics Buffer Size</label>
-                <input type="number" class="input" id="diagBuffer" min="100" step="50" placeholder="500">
-                <p class="help small">In-memory rolling buffer for late-join UI</p>
-              </div>
-
-              <div class="stack">
-                <label class="label" for="beepMax">Beep Max Per Second</label>
-                <input type="number" class="input" id="beepMax" min="1" max="20" step="1" placeholder="5">
-                <p class="help small">Rate limit for diagnostic beeps</p>
-              </div>
-            </div>
-          </section>
-
-          </div><!-- end column 1 -->
-
-          <!-- COLUMN 2 -->
-          <div class="settings-column">
-
-          <!-- ===========================================================
-            HARDWARE & DECODERS SECTION
-            =========================================================== -->
-          <section id="hardware" class="card">
-            <h2>Hardware & Decoders</h2>
-
-            <div class="grid grid-2">
-              <div class="stack">
-                <label class="label" for="decoderType">Decoder Type</label>
-                <select class="input" id="decoderType">
-                  <option value="ilap_serial">I-Lap Serial</option>
-                  <option value="ambrc_serial">AMBrc Serial</option>
-                </select>
-                <p class="help small">Select which decoder hardware you're using</p>
-              </div>
-
-              <div class="stack">
-                <label class="label" for="serialPort">COM Port</label>
-                <input type="text" class="input" id="serialPort" placeholder="COM3">
-                <p class="help small">Serial port for decoder (e.g., COM3, /dev/ttyUSB0)</p>
-              </div>
-
-              <div class="stack">
-                <label class="label" for="serialBaud">Baud Rate</label>
-                <select class="input" id="serialBaud">
-                  <option value="9600">9600</option>
-                  <option value="19200">19200</option>
-                  <option value="38400">38400</option>
-                  <option value="57600">57600</option>
-                  <option value="115200">115200</option>
-                </select>
-              </div>
-
-              <div class="stack">
-                <label class="label" for="decoderMinLap">Decoder Min Lap (seconds)</label>
-                <input type="number" class="input" id="decoderMinLap" min="5" step="1" placeholder="10">
-                <p class="help small">Local sanity filter at decoder level</p>
-              </div>
-            </div>
-
-            <!-- I-Lap specific settings (only shown when I-Lap is selected) -->
-            <div id="ilapSpecific" style="margin-top: 16px;">
-              <h3>I-Lap Specific Settings</h3>
-              <div class="grid grid-2">
-                <div class="stack">
-                  <label class="label" for="ilapInit7Digit">7-Digit Init on Connect</label>
-                  <select class="input" id="ilapInit7Digit">
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="diagEnabled">Diagnostics Enabled</label>
+                  <select class="form-select" id="diagEnabled">
                     <option value="true">Yes</option>
                     <option value="false">No</option>
                   </select>
-                  <p class="help small">Send 7-digit init command on connect</p>
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="diagBuffer">Diagnostics Buffer Size</label>
+                  <input type="number" class="form-control" id="diagBuffer" min="100" step="50" placeholder="500">
+                  <div class="form-text">In-memory rolling buffer for late-join UI</div>
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="beepMax">Beep Max Per Second</label>
+                  <input type="number" class="form-control" id="beepMax" min="1" max="20" step="1" placeholder="5">
+                  <div class="form-text">Rate limit for diagnostic beeps</div>
                 </div>
               </div>
+
             </div>
           </section>
 
-          <!-- ===========================================================
-            FLAGS & SAFETY SECTION
-            =========================================================== -->
-          <section id="flags" class="card">
-            <h2>Flags & Safety</h2>
+        </div>
+      </div>
 
-            <div class="grid grid-2">
-              <div class="stack">
-                <label class="label" for="flagBlocklist">Inference Blocklist</label>
-                <input type="text" class="input" id="flagBlocklist" placeholder="YELLOW,RED,SC">
-                <p class="help small">Comma-separated flag states that disable predictive helpers</p>
-              </div>
+      <!-- COLUMN 2 -->
+      <div class="col-12 col-xl-4">
+        <div class="d-flex flex-column gap-3">
 
-              <div class="stack">
-                <label class="label" for="flagGraceMs">Post-Green Grace (ms)</label>
-                <input type="number" class="input" id="flagGraceMs" min="0" step="100" placeholder="3000">
-                <p class="help small">Time after green flag before full enforcement</p>
-              </div>
-            </div>
+          <!-- Hardware & Decoders -->
+          <section id="hardware" class="card border-secondary">
+            <div class="card-body">
+              <h5 class="card-title mb-3">Hardware &amp; Decoders</h5>
 
-            <h3 style="margin-top: 20px;">Missed-Lap Detection</h3>
-
-            <div class="grid grid-2">
-              <div class="stack">
-                <label class="label" for="missedMode">Detection Mode</label>
-                <select class="input" id="missedMode">
-                  <option value="off">Off</option>
-                  <option value="propose">Propose Only</option>
-                  <option value="auto">Auto-Apply</option>
-                </select>
-              </div>
-
-              <div class="stack">
-                <label class="label" for="missedWindowLaps">Rolling Window (laps)</label>
-                <input type="number" class="input" id="missedWindowLaps" min="2" max="20" step="1" placeholder="5">
-              </div>
-
-              <div class="stack">
-                <label class="label" for="missedSigmaK">Sigma Threshold</label>
-                <input type="number" class="input" id="missedSigmaK" min="1" max="5" step="0.1" placeholder="2.0">
-                <p class="help small">Strictness (higher = fewer fills)</p>
-              </div>
-
-              <div class="stack">
-                <label class="label" for="missedMinGapMs">Min Gap Between Laps (ms)</label>
-                <input type="number" class="input" id="missedMinGapMs" min="1000" step="500" placeholder="8000">
-              </div>
-
-              <div class="stack">
-                <label class="label" for="missedMaxConsec">Max Consecutive Inferred</label>
-                <input type="number" class="input" id="missedMaxConsec" min="0" max="10" step="1" placeholder="1">
-              </div>
-
-              <div class="stack">
-                <label class="label" for="missedMark">Mark Inferred Laps</label>
-                <select class="input" id="missedMark">
-                  <option value="true">Yes - Mark in exports</option>
-                  <option value="false">No - Don't mark</option>
-                </select>
-              </div>
-            </div>
-          </section>
-
-          <!-- ===========================================================
-            QUALIFYING SECTION
-            =========================================================== -->
-          <section id="qualifying" class="card">
-            <h2>Qualifying</h2>
-
-            <div class="grid grid-2">
-              <div class="stack">
-                <label class="label" for="brakeTestPolicy">Brake Test Failure Policy</label>
-                <select class="input" id="brakeTestPolicy">
-                  <option value="demote">Demote - Start at back</option>
-                  <option value="use_next_valid">Use Next Valid - Use 2nd fastest lap</option>
-                  <option value="exclude">Exclude - Remove from grid</option>
-                </select>
-                <p class="help small">How to handle entrants who fail brake tests when freezing the qualifying grid</p>
-              </div>
-            </div>
-          </section>
-
-          </div><!-- end column 2 -->
-
-          <!-- COLUMN 3 -->
-          <div class="settings-column">
-
-          <!-- ===========================================================
-            TRACK & LOCATIONS SECTION
-            =========================================================== -->
-          <section id="track" class="card">
-            <h2>Track & Locations</h2>
-
-            <h3>Location Labels</h3>
-            <p class="help small" style="margin-bottom: 8px;">Human-readable names for timing points</p>
-
-            <div class="grid grid-2">
-              <div class="stack">
-                <label class="label" for="locationSF">Start/Finish</label>
-                <input type="text" class="input" id="locationSF" placeholder="Start/Finish">
-              </div>
-
-              <div class="stack">
-                <label class="label" for="locationPitIn">Pit In</label>
-                <input type="text" class="input" id="locationPitIn" placeholder="Pit In">
-              </div>
-
-              <div class="stack">
-                <label class="label" for="locationPitOut">Pit Out</label>
-                <input type="text" class="input" id="locationPitOut" placeholder="Pit Out">
-              </div>
-
-              <div class="stack">
-                <label class="label" for="locationX1">Extra Location (X1)</label>
-                <input type="text" class="input" id="locationX1" placeholder="Crossing X">
-              </div>
-            </div>
-
-            <h3 style="margin-top: 16px;">Hardware Bindings</h3>
-            <p class="help small" style="margin-bottom: 8px;">Physical decoder connections to timing locations</p>
-            
-            <!-- Binding 1 -->
-            <div class="stack" style="margin-bottom: 10px;">
-              <label class="label">Binding 1 (Start/Finish)</label>
-              <div class="grid grid-4">
-                <div class="stack">
-                  <label class="label small" for="binding0Computer">Computer ID</label>
-                  <input type="text" class="input" id="binding0Computer" placeholder="race_control">
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="decoderType">Decoder Type</label>
+                  <select class="form-select" id="decoderType">
+                    <option value="ilap_serial">I-Lap Serial</option>
+                    <option value="ambrc_serial">AMBrc Serial</option>
+                  </select>
+                  <div class="form-text">Select which decoder hardware you're using</div>
                 </div>
-                <div class="stack">
-                  <label class="label small" for="binding0Decoder">Decoder ID</label>
-                  <input type="text" class="input" id="binding0Decoder" placeholder="ilap-210">
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="serialPort">COM Port</label>
+                  <input type="text" class="form-control" id="serialPort" placeholder="COM3">
+                  <div class="form-text">e.g., COM3 or /dev/ttyUSB0</div>
                 </div>
-                <div class="stack">
-                  <label class="label small" for="binding0Port">Port</label>
-                  <input type="text" class="input" id="binding0Port" placeholder="COM3">
-                </div>
-                <div class="stack">
-                  <label class="label small" for="binding0Location">Location ID</label>
-                  <select class="input" id="binding0Location">
-                    <option value="SF">SF (Start/Finish)</option>
-                    <option value="PIT_IN">PIT_IN</option>
-                    <option value="PIT_OUT">PIT_OUT</option>
-                    <option value="X1">X1</option>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="serialBaud">Baud Rate</label>
+                  <select class="form-select" id="serialBaud">
+                    <option value="9600">9600</option>
+                    <option value="19200">19200</option>
+                    <option value="38400">38400</option>
+                    <option value="57600">57600</option>
+                    <option value="115200">115200</option>
                   </select>
                 </div>
-              </div>
-            </div>
 
-            <!-- Binding 2 -->
-            <div class="stack" style="margin-bottom: 10px;">
-              <label class="label">Binding 2 (Pit In)</label>
-              <div class="grid grid-4">
-                <div class="stack">
-                  <label class="label small" for="binding1Computer">Computer ID</label>
-                  <input type="text" class="input" id="binding1Computer" placeholder="t640-pit-a">
-                </div>
-                <div class="stack">
-                  <label class="label small" for="binding1Decoder">Decoder ID</label>
-                  <input type="text" class="input" id="binding1Decoder" placeholder="ilap-311">
-                </div>
-                <div class="stack">
-                  <label class="label small" for="binding1Port">Port</label>
-                  <input type="text" class="input" id="binding1Port" placeholder="udp://0.0.0.0:5002">
-                </div>
-                <div class="stack">
-                  <label class="label small" for="binding1Location">Location ID</label>
-                  <select class="input" id="binding1Location">
-                    <option value="SF">SF (Start/Finish)</option>
-                    <option value="PIT_IN">PIT_IN</option>
-                    <option value="PIT_OUT">PIT_OUT</option>
-                    <option value="X1">X1</option>
-                  </select>
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="decoderMinLap">Decoder Min Lap (seconds)</label>
+                  <input type="number" class="form-control" id="decoderMinLap" min="5" step="1" placeholder="10">
+                  <div class="form-text">Local sanity filter at decoder level</div>
                 </div>
               </div>
-            </div>
 
-            <!-- Binding 3 -->
-            <div class="stack" style="margin-bottom: 10px;">
-              <label class="label">Binding 3 (Pit Out)</label>
-              <div class="grid grid-4">
-                <div class="stack">
-                  <label class="label small" for="binding2Computer">Computer ID</label>
-                  <input type="text" class="input" id="binding2Computer" placeholder="t640-pit-b">
-                </div>
-                <div class="stack">
-                  <label class="label small" for="binding2Decoder">Decoder ID</label>
-                  <input type="text" class="input" id="binding2Decoder" placeholder="ilap-311">
-                </div>
-                <div class="stack">
-                  <label class="label small" for="binding2Port">Port</label>
-                  <input type="text" class="input" id="binding2Port" placeholder="udp://0.0.0.0:5003">
-                </div>
-                <div class="stack">
-                  <label class="label small" for="binding2Location">Location ID</label>
-                  <select class="input" id="binding2Location">
-                    <option value="SF">SF (Start/Finish)</option>
-                    <option value="PIT_IN">PIT_IN</option>
-                    <option value="PIT_OUT">PIT_OUT</option>
-                    <option value="X1">X1</option>
-                  </select>
+              <div class="border-top border-secondary mt-3 pt-3" id="ilapSpecific">
+                <h6 class="mb-2">I-Lap Specific Settings</h6>
+                <div class="row g-3">
+                  <div class="col-12 col-md-6">
+                    <label class="form-label" for="ilapInit7Digit">7-Digit Init on Connect</label>
+                    <select class="form-select" id="ilapInit7Digit">
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                    <div class="form-text">Send 7-digit init command on connect</div>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <!-- Binding 4 -->
-            <div class="stack">
-              <label class="label">Binding 4 (Extra Location)</label>
-              <div class="grid grid-4">
-                <div class="stack">
-                  <label class="label small" for="binding3Computer">Computer ID</label>
-                  <input type="text" class="input" id="binding3Computer" placeholder="t640-x">
+            </div>
+          </section>
+
+          <!-- Flags & Safety -->
+          <section id="flags" class="card border-secondary">
+            <div class="card-body">
+              <h5 class="card-title mb-3">Flags &amp; Safety</h5>
+
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="flagBlocklist">Inference Blocklist</label>
+                  <input type="text" class="form-control" id="flagBlocklist" placeholder="YELLOW,RED,SC">
+                  <div class="form-text">Comma-separated flag states that disable predictive helpers</div>
                 </div>
-                <div class="stack">
-                  <label class="label small" for="binding3Decoder">Decoder ID</label>
-                  <input type="text" class="input" id="binding3Decoder" placeholder="ilap-099">
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="flagGraceMs">Post-Green Grace (ms)</label>
+                  <input type="number" class="form-control" id="flagGraceMs" min="0" step="100" placeholder="3000">
+                  <div class="form-text">Time after green flag before full enforcement</div>
                 </div>
-                <div class="stack">
-                  <label class="label small" for="binding3Port">Port</label>
-                  <input type="text" class="input" id="binding3Port" placeholder="/dev/ttyUSB0">
+              </div>
+
+              <div class="border-top border-secondary mt-3 pt-3">
+                <h6 class="mb-2">Missed-Lap Detection</h6>
+
+                <div class="row g-3">
+                  <div class="col-12 col-md-6">
+                    <label class="form-label" for="missedMode">Detection Mode</label>
+                    <select class="form-select" id="missedMode">
+                      <option value="off">Off</option>
+                      <option value="propose">Propose Only</option>
+                      <option value="auto">Auto-Apply</option>
+                    </select>
+                  </div>
+
+                  <div class="col-12 col-md-6">
+                    <label class="form-label" for="missedWindowLaps">Rolling Window (laps)</label>
+                    <input type="number" class="form-control" id="missedWindowLaps" min="2" max="20" step="1"
+                      placeholder="5">
+                  </div>
+
+                  <div class="col-12 col-md-6">
+                    <label class="form-label" for="missedSigmaK">Sigma Threshold</label>
+                    <input type="number" class="form-control" id="missedSigmaK" min="1" max="5" step="0.1"
+                      placeholder="2.0">
+                    <div class="form-text">Strictness (higher = fewer fills)</div>
+                  </div>
+
+                  <div class="col-12 col-md-6">
+                    <label class="form-label" for="missedMinGapMs">Min Gap Between Laps (ms)</label>
+                    <input type="number" class="form-control" id="missedMinGapMs" min="1000" step="500"
+                      placeholder="8000">
+                  </div>
+
+                  <div class="col-12 col-md-6">
+                    <label class="form-label" for="missedMaxConsec">Max Consecutive Inferred</label>
+                    <input type="number" class="form-control" id="missedMaxConsec" min="0" max="10" step="1"
+                      placeholder="1">
+                  </div>
+
+                  <div class="col-12 col-md-6">
+                    <label class="form-label" for="missedMark">Mark Inferred Laps</label>
+                    <select class="form-select" id="missedMark">
+                      <option value="true">Yes - Mark in exports</option>
+                      <option value="false">No - Don't mark</option>
+                    </select>
+                  </div>
                 </div>
-                <div class="stack">
-                  <label class="label small" for="binding3Location">Location ID</label>
-                  <select class="input" id="binding3Location">
-                    <option value="SF">SF (Start/Finish)</option>
-                    <option value="PIT_IN">PIT_IN</option>
-                    <option value="PIT_OUT">PIT_OUT</option>
-                    <option value="X1">X1</option>
+              </div>
+
+            </div>
+          </section>
+
+          <!-- Qualifying -->
+          <section id="qualifying" class="card border-secondary">
+            <div class="card-body">
+              <h5 class="card-title mb-3">Qualifying</h5>
+
+              <div class="row g-3">
+                <div class="col-12">
+                  <label class="form-label" for="brakeTestPolicy">Brake Test Failure Policy</label>
+                  <select class="form-select" id="brakeTestPolicy">
+                    <option value="demote">Demote - Start at back</option>
+                    <option value="use_next_valid">Use Next Valid - Use 2nd fastest lap</option>
+                    <option value="exclude">Exclude - Remove from grid</option>
                   </select>
+                  <div class="form-text">How to handle entrants who fail brake tests when freezing the qualifying grid
+                  </div>
                 </div>
+              </div>
+
+            </div>
+          </section>
+
+        </div>
+      </div>
+
+      <!-- COLUMN 3 -->
+      <div class="col-12 col-xl-4">
+        <div class="d-flex flex-column gap-3">
+
+          <!-- Track & Locations -->
+          <section id="track" class="card border-secondary">
+            <div class="card-body">
+              <h5 class="card-title mb-3">Track &amp; Locations</h5>
+
+              <h6 class="mb-2">Location Labels</h6>
+              <div class="text-body-secondary small mb-2">Human-readable names for timing points</div>
+
+              <div class="row g-3">
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="locationSF">Start/Finish</label>
+                  <input type="text" class="form-control" id="locationSF" placeholder="Start/Finish">
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="locationPitIn">Pit In</label>
+                  <input type="text" class="form-control" id="locationPitIn" placeholder="Pit In">
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="locationPitOut">Pit Out</label>
+                  <input type="text" class="form-control" id="locationPitOut" placeholder="Pit Out">
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="locationX1">Extra Location (X1)</label>
+                  <input type="text" class="form-control" id="locationX1" placeholder="Crossing X">
+                </div>
+              </div>
+
+              <div class="border-top border-secondary mt-3 pt-3">
+                <h6 class="mb-2">Hardware Bindings</h6>
+                <div class="text-body-secondary small mb-2">Physical decoder connections to timing locations</div>
+
+                <!-- Binding 1 -->
+                <div class="border border-secondary rounded p-2 mb-2">
+                  <div class="fw-semibold mb-2">Binding 1 (Start/Finish)</div>
+                  <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding0Computer">Computer ID</label>
+                      <input type="text" class="form-control" id="binding0Computer" placeholder="race_control">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding0Decoder">Decoder ID</label>
+                      <input type="text" class="form-control" id="binding0Decoder" placeholder="ilap-210">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding0Port">Port</label>
+                      <input type="text" class="form-control" id="binding0Port" placeholder="COM3">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding0Location">Location ID</label>
+                      <select class="form-select" id="binding0Location">
+                        <option value="SF">SF (Start/Finish)</option>
+                        <option value="PIT_IN">PIT_IN</option>
+                        <option value="PIT_OUT">PIT_OUT</option>
+                        <option value="X1">X1</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Binding 2 -->
+                <div class="border border-secondary rounded p-2 mb-2">
+                  <div class="fw-semibold mb-2">Binding 2 (Pit In)</div>
+                  <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding1Computer">Computer ID</label>
+                      <input type="text" class="form-control" id="binding1Computer" placeholder="t640-pit-a">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding1Decoder">Decoder ID</label>
+                      <input type="text" class="form-control" id="binding1Decoder" placeholder="ilap-311">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding1Port">Port</label>
+                      <input type="text" class="form-control" id="binding1Port" placeholder="udp://0.0.0.0:5002">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding1Location">Location ID</label>
+                      <select class="form-select" id="binding1Location">
+                        <option value="SF">SF (Start/Finish)</option>
+                        <option value="PIT_IN">PIT_IN</option>
+                        <option value="PIT_OUT">PIT_OUT</option>
+                        <option value="X1">X1</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Binding 3 -->
+                <div class="border border-secondary rounded p-2 mb-2">
+                  <div class="fw-semibold mb-2">Binding 3 (Pit Out)</div>
+                  <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding2Computer">Computer ID</label>
+                      <input type="text" class="form-control" id="binding2Computer" placeholder="t640-pit-b">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding2Decoder">Decoder ID</label>
+                      <input type="text" class="form-control" id="binding2Decoder" placeholder="ilap-311">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding2Port">Port</label>
+                      <input type="text" class="form-control" id="binding2Port" placeholder="udp://0.0.0.0:5003">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding2Location">Location ID</label>
+                      <select class="form-select" id="binding2Location">
+                        <option value="SF">SF (Start/Finish)</option>
+                        <option value="PIT_IN">PIT_IN</option>
+                        <option value="PIT_OUT">PIT_OUT</option>
+                        <option value="X1">X1</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Binding 4 -->
+                <div class="border border-secondary rounded p-2">
+                  <div class="fw-semibold mb-2">Binding 4 (Extra Location)</div>
+                  <div class="row g-2">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding3Computer">Computer ID</label>
+                      <input type="text" class="form-control" id="binding3Computer" placeholder="t640-x">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding3Decoder">Decoder ID</label>
+                      <input type="text" class="form-control" id="binding3Decoder" placeholder="ilap-099">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding3Port">Port</label>
+                      <input type="text" class="form-control" id="binding3Port" placeholder="/dev/ttyUSB0">
+                    </div>
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small" for="binding3Location">Location ID</label>
+                      <select class="form-select" id="binding3Location">
+                        <option value="SF">SF (Start/Finish)</option>
+                        <option value="PIT_IN">PIT_IN</option>
+                        <option value="PIT_OUT">PIT_OUT</option>
+                        <option value="X1">X1</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
               </div>
             </div>
           </section>
 
-          <!-- ===========================================================
-            UI & SOUNDS SECTION
-            =========================================================== -->
-          <section id="ui" class="card">
-            <h2>UI & Sounds</h2>
+          <!-- UI & Sounds -->
+          <section id="ui" class="card border-secondary">
+            <div class="card-body">
+              <h5 class="card-title mb-3">UI &amp; Sounds</h5>
 
-            <div class="grid grid-3">
-              <div class="stack">
-                <label class="label" for="uiTheme">Theme</label>
-                <input type="text" class="input" id="uiTheme" placeholder="default-dark">
+              <div class="row g-3">
+                <div class="col-12 col-md-4">
+                  <label class="form-label" for="uiTheme">Theme</label>
+                  <input type="text" class="form-control" id="uiTheme" placeholder="default-dark">
+                </div>
+
+                <div class="col-12 col-md-4">
+                  <label class="form-label" for="showSimPill">Show Simulation Pill</label>
+                  <select class="form-select" id="showSimPill">
+                    <option value="true">Yes</option>
+                    <option value="false">No</option>
+                  </select>
+                </div>
+
+                <div class="col-12 col-md-4">
+                  <label class="form-label" for="soundVolumeMaster">Master Volume</label>
+                  <input type="number" class="form-control" id="soundVolumeMaster" min="0" max="1" step="0.1"
+                    placeholder="1.0">
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="soundVolumeHorns">Horns Volume</label>
+                  <input type="number" class="form-control" id="soundVolumeHorns" min="0" max="1" step="0.1"
+                    placeholder="1.0">
+                </div>
+
+                <div class="col-12 col-md-6">
+                  <label class="form-label" for="soundVolumeBeeps">Beeps Volume</label>
+                  <input type="number" class="form-control" id="soundVolumeBeeps" min="0" max="1" step="0.1"
+                    placeholder="1.0">
+                </div>
               </div>
 
-              <div class="stack">
-                <label class="label" for="showSimPill">Show Simulation Pill</label>
-                <select class="input" id="showSimPill">
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
-              </div>
-
-              <div class="stack">
-                <label class="label" for="soundVolumeMaster">Master Volume</label>
-                <input type="number" class="input" id="soundVolumeMaster" min="0" max="1" step="0.1" placeholder="1.0">
-              </div>
-
-              <div class="stack">
-                <label class="label" for="soundVolumeHorns">Horns Volume</label>
-                <input type="number" class="input" id="soundVolumeHorns" min="0" max="1" step="0.1" placeholder="1.0">
-              </div>
-
-              <div class="stack">
-                <label class="label" for="soundVolumeBeeps">Beeps Volume</label>
-                <input type="number" class="input" id="soundVolumeBeeps" min="0" max="1" step="0.1" placeholder="1.0">
-              </div>
             </div>
           </section>
 
-          </div><!-- end column 3 -->
+        </div>
+      </div>
 
-        </div><!-- end settings-grid -->
-
+    </div>
   </main>
 
-  <!-- =================================================================
-    FIXED BOTTOM BAR WITH SAVE/CANCEL
-    ================================================================= -->
-  <div class="actionBar">
-    <div class="actionBar__content">
-      <div class="actionBar__status">
-        <span id="changeIndicator" class="changeIndicator" style="display: none;">● Unsaved changes</span>
-      </div>
-      <div class="actionBar__buttons">
-        <button class="btn btn--subtle" id="cancelBtn">Cancel</button>
-        <button class="btn btn--primary" id="saveBtn" disabled>Save Settings</button>
+  <!-- ================= FIXED SAVE BAR ================= -->
+  <div class="position-fixed bottom-0 start-0 end-0 border-top border-secondary">
+    <div class="container-fluid py-2">
+      <div class="d-flex align-items-center gap-2">
+        <div class="text-body-secondary small">
+          <span id="changeIndicator" class="d-none">● Unsaved changes</span>
+        </div>
+        <div class="ms-auto d-flex gap-2">
+          <button class="btn btn-outline-light btn-sm" id="cancelBtn" type="button">Cancel</button>
+          <button class="btn btn-primary btn-sm" id="saveBtn" type="button" disabled>Save Settings</button>
+        </div>
       </div>
     </div>
   </div>
 
-  <!-- =================================================================
-    APP FOOTER (matching other operator pages)
-    ================================================================= -->
-  <footer class="app-footer">
-    <div class="footer-left">
-      <!-- Network status (wired by base.js setNetStatus) -->
-      <div class="status-dot" id="netDot"></div>
-      <div id="netMsg"></div>
-      <span id="statusMessage" class="statusMessage" style="margin-left: 12px; color: #b3c2cc;"></span>
+  <!-- ================= FOOTER (canonical) ================= -->
+  <footer class="mt-auto border-top">
+    <div class="container-fluid py-2">
+      <div class="row align-items-center text-center">
+        <div class="col d-flex align-items-center gap-2 justify-content-start">
+          <span class="badge text-bg-secondary" id="netDot">Connecting…</span>
+          <span id="netMsg" class="text-body-secondary"></span>
+          <span id="statusMessage" class="text-body-secondary ms-2"></span>
+        </div>
+
+        <div class="col">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="goto('about')">v0.2.0</button>
+        </div>
+
+        <div class="col d-flex justify-content-end">
+          <span id="wallClock" class="badge text-bg-secondary font-monospace">--:--:--</span>
+        </div>
+      </div>
     </div>
   </footer>
 
+  <!-- Bootstrap JS -->
+  <script src="/ui/js/bootstrap.bundle.min.js"></script>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const { setNetStatus } = window.CCRS;
+
+      function startSimpleWallClock(selector) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        const fmt = (n) => String(n).padStart(2, '0');
+        function tick() {
+          const d = new Date();
+          el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
+        }
+        tick();
+        setInterval(tick, 1000);
+      }
+
+      startSimpleWallClock('#wallClock');
+
+      let _reachTimer = null;
+      let _reachFailures = 0;
+      function startReachabilityPoll(ms = 2000) {
+        if (_reachTimer) clearInterval(_reachTimer);
+        _reachTimer = setInterval(async () => {
+          try {
+            const url = window.CCRS.apiUrl('/healthz');
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
+            _reachFailures = 0;
+            window.CCRS.setNetStatus('ok');
+          } catch (err) {
+            _reachFailures++;
+            if (_reachFailures >= 2) window.CCRS.setNetStatus('disconnected');
+            console.warn('reachability failed:', err?.message || err);
+          }
+        }, ms);
+      }
+
+      async function checkUIFeatures() {
+        try {
+          const url = window.CCRS.apiUrl('/config/ui_features');
+          const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          if (r.ok) {
+            const config = await r.json();
+            const moxieBtn = document.querySelector('[data-role="moxie-btn"]');
+            if (moxieBtn && config.moxie_board?.enabled) {
+              moxieBtn.classList.remove('d-none');
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load UI features config:', err?.message || err);
+        }
+      }
+
+      // Optional: map CCRS net status to badge colors
+      const netDot = document.getElementById('netDot');
+      const _orig = setNetStatus;
+      window.CCRS.setNetStatus = function (status) {
+        _orig(status);
+        if (!netDot) return;
+
+        netDot.classList.remove('text-bg-secondary', 'text-bg-success', 'text-bg-danger', 'text-bg-warning');
+
+        if (status === 'ok') {
+          netDot.classList.add('text-bg-success');
+          netDot.textContent = 'Online';
+        } else if (status === 'connecting') {
+          netDot.classList.add('text-bg-warning');
+          netDot.textContent = 'Connecting…';
+        } else if (status === 'disconnected') {
+          netDot.classList.add('text-bg-danger');
+          netDot.textContent = 'Offline';
+        } else {
+          netDot.classList.add('text-bg-secondary');
+          netDot.textContent = 'Status';
+        }
+      };
+
+      window.CCRS.setNetStatus('connecting');
+      startReachabilityPoll(2000);
+      checkUIFeatures();
+    });
+  </script>
 </body>
 
 </html>

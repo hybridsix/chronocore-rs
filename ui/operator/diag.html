@@ -1,192 +1,231 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <title>CCRS - Diagnostics / Live Sensors</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- =====================================================================
-       DIAGNOSTICS / LIVE SENSORS PAGE
-       ---------------------------------------------------------------------
-       Purpose
-       -------
-       The Diagnostics page provides a real-time, read-only view of transponder
-       detections flowing through the system. It does NOT write to the database,
-       and can be used by race officials or teams to verify that transmitters
-       are being picked up correctly.
+  <!-- Bootstrap only -->
+  <link rel="stylesheet" href="/ui/css/bootstrap.min.css" />
 
-       Behavior
-       --------
-       • Connects to /diagnostics/stream (Server-Sent Events)
-       • Displays each detection (timestamp, tag, entrant, number, source)
-       • Newest rows appear at the top
-       • Plays a soft beep on each detection (rate-limited)
-       • Obeys debounce + diagnostics settings from /setup/runtime
-       • Optional filters: known-only, show RSSI, pause stream, clear list
-       • UI is responsive, sized for 1920×1080 operator view
-
-       Dependencies
-       -------------
-       CSS : base.css → operator.css → diag.css
-       JS  : base.js (helpers) + diag.js (page logic)
-  ===================================================================== -->
-
-  <link rel="stylesheet" href="/ui/css/base.css" />
-  <link rel="stylesheet" href="/ui/css/operator.css" />
-  <link rel="stylesheet" href="/ui/css/diag.css" />
-
+  <!-- JS -->
   <script src="../js/base.js" defer></script>
   <script src="../js/diag.js" defer></script>
 </head>
 
-<body class="diagnostics">
-  <!-- ==============================================================
-    HEADER - identical in layout to other operator pages
-  ============================================================== -->
-  <header class="app-header">
-    <div class="brand">
-  <a class="brand-link" href="/ui/operator/index.html">
-        <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="CCRS Logo" />
-  <div class="brand__wordmark">
-          <div class="wordmark__top">
-            <span class="wordmark__big">CHRONO</span>
-            <span class="wordmark__big">CORE</span>
-          </div>
-          <div class="wordmark__bottom">RACE SOFTWARE</div>
-        </div>
-      </a>
+<body class="min-vh-100 d-flex flex-column">
 
-      <div class="page-label">Diagnostics / Live Sensors</div>
-    </div>
-
-    <!-- Right-side cluster: nav + engine pill -->
-    <div class="app-header__tools">
-  <nav class="app-nav">
-  <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
-          <svg class="icon"><use href="../img/icons.svg#home"></use></svg>
-          <span class="sr-only">Home</span>
+  <!-- ================= HEADER (canonical) ================= -->
+  <header>
+    <!-- Theme-aware navbar: no navbar-dark/bg-dark -->
+    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
+      <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/ui/operator/index.html">
+          <img src="/ui/img/CCRS_Logo.svg" alt="CCRS Logo" class="d-inline-block" height="36">
+          <span class="lh-1">
+            <span class="d-block fw-bold text-uppercase">CHRONO</span>
+            <span class="d-block fw-bold text-uppercase">CORE</span>
+            <small class="d-block text-uppercase opacity-75" style="letter-spacing:.12em;">RACE SOFTWARE</small>
+          </span>
         </a>
 
-        <div class="app-nav__menu" id="appsMenu" data-open="false">
-          <button type="button" class="app-nav__btn" title="Menu">
-            <svg class="icon"><use href="../img/icons.svg#menu"></use></svg>
-            <span class="sr-only">Open menu</span>
-          </button>
-          <div class="app-nav__panel" id="appsPanel">
-            <a href="/ui/operator/race_setup.html">Race Setup</a>
-            <a href="/ui/operator/race_control.html">Race Control</a>
-            <a href="/ui/operator/entrants.html">Entrants &amp; Tags</a>
-            <a href="/ui/operator/results.html">Results</a>
-            <a href="/ui/operator/diag.html">Diagnostics</a>
-            <a href="/ui/operator/moxie_board.html">Moxie Board</a>
-            <a href="/ui/operator/settings.html">Settings</a>
-            <a href="/ui/operator/about.html">About</a>
-          </div>
-        </div>
-      </nav>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#operatorNav"
+          aria-controls="operatorNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
 
-    </div>
+        <div class="collapse navbar-collapse" id="operatorNav">
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+            <li class="nav-item"><a class="nav-link" aria-current="page" href="/ui/operator/index.html">Home</a>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_setup.html">Race Setup</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_control.html">Race Control</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/entrants.html">Entrants &amp; Tags</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/results.html">Results</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/diag.html">Diagnostics</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/moxie_board.html">Moxie Board</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/settings.html">Settings</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/about.html">About</a></li>
+          </ul>
+        </div>
+        <!-- Theme toggle (theme-aware button; no outline-light) -->
+        <button id="themeToggle" type="button" class="btn btn-sm btn-outline-secondary ms-2"
+          title="Toggle light/dark theme" aria-label="Toggle theme">
+          🌙
+        </button>
+      </div>
+    </nav>
   </header>
 
-  <!-- ==============================================================
-       MAIN CONTENT
-       --------------------------------------------------------------
-       The toolbar gives operators quick actions (Pause, Clear, etc.)
-       and live status (Diagnostics enabled/disabled warning).
-       Below it is a scrollable table of live detections.
-  ============================================================== -->
-  <main class="diagWrap">
-  <div class="toolBar">
-      <div class="left">
-  <button id="btnPause" class="btn">Pause</button>
-        <button id="btnClear" class="btn btn--subtle">Clear</button>
-        <label class="chk"><input id="chkBeep" type="checkbox" checked  /><span>Beep</span></label>
-        <label class="chk"><input id="chkKnownOnly" type="checkbox" /><span>Known Entrants Only</span></label>
-        <label class="chk"><input id="chkShowRssi" type="checkbox" checked  /><span>Show RSSI</span></label>
-      </div>
-      <div class="right">
-        <!-- Visible only when diagnostics.enabled == false -->
-        <div id="diagWarn" class="banner banner--warn" hidden>
-          Diagnostics disabled in settings.
+  <!-- ================= MAIN ================= -->
+  <main class="container-fluid py-3 flex-grow-1 d-flex flex-column gap-3">
+
+    <!-- Toolbar -->
+    <div class="card border-secondary">
+      <div class="card-body py-2">
+        <div class="d-flex flex-wrap align-items-center gap-2">
+
+          <div class="d-flex flex-wrap align-items-center gap-2">
+            <button id="btnPause" class="btn btn-sm btn-outline-light" type="button">Pause</button>
+            <button id="btnClear" class="btn btn-sm btn-outline-secondary" type="button">Clear</button>
+
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" id="chkBeep" checked>
+              <label class="form-check-label" for="chkBeep">Beep</label>
+            </div>
+
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" id="chkKnownOnly">
+              <label class="form-check-label" for="chkKnownOnly">Known entrants only</label>
+            </div>
+
+            <div class="form-check form-check-inline mb-0">
+              <input class="form-check-input" type="checkbox" id="chkShowRssi" checked>
+              <label class="form-check-label" for="chkShowRssi">Show RSSI</label>
+            </div>
+          </div>
+
+          <div class="ms-auto">
+            <div id="diagWarn" class="alert alert-warning py-1 px-2 mb-0 d-none" role="alert">
+              Diagnostics disabled in settings.
+            </div>
+          </div>
+
         </div>
       </div>
     </div>
 
-    <!-- Scrollable live detections table -->
-    <div class="pane">
-  <table class="liveTable">
-        <thead>
-        <tr>
-            <th class="col-time">Time</th>
-            <th class="col-source">Source</th>
-            <th class="col-tag">Tag ID</th>
-            <th class="col-num">#</th>           <!-- moved up: after Tag ID -->
-            <th class="col-entrant">Entrant</th> <!-- moved down: after # -->
-            <th class="col-rssi">RSSI</th>
-        </tr>
-        </thead>
-        <tbody id="liveBody"></tbody>
-      </table>
+    <!-- Live detections table (fills remaining space; inner scroll only) -->
+    <div class="card border-secondary flex-grow-1">
+      <div class="card-body p-0 h-100">
+        <div class="table-responsive h-100" style="max-height: calc(100vh - 220px);">
+          <table class="table table-striped table-hover align-middle mb-0 w-100">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Source</th>
+                <th>Tag ID</th>
+                <th>#</th>
+                <th>Entrant</th>
+                <th>RSSI</th>
+              </tr>
+            </thead>
+            <tbody id="liveBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
+
   </main>
 
-  <!-- ==============================================================
-    FOOTER - standard operator footer; network/status placeholders
-  ============================================================== -->
-  <footer class="app-footer">
-    <div class="footer-left">
-      <div class="status-dot" id="netDot"></div>
-      <div id="netMsg">Ready</div>
+  <!-- ================= FOOTER (canonical) ================= -->
+  <footer class="mt-auto border-top">
+    <div class="container-fluid py-2">
+      <div class="row align-items-center text-center">
+
+        <div class="col d-flex align-items-center gap-2 justify-content-start">
+          <span class="badge text-bg-secondary" id="netDot">Connecting…</span>
+          <span class="text-body-secondary" id="netMsg"></span>
+        </div>
+
+        <div class="col">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="goto('about')">v0.2.0</button>
+        </div>
+
+        <div class="col d-flex justify-content-end">
+          <span class="badge text-bg-secondary font-monospace" id="wallClock">--:--:--</span>
+        </div>
+
+      </div>
     </div>
-    <div class="footer-center">
-  <div class="pill pill--db" id="readyPill">DB: ready</div>
-  <div class="pill pill--db" id="engineLabel">Engine: -</div>
-    </div>
-    <div class="footer-right"></div>
   </footer>
 
-<script>
-  (function () {
-    const menu = document.getElementById('appsMenu');
-    if (!menu) return;
-    const btn   = menu.querySelector('.app-nav__btn');
-    const panel = menu.querySelector('.app-nav__panel');
+  <!-- Bootstrap JS -->
+  <script src="/ui/js/bootstrap.bundle.min.js"></script>
 
-    function openMenu(on) {
-      menu.dataset.open = on ? 'true' : 'false';
-    }
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const { setNetStatus } = window.CCRS;
 
-    btn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      openMenu(menu.dataset.open !== 'true');
-      if (menu.dataset.open === 'true') {
-        const first = panel.querySelector('a');
-        if (first) first.focus();
+      function startSimpleWallClock(selector) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        const fmt = (n) => String(n).padStart(2, '0');
+        function tick() {
+          const d = new Date();
+          el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
+        }
+        tick();
+        setInterval(tick, 1000);
       }
-    });
 
-    document.addEventListener('click', () => openMenu(false));
-    document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') openMenu(false);
-    });
+      startSimpleWallClock('#wallClock');
 
-    panel.addEventListener('keydown', (e) => {
-      const items = Array.from(panel.querySelectorAll('a'));
-      const i = items.indexOf(document.activeElement);
-      if (e.key === 'ArrowDown') {
-        e.preventDefault();
-        (items[i + 1] || items[0]).focus();
-      } else if (e.key === 'ArrowUp') {
-        e.preventDefault();
-        (items[i - 1] || items[items.length - 1]).focus();
-      } else if (e.key === 'Home') {
-        e.preventDefault(); (items[0] || document.activeElement).focus();
-      } else if (e.key === 'End') {
-        e.preventDefault(); (items[items.length - 1] || document.activeElement).focus();
+      let _reachTimer = null;
+      let _reachFailures = 0;
+      function startReachabilityPoll(ms = 2000) {
+        if (_reachTimer) clearInterval(_reachTimer);
+        _reachTimer = setInterval(async () => {
+          try {
+            const url = window.CCRS.apiUrl('/healthz');
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
+            _reachFailures = 0;
+            window.CCRS.setNetStatus('ok');
+          } catch (err) {
+            _reachFailures++;
+            if (_reachFailures >= 2) window.CCRS.setNetStatus('disconnected');
+            console.warn('reachability failed:', err?.message || err);
+          }
+        }, ms);
       }
+
+      async function checkUIFeatures() {
+        try {
+          const url = window.CCRS.apiUrl('/config/ui_features');
+          const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          if (r.ok) {
+            const config = await r.json();
+            const moxieBtn = document.querySelector('[data-role="moxie-btn"]');
+            if (moxieBtn && config.moxie_board?.enabled) {
+              moxieBtn.classList.remove('d-none');
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load UI features config:', err?.message || err);
+        }
+      }
+
+      // Optional: map CCRS net status to badge colors
+      const netDot = document.getElementById('netDot');
+      const _orig = setNetStatus;
+      window.CCRS.setNetStatus = function (status) {
+        _orig(status);
+        if (!netDot) return;
+
+        netDot.classList.remove('text-bg-secondary', 'text-bg-success', 'text-bg-danger', 'text-bg-warning');
+
+        if (status === 'ok') {
+          netDot.classList.add('text-bg-success');
+          netDot.textContent = 'Online';
+        } else if (status === 'connecting') {
+          netDot.classList.add('text-bg-warning');
+          netDot.textContent = 'Connecting…';
+        } else if (status === 'disconnected') {
+          netDot.classList.add('text-bg-danger');
+          netDot.textContent = 'Offline';
+        } else {
+          netDot.classList.add('text-bg-secondary');
+          netDot.textContent = 'Status';
+        }
+      };
+
+      window.CCRS.setNetStatus('connecting');
+      startReachabilityPoll(2000);
+      checkUIFeatures();
     });
-  })();
-</script>
+  </script>
 </body>
-</html>
 
+</html>

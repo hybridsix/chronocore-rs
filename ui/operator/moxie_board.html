@@ -1,62 +1,119 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <title>ChronoCore - Moxie Board</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="../css/base.css" />
-  <link rel="stylesheet" href="../css/operator.css" />
+
+  <!-- Bootstrap only -->
+  <link rel="stylesheet" href="/ui/css/bootstrap.min.css" />
+
+  <!-- Shared JS -->
   <script src="../js/base.js" defer></script>
-  <script>
-    async function home(){ 
-      if (window.pywebview?.api?.goto) { 
-        await window.pywebview.api.goto('home'); 
-      } else { 
-        location.href='index.html'; 
-      } 
-    }
-  </script>
+  <!-- Page JS (optional later) -->
+  <!-- <script src="../js/moxie_board.js" defer></script> -->
 </head>
-<body>
-  <header class="app-header">
-    <div class="title">Moxie Board</div>
-    <button class="tag" onclick="home()">← Back</button>
+
+<body class="min-vh-100 d-flex flex-column">
+
+  <!-- ================= HEADER (canonical) ================= -->
+  <header>
+    <!-- Theme-aware navbar: no navbar-dark/bg-dark -->
+    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
+      <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/ui/operator/index.html">
+          <img src="/ui/img/CCRS_Logo.svg" alt="CCRS Logo" class="d-inline-block" height="36">
+          <span class="lh-1">
+            <span class="d-block fw-bold text-uppercase">CHRONO</span>
+            <span class="d-block fw-bold text-uppercase">CORE</span>
+            <small class="d-block text-uppercase opacity-75" style="letter-spacing:.12em;">RACE SOFTWARE</small>
+          </span>
+        </a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#operatorNav"
+          aria-controls="operatorNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="operatorNav">
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+            <li class="nav-item"><a class="nav-link" aria-current="page" href="/ui/operator/index.html">Home</a>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_setup.html">Race Setup</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_control.html">Race Control</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/entrants.html">Entrants &amp; Tags</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/results.html">Results</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/diag.html">Diagnostics</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/moxie_board.html">Moxie Board</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/settings.html">Settings</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/about.html">About</a></li>
+          </ul>
+        </div>
+        <!-- Theme toggle (theme-aware button; no outline-light) -->
+        <button id="themeToggle" type="button" class="btn btn-sm btn-outline-secondary ms-2"
+          title="Toggle light/dark theme" aria-label="Toggle theme">
+          🌙
+        </button>
+      </div>
+    </nav>
   </header>
 
-  <main class="wrap">
-    <section class="card" style="padding:32px; text-align:center;">
-      <h2 style="font-size: 2em; margin-bottom: 16px;">🚧 Coming Soon</h2>
-      <p style="font-size: 1.2em; color: var(--text-muted); margin-bottom: 24px;">
-        Moxie Board integration is currently under development.
-      </p>
-      <div style="text-align: left; max-width: 500px; margin: 0 auto; color: var(--text-muted);">
-        <h3 style="margin-bottom: 12px;">Planned Features:</h3>
-        <ul style="line-height: 1.8;">
-          <li>Wireless button-press scoring system</li>
-          <li>Real-time score tracking and display</li>
-          <li>Integration with race timing</li>
-          <li>Configurable points and board positions</li>
-        </ul>
+  <!-- ================= MAIN ================= -->
+  <main class="container-fluid py-3 flex-grow-1 d-flex align-items-center justify-content-center">
+    <div class="card border-secondary" style="max-width: 760px; width: 100%;">
+      <div class="card-body p-4 text-center">
+        <h2 class="mb-2">Coming Soon</h2>
+        <p class="text-body-secondary mb-4">
+          Moxie Board integration is currently under development.
+        </p>
+
+        <div class="mx-auto text-start" style="max-width: 560px;">
+          <h5 class="mb-2">Planned Features</h5>
+          <ul class="mb-0">
+            <li>Wireless button-press scoring system</li>
+            <li>Real-time score tracking and display</li>
+            <li>Integration with race timing</li>
+            <li>Configurable points and board positions</li>
+          </ul>
+        </div>
       </div>
-    </section>
+    </div>
   </main>
 
-  <footer class="app-footer">
-    <div class="footer-left">
-      <div class="status-dot" id="netDot"></div>
-      <div id="netMsg"></div>
+  <!-- ================= FOOTER (canonical) ================= -->
+  <footer class="mt-auto border-top">
+    <div class="container-fluid py-2">
+      <div class="row align-items-center text-center">
+
+        <div class="col d-flex align-items-center gap-2 justify-content-start">
+          <span class="badge text-bg-secondary" id="netDot">Connecting…</span>
+          <span class="text-body-secondary" id="netMsg"></span>
+        </div>
+
+        <div class="col">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="goto('about')">v0.2.0</button>
+        </div>
+
+        <div class="col d-flex justify-content-end">
+          <span class="badge text-bg-secondary font-monospace" id="wallClock">--:--:--</span>
+        </div>
+
+      </div>
     </div>
-    <div id="wallClock" class="pill">--:--:--</div>
   </footer>
 
-  <!-- PAGE WIRING -->
+  <!-- Bootstrap JS -->
+  <script src="/ui/js/bootstrap.bundle.min.js"></script>
+
+  <!-- =============================================================
+    Page wiring: wall clock + light reachability ping
+  ============================================================= -->
   <script>
     window.addEventListener('DOMContentLoaded', () => {
-      // Initialize network status and wall clock
       const { setNetStatus } = window.CCRS;
 
-      // Simple wall clock
-      function startWallClock(selector) {
+      function startSimpleWallClock(selector) {
         const el = document.querySelector(selector);
         if (!el) return;
         const fmt = (n) => String(n).padStart(2, '0');
@@ -68,32 +125,72 @@
         setInterval(tick, 1000);
       }
 
-      startWallClock('#wallClock');
+      startSimpleWallClock('#wallClock');
 
-      // Basic connectivity check
-      let reachTimer = null;
-      let reachFailures = 0;
+      let _reachTimer = null;
+      let _reachFailures = 0;
       function startReachabilityPoll(ms = 2000) {
-        if (reachTimer) clearInterval(reachTimer);
-        reachTimer = setInterval(async () => {
+        if (_reachTimer) clearInterval(_reachTimer);
+        _reachTimer = setInterval(async () => {
           try {
             const url = window.CCRS.apiUrl('/healthz');
             const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
             if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
-
-            reachFailures = 0;
-            setNetStatus('ok');
+            _reachFailures = 0;
+            window.CCRS.setNetStatus('ok');
           } catch (err) {
-            reachFailures++;
-            if (reachFailures >= 2) setNetStatus('disconnected');
+            _reachFailures++;
+            if (_reachFailures >= 2) window.CCRS.setNetStatus('disconnected');
             console.warn('reachability failed:', err?.message || err);
           }
         }, ms);
       }
 
-      setNetStatus('connecting');
+      async function checkUIFeatures() {
+        try {
+          const url = window.CCRS.apiUrl('/config/ui_features');
+          const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          if (r.ok) {
+            const config = await r.json();
+            const moxieBtn = document.querySelector('[data-role="moxie-btn"]');
+            if (moxieBtn && config.moxie_board?.enabled) {
+              moxieBtn.classList.remove('d-none');
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load UI features config:', err?.message || err);
+        }
+      }
+
+      // Optional: map CCRS net status to badge colors
+      const netDot = document.getElementById('netDot');
+      const _orig = setNetStatus;
+      window.CCRS.setNetStatus = function (status) {
+        _orig(status);
+        if (!netDot) return;
+
+        netDot.classList.remove('text-bg-secondary', 'text-bg-success', 'text-bg-danger', 'text-bg-warning');
+
+        if (status === 'ok') {
+          netDot.classList.add('text-bg-success');
+          netDot.textContent = 'Online';
+        } else if (status === 'connecting') {
+          netDot.classList.add('text-bg-warning');
+          netDot.textContent = 'Connecting…';
+        } else if (status === 'disconnected') {
+          netDot.classList.add('text-bg-danger');
+          netDot.textContent = 'Offline';
+        } else {
+          netDot.classList.add('text-bg-secondary');
+          netDot.textContent = 'Status';
+        }
+      };
+
+      window.CCRS.setNetStatus('connecting');
       startReachabilityPoll(2000);
+      checkUIFeatures();
     });
   </script>
 </body>
+
 </html>

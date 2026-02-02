@@ -1,35 +1,207 @@
 <!doctype html>
 <html lang="en">
+
 <head>
   <meta charset="utf-8" />
   <title>ChronoCore - About</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="../css/base.css" />
-  <link rel="stylesheet" href="../css/operator.css" />
+
+  <!-- Bootstrap only -->
+  <link rel="stylesheet" href="/ui/css/bootstrap.min.css" />
+  <script src="/ui/js/base.js" defer></script>
   <script>
-    async function home(){ if (window.pywebview?.api?.goto) { await window.pywebview.api.goto('home'); } else { location.href='index.html'; } }
+    async function home() {
+      if (window.pywebview?.api?.goto) {
+        await window.pywebview.api.goto('home');
+      } else {
+        location.href = '/ui/operator/index.html';
+      }
+    }
   </script>
 </head>
-<body>
-  <header class="app-header">
-    <div class="title">About</div>
-    <button class="tag" onclick="home()">← Back</button>
+
+<body class="min-vh-100 d-flex flex-column">
+
+  <!-- ================= HEADER (canonical) ================= -->
+  <header>
+    <!-- Theme-aware navbar: no navbar-dark/bg-dark -->
+    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
+      <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/ui/operator/index.html">
+          <img src="/ui/img/CCRS_Logo.svg" alt="CCRS Logo" class="d-inline-block" height="36">
+          <span class="lh-1">
+            <span class="d-block fw-bold text-uppercase">CHRONO</span>
+            <span class="d-block fw-bold text-uppercase">CORE</span>
+            <small class="d-block text-uppercase opacity-75" style="letter-spacing:.12em;">RACE SOFTWARE</small>
+          </span>
+        </a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#operatorNav"
+          aria-controls="operatorNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="operatorNav">
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+            <li class="nav-item"><a class="nav-link" aria-current="page" href="/ui/operator/index.html">Home</a>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_setup.html">Race Setup</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_control.html">Settings</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/entrants.html">Entrants &amp; Tags</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/results.html">Results</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/diag.html">Diagnostics</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/moxie_board.html">Moxie Board</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/settings.html">Settings</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/about.html">About</a></li>
+          </ul>
+        </div>
+        <!-- Theme toggle (theme-aware button; no outline-light) -->
+        <button id="themeToggle" type="button" class="btn btn-sm btn-outline-secondary ms-2"
+          title="Toggle light/dark theme" aria-label="Toggle theme">
+          🌙
+        </button>
+      </div>
+    </nav>
   </header>
 
-  <main class="wrap">
-    <section class="card" style="padding:16px">
-  <h2>ChronoCore Race Software - Operator Console</h2>
-      <p>Version: <strong>v0.2.0</strong></p>
-      <p>Build date: January 24, 2026</p>
-      <p>Backend: FastAPI @ http://localhost:8000</p>
-      <p>UI: pywebview + Qt (PySide6)</p>
-  <p>© CCRS. All rights reserved.</p>
-    </section>
+  <!-- ================= MAIN ================= -->
+  <main class="container py-4 flex-grow-1">
+    <div class="row justify-content-center">
+      <div class="col-12 col-lg-8 col-xl-7">
+        <div class="card border-secondary">
+          <div class="card-body p-4">
+
+            <h4 class="mb-3">ChronoCore Race Software - Operator Console</h4>
+
+            <dl class="row mb-0">
+              <dt class="col-sm-4 text-body-secondary">Version</dt>
+              <dd class="col-sm-8 mb-2"><strong>v0.2.0</strong></dd>
+
+              <dt class="col-sm-4 text-body-secondary">Build date</dt>
+              <dd class="col-sm-8 mb-2">January 24, 2026</dd>
+
+              <dt class="col-sm-4 text-body-secondary">Backend</dt>
+              <dd class="col-sm-8 mb-2">FastAPI @ http://localhost:8000</dd>
+
+              <dt class="col-sm-4 text-body-secondary">UI</dt>
+              <dd class="col-sm-8 mb-2">pywebview + Qt (PySide6)</dd>
+
+              <dt class="col-sm-4 text-body-secondary">Copyright</dt>
+              <dd class="col-sm-8 mb-0">© CCRS. All rights reserved.</dd>
+            </dl>
+
+          </div>
+        </div>
+      </div>
+    </div>
   </main>
 
-  <footer class="app-footer">
-    <div class="footer-left"><div class="status-dot"></div> About</div>
-    <div class="footer-right">Operator UI</div>
+  <!-- ================= FOOTER (canonical) ================= -->
+  <footer class="mt-auto border-top">
+    <div class="container-fluid py-2">
+      <div class="row align-items-center text-center">
+        <div class="col d-flex align-items-center gap-2 justify-content-start">
+          <span class="badge text-bg-secondary" id="netDot">Connecting…</span>
+          <span id="netMsg" class="text-body-secondary">Ready</span>
+        </div>
+
+        <div class="col">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="goto('about')">v0.2.0</button>
+        </div>
+
+        <div class="col d-flex justify-content-end">
+          <span id="wallClock" class="badge text-bg-secondary font-monospace">--:--:--</span>
+        </div>
+      </div>
+    </div>
   </footer>
+
+  <!-- Bootstrap JS -->
+  <script src="/ui/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Wall clock (matches other pages) -->
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const { setNetStatus } = window.CCRS;
+
+      function startSimpleWallClock(selector) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        const fmt = (n) => String(n).padStart(2, '0');
+        function tick() {
+          const d = new Date();
+          el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
+        }
+        tick();
+        setInterval(tick, 1000);
+      }
+
+      startSimpleWallClock('#wallClock');
+
+      let _reachTimer = null;
+      let _reachFailures = 0;
+      function startReachabilityPoll(ms = 2000) {
+        if (_reachTimer) clearInterval(_reachTimer);
+        _reachTimer = setInterval(async () => {
+          try {
+            const url = window.CCRS.apiUrl('/healthz');
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
+            _reachFailures = 0;
+            window.CCRS.setNetStatus('ok');
+          } catch (err) {
+            _reachFailures++;
+            if (_reachFailures >= 2) window.CCRS.setNetStatus('disconnected');
+            console.warn('reachability failed:', err?.message || err);
+          }
+        }, ms);
+      }
+
+      async function checkUIFeatures() {
+        try {
+          const url = window.CCRS.apiUrl('/config/ui_features');
+          const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          if (r.ok) {
+            const config = await r.json();
+            const moxieBtn = document.querySelector('[data-role="moxie-btn"]');
+            if (moxieBtn && config.moxie_board?.enabled) {
+              moxieBtn.classList.remove('d-none');
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load UI features config:', err?.message || err);
+        }
+      }
+
+      // Optional: map CCRS net status to badge colors
+      const netDot = document.getElementById('netDot');
+      const _orig = setNetStatus;
+      window.CCRS.setNetStatus = function (status) {
+        _orig(status);
+        if (!netDot) return;
+
+        netDot.classList.remove('text-bg-secondary', 'text-bg-success', 'text-bg-danger', 'text-bg-warning');
+
+        if (status === 'ok') {
+          netDot.classList.add('text-bg-success');
+          netDot.textContent = 'Online';
+        } else if (status === 'connecting') {
+          netDot.classList.add('text-bg-warning');
+          netDot.textContent = 'Connecting…';
+        } else if (status === 'disconnected') {
+          netDot.classList.add('text-bg-danger');
+          netDot.textContent = 'Offline';
+        } else {
+          netDot.classList.add('text-bg-secondary');
+          netDot.textContent = 'Status';
+        }
+      };
+
+      window.CCRS.setNetStatus('connecting');
+      startReachabilityPoll(2000);
+      checkUIFeatures();
+    });
+  </script>
 </body>
+
 </html>
