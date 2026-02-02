@@ -525,35 +525,30 @@
 
     const html = heats.map(h => {
       const isSelected = String(h.heat_id) === String(selectedRaceId);
+
       const eventLabel = safeText(h.event_label, '—');
       const sessionLabel = safeText(h.session_label, '—');
       const raceMode = safeText(h.race_mode, '—');
-      const raceModeCapitalized = raceMode.charAt(0).toUpperCase() + raceMode.slice(1);
+      const raceModeCapitalized = raceMode ? (raceMode.charAt(0).toUpperCase() + raceMode.slice(1)) : '—';
       const when = heatDisplayTime(h);
 
-      // list-group-item + action gives you the clickable card feel
-      // active provides the selected highlight (Bootstrap theme-aware)
       return `
     <button
       type="button"
-      class="list-group-item list-group-item-action py-3 ${isSelected ? 'active' : ''}"
+      class="list-group-item list-group-item-action border-secondary ${isSelected ? 'active' : ''}"
       data-heat-id="${h.heat_id}"
       aria-current="${isSelected ? 'true' : 'false'}"
       title="${raceModeCapitalized}"
     >
       <div class="d-flex justify-content-between align-items-start gap-2">
-        <div class="fw-semibold text-truncate">${eventLabel}</div>
-        <span class="badge ${isSelected ? 'text-bg-light' : 'text-bg-secondary'} flex-shrink-0">
-          ${raceModeCapitalized}
-        </span>
-      </div>
-
-      <div class="small ${isSelected ? 'text-white-50' : 'text-body-secondary'} text-truncate mt-1">
-        ${sessionLabel}
-      </div>
-
-      <div class="mt-2 small ${isSelected ? 'text-white-50' : 'text-body-secondary'}">
-        ${when}
+        <div class="text-truncate">
+          <div class="fw-semibold text-truncate">${eventLabel}</div>
+          <div class="small opacity-75 text-truncate">${sessionLabel}</div>
+        </div>
+        <div class="text-end flex-shrink-0">
+          <div class="small fw-semibold">${raceModeCapitalized}</div>
+          <div class="small opacity-75">${when}</div>
+        </div>
       </div>
     </button>
   `;
@@ -563,29 +558,27 @@
     listEl.innerHTML = html;
 
     // Delegated click
+    // Delegated click (Bootstrap list-group buttons)
     listEl.onclick = (ev) => {
-      const btn = ev.target.closest('.heat-card');
-      if (!btn) return;
+      const btn = ev.target.closest('[data-heat-id]');
+      if (!btn || !listEl.contains(btn)) return;
+
       const id = toId(btn.getAttribute('data-heat-id'));
       if (!id) return;
-      const heat = heats.find(x => x.heat_id === id); // from full list, not sliced
+
+      const heat = heats.find(x => x.heat_id === id);
       if (!heat) return;
 
-      // Let selectHeat handle selectedRaceId and rendering
       selectHeat(heat);
     };
+
 
     railEmpty && (railEmpty.hidden = heats.length > 0);
 
     // Auto-select first if nothing selected
+    // Auto-select first if nothing selected
     if (!selectedRaceId && heats[0]) {
-      selectedRaceId = heats[0].heat_id;
-      selectHeat(heats[0]);
-      const first = listEl.querySelector('.heat-card');
-      if (first) {
-        first.classList.add('heat-card--selected');
-        first.setAttribute('aria-current', 'true');
-      }
+      selectHeat(heats[0]); // selectHeat will set selectedRaceId + update UI
     }
   }
 
@@ -617,19 +610,20 @@
       history.replaceState(null, '', u.toString());
     } catch { }
 
-    // Update the left-rail visual selection if that card exists
+    // Update the left-rail visual selection (Bootstrap list-group uses .active)
     if (heatListEl) {
-      heatListEl.querySelectorAll('.heat-card').forEach(btn => {
+      heatListEl.querySelectorAll('[data-heat-id]').forEach(btn => {
         const btnId = toId(btn.getAttribute('data-heat-id'));
         const match = btnId === id;
-        btn.classList.toggle('heat-card--selected', match);
+        btn.classList.toggle('active', match);
         btn.setAttribute('aria-current', match ? 'true' : 'false');
+
         if (match) {
-          // keep the selected card in view
           try { btn.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { }
         }
       });
     }
+
 
     // Enable/disable rail admin buttons based on selection
     updateAdminEnabled();
