@@ -22,34 +22,34 @@
   // ---------------------------------------------------------------------------
   // Lightweight DOM helpers (all null-safe by design)
   // ---------------------------------------------------------------------------
-  const $  = (sel, root) => (root || document).querySelector(sel);
+  const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
   // References (optional: these may be missing in early stubs)
-  const railEmpty      = $('#railEmpty');
-  const heatListEl     = $('#heatList');
-  const btnRefresh     = $('#btnRefreshHeats');
+  const railEmpty = $('#railEmpty');
+  const heatListEl = $('#heatList');
+  const btnRefresh = $('#btnRefreshHeats');
 
-  const heatTitleEl    = $('#heatTitle');
-  const heatWindowEl   = $('#heatWindow');
-  const chipFrozenEl   = $('#chipFrozen');
-  const chipLiveEl     = $('#chipLive');
-  const chipGridEl     = $('#chipGrid');
+  const heatTitleEl = $('#heatTitle');
+  const heatWindowEl = $('#heatWindow');
+  const chipFrozenEl = $('#chipFrozen');
+  const chipLiveEl = $('#chipLive');
+  const chipGridEl = $('#chipGrid');
 
-  const statFastEl     = $('#statFast');
-  const statCarsEl     = $('#statCars');
+  const statFastEl = $('#statFast');
+  const statCarsEl = $('#statCars');
 
-  const tabsEl         = $('#tabs');
+  const tabsEl = $('#tabs');
   const tbodyStandings = $('#tbodyStandings');
   const standingsEmpty = $('#standingsEmpty');
-  const tbodyLaps      = $('#tbodyLaps');
-  const lapsEmpty      = $('#lapsEmpty');
+  const tbodyLaps = $('#tbodyLaps');
+  const lapsEmpty = $('#lapsEmpty');
 
-  const btnStandingsCSV  = $('#btnStandingsCSV');
+  const btnStandingsCSV = $('#btnStandingsCSV');
   const btnStandingsJSON = $('#btnStandingsJSON');
-  const btnLapsCSV       = $('#btnLapsCSV');
-  const btnLapsJSON      = $('#btnLapsJSON');
-  const btnPassesCSV     = $('#btnPassesCSV'); // kept disabled unless journaling is on
+  const btnLapsCSV = $('#btnLapsCSV');
+  const btnLapsJSON = $('#btnLapsJSON');
+  const btnPassesCSV = $('#btnPassesCSV'); // kept disabled unless journaling is on
 
   // State
   let heats = [];                // normalized heats list for the rail
@@ -116,35 +116,35 @@
     const hh = pad(Math.floor(Math.abs(offMin) / 60));
     const mm = pad(Math.abs(offMin) % 60);
     const d = new Date(dt);
-    return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}${sign}${hh}:${mm}`;
   }
 
   // Pick the best time present on a heat object
-function heatDisplayTime(h) {
-  // Preferred: backend-computed local ISO with offset
-  const raw =
-    h?.display_time ??
-    h?.frozen_iso_local ??
-    h?.finished_utc ??
-    h?.frozen_iso_utc ??
-    h?.frozen_utc ?? null;
+  function heatDisplayTime(h) {
+    // Preferred: backend-computed local ISO with offset
+    const raw =
+      h?.display_time ??
+      h?.frozen_iso_local ??
+      h?.finished_utc ??
+      h?.frozen_iso_utc ??
+      h?.frozen_utc ?? null;
 
-  // compactIso() is your formatter; if missing, just pass raw through
-  try {
-    return raw ? (typeof compactIso === 'function' ? compactIso(raw) : String(raw)) : '';
-  } catch {
-    return raw ? String(raw) : '';
+    // compactIso() is your formatter; if missing, just pass raw through
+    try {
+      return raw ? (typeof compactIso === 'function' ? compactIso(raw) : String(raw)) : '';
+    } catch {
+      return raw ? String(raw) : '';
+    }
   }
-}
 
-function safeText(v, fallback = '—') {
-  return (v === null || v === undefined || v === '') ? fallback : String(v);
-}
+  function safeText(v, fallback = '—') {
+    return (v === null || v === undefined || v === '') ? fallback : String(v);
+  }
 
-function safeNumber(v, fallback = 0) {
-  const n = Number(v);
-  return Number.isFinite(n) ? n : fallback;
-}
+  function safeNumber(v, fallback = 0) {
+    const n = Number(v);
+    return Number.isFinite(n) ? n : fallback;
+  }
 
   // ---------------------------------------------------------------------------
   // Helpers
@@ -169,18 +169,18 @@ function safeNumber(v, fallback = 0) {
     return `${parts[0]} ${timePart}`;
   }
 
-// Fallback toast so we never silently fail
-function toast(msg) { try { CCRS?.toast?.(msg); } catch { console.log(msg); } }
+  // Fallback toast so we never silently fail
+  function toast(msg) { try { CCRS?.toast?.(msg); } catch { console.log(msg); } }
 
-// Keep admin buttons enabled only when a heat is selected
-function updateAdminEnabled() {
-  const hasSel = !!selectedRaceId;
-  const ids = ['btnCopyLinks', 'btnDeleteHeat'];
-  ids.forEach(id => {
-    const el = document.getElementById(id);
-    if (el) el.disabled = !hasSel;
-  });
-}
+  // Keep admin buttons enabled only when a heat is selected
+  function updateAdminEnabled() {
+    const hasSel = !!selectedRaceId;
+    const ids = ['btnCopyLinks', 'btnDeleteHeat'];
+    ids.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.disabled = !hasSel;
+    });
+  }
 
   // ---------------------------------------------------------------------------
   // View Mode Helpers (Frozen vs Live)
@@ -205,8 +205,8 @@ function updateAdminEnabled() {
 
   function setPillState({ frozenEnabled, liveEnabled }) {
     const pFrozen = document.getElementById('pillFrozen');
-    const pLive   = document.getElementById('pillLive');
-    const hint    = document.getElementById('viewHint');
+    const pLive = document.getElementById('pillLive');
+    const hint = document.getElementById('viewHint');
 
     if (pFrozen) {
       pFrozen.disabled = !frozenEnabled;
@@ -229,7 +229,7 @@ function updateAdminEnabled() {
 
   async function chooseDefaultView(raceId) {
     const frozen = await hasFrozenResult(raceId);
-    const live   = await hasLiveFor(raceId);
+    const live = await hasLiveFor(raceId);
     viewMode = frozen ? 'frozen' : (live ? 'live' : 'frozen');
     setPillState({ frozenEnabled: frozen, liveEnabled: live });
     return { frozen, live };
@@ -238,11 +238,11 @@ function updateAdminEnabled() {
   async function renderFinalOrLive(raceId) {
     // Clear chips first
     if (chipFrozenEl) chipFrozenEl.hidden = true;
-    if (chipLiveEl)   chipLiveEl.hidden   = true;
+    if (chipLiveEl) chipLiveEl.hidden = true;
 
     // Check availability
     const frozenAvail = await hasFrozenResult(raceId);
-    const liveAvail   = await hasLiveFor(raceId);
+    const liveAvail = await hasLiveFor(raceId);
     setPillState({ frozenEnabled: frozenAvail, liveEnabled: liveAvail });
 
     if (viewMode === 'frozen' && frozenAvail) {
@@ -252,14 +252,14 @@ function updateAdminEnabled() {
           getJSON(`/results/${raceId}`),
           getJSON(`/results/${raceId}/laps`)
         ]);
-        
+
         // Title + window info
         const titleParts = [];
         if (meta?.race_type) titleParts.push(meta.race_type.charAt(0).toUpperCase() + meta.race_type.slice(1));
         if (meta?.session_label) titleParts.push(meta.session_label);
         setTitle(titleParts.length > 0 ? titleParts.join(' • ') : `Race ${raceId}`);
         setWindow(`Frozen ${meta?.frozen_utc || ''} • Duration ${fmtDuration(meta?.duration_ms)}`);
-        
+
         renderStandings(meta);
         renderLapsFromMap(laps?.laps || {});
         calcQuickStatsFromFinal(meta);
@@ -273,14 +273,14 @@ function updateAdminEnabled() {
       if (chipLiveEl) chipLiveEl.hidden = false;
       try {
         const state = await getJSON(`/race/state`);
-        
+
         // Title + window info
         const titleParts = [];
         if (state?.race_type) titleParts.push(state.race_type.charAt(0).toUpperCase() + state.race_type.slice(1));
         if (state?.session_label) titleParts.push(state.session_label);
         setTitle(titleParts.length > 0 ? titleParts.join(' • ') : `Race ${raceId}`);
         setWindow('Live preview - not final');
-        
+
         renderStandings(liveToStandings(state));
         renderLapsFromMap(liveToLapMap(state));
         calcQuickStatsFromLive(state);
@@ -332,7 +332,7 @@ function updateAdminEnabled() {
 
   function wireViewPills() {
     const pFrozen = document.getElementById('pillFrozen');
-    const pLive   = document.getElementById('pillLive');
+    const pLive = document.getElementById('pillLive');
     if (pFrozen) pFrozen.addEventListener('click', async () => {
       if (viewMode === 'frozen') return;
       viewMode = 'frozen';
@@ -347,295 +347,302 @@ function updateAdminEnabled() {
     });
   }
 
-// Wire admin button handlers with event delegation
-function wireAdminButtons() {
-  const rail = document.getElementById('railAdmin');
-  if (!rail) { console.warn('railAdmin not found'); return; }
+  // Wire admin button handlers with event delegation
+  function wireAdminButtons() {
+    const rail = document.getElementById('railAdmin');
+    if (!rail) { console.warn('railAdmin not found'); return; }
 
-  rail.addEventListener('click', async (ev) => {
-    const btn = ev.target.closest('button');
-    if (!btn) return;
+    rail.addEventListener('click', async (ev) => {
+      const btn = ev.target.closest('button');
+      if (!btn) return;
 
-    console.log('[wireAdminButtons] Button clicked:', btn.id, 'selectedRaceId:', selectedRaceId);
+      console.log('[wireAdminButtons] Button clicked:', btn.id, 'selectedRaceId:', selectedRaceId);
 
-    // No selection? Give a friendly nudge.
-    if (!selectedRaceId && (btn.id === 'btnCopyLinks' || btn.id === 'btnDeleteHeat')) {
-      toast('Select a heat first.');
+      // No selection? Give a friendly nudge.
+      if (!selectedRaceId && (btn.id === 'btnCopyLinks' || btn.id === 'btnDeleteHeat')) {
+        toast('Select a heat first.');
+        return;
+      }
+
+      try {
+        if (btn.id === 'btnCopyLinks') {
+          await copyLinksFor(selectedRaceId);
+          return;
+        }
+
+        if (btn.id === 'btnDeleteHeat') {
+          console.log('[wireAdminButtons] Calling deleteHeatById with:', selectedRaceId);
+          await deleteHeatById(selectedRaceId);  // shows prompt internally
+          await refreshHeats();                  // rebuild rail after delete
+          // Clear main view if the selected heat is gone
+          if (!heats.find(h => String(h.heat_id) === String(selectedRaceId))) {
+            selectedRaceId = null;
+            updateAdminEnabled();
+            // Clear all displayed data
+            try { clearHeatHeader(); } catch { }
+            try { clearStandingsTable(); } catch { }
+            try { clearLapsTable(); } catch { }
+          }
+          return;
+        }
+
+        if (btn.id === 'btnPurgeAll') {
+          await purgeAllResults();               // double prompt internally
+          await refreshHeats();
+          selectedRaceId = null;
+          updateAdminEnabled();
+          try { clearHeatHeader(); } catch { }
+          try { clearStandingsTable(); } catch { }
+          try { clearLapsTable(); } catch { }
+          return;
+        }
+      } catch (e) {
+        toast(e?.message || 'Action failed.');
+        console.warn(e);
+      }
+    });
+
+    updateAdminEnabled();
+  }
+
+  // ---------------------------------------------------------------------------
+  // Admin actions: copy links, delete heat, purge all
+  // ---------------------------------------------------------------------------
+
+  async function copyLinksFor(raceId) {
+    if (!raceId) return;
+    const base = window.location.origin;
+    const text = [
+      `${base}/results/${raceId}`,
+      `${base}/results/${raceId}/laps`,
+      `${base}/export/results_csv?race_id=${raceId}`,
+      `${base}/export/laps_csv?race_id=${raceId}`,
+    ].join('\n');
+
+    try {
+      await navigator.clipboard.writeText(text);
+      toast('Links copied to clipboard.');
+    } catch (e) {
+      console.warn('Clipboard write failed:', e);
+      toast('Failed to copy links.');
+    }
+  }
+
+  async function deleteHeatById(raceId) {
+    console.log('[deleteHeatById] Called with raceId:', raceId);
+    if (!raceId) return;
+
+    const heat = heats.find(h => String(h.heat_id) === String(raceId));
+    const label = heat?.race_mode || heat?.name || `Heat ${raceId}`;
+
+    console.log('[deleteHeatById] About to show confirm dialog for:', label);
+    const confirmed = confirm(
+      `Delete frozen results for "${label}" (race_id=${raceId})?\n\n` +
+      `This will permanently remove:\n` +
+      `• Result metadata\n` +
+      `• Standings snapshot\n` +
+      `• Lap times\n\n` +
+      `This does NOT affect live race data or entrants.`
+    );
+
+    if (!confirmed) return;
+
+    const token = `heat-${raceId}`;
+    const res = await fetch(`/results/${raceId}?confirm=${encodeURIComponent(token)}`, {
+      method: 'DELETE',
+    });
+
+    if (!res.ok) {
+      const err = await res.text().catch(() => `HTTP ${res.status}`);
+      throw new Error(`Delete failed: ${err}`);
+    }
+
+    const data = await res.json();
+    toast(`Deleted: ${data.meta || 0} meta, ${data.standings || 0} standings, ${data.laps || 0} laps.`);
+  }
+
+  async function purgeAllResults() {
+    const firstConfirm = confirm(
+      `⚠️ DELETE ALL FROZEN RESULTS?\n\n` +
+      `This will permanently erase ALL frozen heats from the database.\n\n` +
+      `Live race data and entrants are NOT affected.\n\n` +
+      `Click OK to proceed to final confirmation.`
+    );
+
+    if (!firstConfirm) return;
+
+    const secondConfirm = confirm(
+      `🚨 FINAL WARNING 🚨\n\n` +
+      `Type the word "PURGE-ALL-RESULTS" in the next prompt to confirm.\n\n` +
+      `This action CANNOT be undone.`
+    );
+
+    if (!secondConfirm) return;
+
+    const token = prompt('Type exactly: PURGE-ALL-RESULTS');
+    if (token !== 'PURGE-ALL-RESULTS') {
+      toast('Purge cancelled (incorrect confirmation).');
       return;
     }
 
-    try {
-      if (btn.id === 'btnCopyLinks') {
-        await copyLinksFor(selectedRaceId);
-        return;
-      }
+    const res = await fetch(`/results/?confirm=${encodeURIComponent(token)}`, {
+      method: 'DELETE',
+    });
 
-      if (btn.id === 'btnDeleteHeat') {
-        console.log('[wireAdminButtons] Calling deleteHeatById with:', selectedRaceId);
-        await deleteHeatById(selectedRaceId);  // shows prompt internally
-        await refreshHeats();                  // rebuild rail after delete
-        // Clear main view if the selected heat is gone
-        if (!heats.find(h => String(h.heat_id) === String(selectedRaceId))) {
-          selectedRaceId = null;
-          updateAdminEnabled();
-          // Clear all displayed data
-          try { clearHeatHeader(); } catch {}
-          try { clearStandingsTable(); } catch {}
-          try { clearLapsTable(); } catch {}
-        }
-        return;
-      }
-
-      if (btn.id === 'btnPurgeAll') {
-        await purgeAllResults();               // double prompt internally
-        await refreshHeats();
-        selectedRaceId = null;
-        updateAdminEnabled();
-        try { clearHeatHeader(); } catch {}
-        try { clearStandingsTable(); } catch {}
-        try { clearLapsTable(); } catch {}
-        return;
-      }
-    } catch (e) {
-      toast(e?.message || 'Action failed.');
-      console.warn(e);
+    if (!res.ok) {
+      const err = await res.text().catch(() => `HTTP ${res.status}`);
+      throw new Error(`Purge failed: ${err}`);
     }
-  });
 
-  updateAdminEnabled();
-}
-
-// ---------------------------------------------------------------------------
-// Admin actions: copy links, delete heat, purge all
-// ---------------------------------------------------------------------------
-
-async function copyLinksFor(raceId) {
-  if (!raceId) return;
-  const base = window.location.origin;
-  const text = [
-    `${base}/results/${raceId}`,
-    `${base}/results/${raceId}/laps`,
-    `${base}/export/results_csv?race_id=${raceId}`,
-    `${base}/export/laps_csv?race_id=${raceId}`,
-  ].join('\n');
-
-  try {
-    await navigator.clipboard.writeText(text);
-    toast('Links copied to clipboard.');
-  } catch (e) {
-    console.warn('Clipboard write failed:', e);
-    toast('Failed to copy links.');
+    const data = await res.json();
+    toast(`Purged all results: ${data.meta || 0} meta, ${data.standings || 0} standings, ${data.laps || 0} laps.`);
   }
-}
-
-async function deleteHeatById(raceId) {
-  console.log('[deleteHeatById] Called with raceId:', raceId);
-  if (!raceId) return;
-  
-  const heat = heats.find(h => String(h.heat_id) === String(raceId));
-  const label = heat?.race_mode || heat?.name || `Heat ${raceId}`;
-  
-  console.log('[deleteHeatById] About to show confirm dialog for:', label);
-  const confirmed = confirm(
-    `Delete frozen results for "${label}" (race_id=${raceId})?\n\n` +
-    `This will permanently remove:\n` +
-    `• Result metadata\n` +
-    `• Standings snapshot\n` +
-    `• Lap times\n\n` +
-    `This does NOT affect live race data or entrants.`
-  );
-  
-  if (!confirmed) return;
-
-  const token = `heat-${raceId}`;
-  const res = await fetch(`/results/${raceId}?confirm=${encodeURIComponent(token)}`, {
-    method: 'DELETE',
-  });
-
-  if (!res.ok) {
-    const err = await res.text().catch(() => `HTTP ${res.status}`);
-    throw new Error(`Delete failed: ${err}`);
-  }
-
-  const data = await res.json();
-  toast(`Deleted: ${data.meta || 0} meta, ${data.standings || 0} standings, ${data.laps || 0} laps.`);
-}
-
-async function purgeAllResults() {
-  const firstConfirm = confirm(
-    `⚠️ DELETE ALL FROZEN RESULTS?\n\n` +
-    `This will permanently erase ALL frozen heats from the database.\n\n` +
-    `Live race data and entrants are NOT affected.\n\n` +
-    `Click OK to proceed to final confirmation.`
-  );
-  
-  if (!firstConfirm) return;
-
-  const secondConfirm = confirm(
-    `🚨 FINAL WARNING 🚨\n\n` +
-    `Type the word "PURGE-ALL-RESULTS" in the next prompt to confirm.\n\n` +
-    `This action CANNOT be undone.`
-  );
-
-  if (!secondConfirm) return;
-
-  const token = prompt('Type exactly: PURGE-ALL-RESULTS');
-  if (token !== 'PURGE-ALL-RESULTS') {
-    toast('Purge cancelled (incorrect confirmation).');
-    return;
-  }
-
-  const res = await fetch(`/results/?confirm=${encodeURIComponent(token)}`, {
-    method: 'DELETE',
-  });
-
-  if (!res.ok) {
-    const err = await res.text().catch(() => `HTTP ${res.status}`);
-    throw new Error(`Purge failed: ${err}`);
-  }
-
-  const data = await res.json();
-  toast(`Purged all results: ${data.meta || 0} meta, ${data.standings || 0} standings, ${data.laps || 0} laps.`);
-}
 
 
   // ---------------------------------------------------------------------------
   // Rail rendering (click-to-load). Accepts either recent or heats payloads.
   // ---------------------------------------------------------------------------
-function renderHeats(list) {
-  const listEl = heatListEl;
-  if (!listEl) return;
+  function renderHeats(list) {
+    const listEl = heatListEl;
+    if (!listEl) return;
 
-  heats = (Array.isArray(list) ? list : [])
-    .map(h => {
-      const id = toId(h?.heat_id ?? h?.race_id ?? h?.id);
-      return {
-        heat_id: id,
-        name: h?.name || h?.race_type || (id ? `Race ${id}` : 'Race'),
-        event_label: h?.event_label ?? null,
-        session_label: h?.session_label ?? null,
-        race_mode: h?.race_mode ?? h?.name ?? h?.race_type ?? null,
-        display_time: h?.display_time ?? null,
-        frozen_iso_local: h?.frozen_iso_local ?? null,
-        finished_utc: h?.finished_utc ?? h?.frozen_iso_utc ?? null,
-        frozen_utc: h?.frozen_utc ?? null,
-      };
-    })
-    .filter(h => !!h.heat_id);
+    heats = (Array.isArray(list) ? list : [])
+      .map(h => {
+        const id = toId(h?.heat_id ?? h?.race_id ?? h?.id);
+        return {
+          heat_id: id,
+          name: h?.name || h?.race_type || (id ? `Race ${id}` : 'Race'),
+          event_label: h?.event_label ?? null,
+          session_label: h?.session_label ?? null,
+          race_mode: h?.race_mode ?? h?.name ?? h?.race_type ?? null,
+          display_time: h?.display_time ?? null,
+          frozen_iso_local: h?.frozen_iso_local ?? null,
+          finished_utc: h?.finished_utc ?? h?.frozen_iso_utc ?? null,
+          frozen_utc: h?.frozen_utc ?? null,
+        };
+      })
+      .filter(h => !!h.heat_id);
 
-  const html = heats.map(h => {
-    const isSelected = String(h.heat_id) === String(selectedRaceId);
-    const eventLabel = safeText(h.event_label, '—');
-    const sessionLabel = safeText(h.session_label, '—');
-    const raceMode = safeText(h.race_mode, '—');
-    // Capitalize first letter of race mode
-    const raceModeCapitalized = raceMode.charAt(0).toUpperCase() + raceMode.slice(1);
-    const when = heatDisplayTime(h); // uses display_time/fallbacks
+    const html = heats.map(h => {
+      const isSelected = String(h.heat_id) === String(selectedRaceId);
+      const eventLabel = safeText(h.event_label, '—');
+      const sessionLabel = safeText(h.session_label, '—');
+      const raceMode = safeText(h.race_mode, '—');
+      const raceModeCapitalized = raceMode.charAt(0).toUpperCase() + raceMode.slice(1);
+      const when = heatDisplayTime(h);
 
-    return `
-      <button
-        class="heat-card${isSelected ? ' heat-card--selected' : ''}"
-        data-heat-id="${h.heat_id}"
-        aria-current="${isSelected ? 'true' : 'false'}"
-        title="${raceModeCapitalized}"
-      >
-        <div class="heat-card__top">
-          <span class="heat-card__event">${eventLabel}</span>
-          <span class="heat-card__session">${raceModeCapitalized}</span>
-        </div>
-        <div class="heat-card__mid">
-          <span class="heat-card__mode">${sessionLabel}</span>
-        </div>
-        <div class="heat-card__bottom">
-          <span class="heat-card__time">${when}</span>
-        </div>
-      </button>
-    `;
-  }).join('');
+      // list-group-item + action gives you the clickable card feel
+      // active provides the selected highlight (Bootstrap theme-aware)
+      return `
+    <button
+      type="button"
+      class="list-group-item list-group-item-action py-3 ${isSelected ? 'active' : ''}"
+      data-heat-id="${h.heat_id}"
+      aria-current="${isSelected ? 'true' : 'false'}"
+      title="${raceModeCapitalized}"
+    >
+      <div class="d-flex justify-content-between align-items-start gap-2">
+        <div class="fw-semibold text-truncate">${eventLabel}</div>
+        <span class="badge ${isSelected ? 'text-bg-light' : 'text-bg-secondary'} flex-shrink-0">
+          ${raceModeCapitalized}
+        </span>
+      </div>
 
-  listEl.innerHTML = html;
+      <div class="small ${isSelected ? 'text-white-50' : 'text-body-secondary'} text-truncate mt-1">
+        ${sessionLabel}
+      </div>
 
-  // Delegated click
-  listEl.onclick = (ev) => {
-    const btn = ev.target.closest('.heat-card');
-    if (!btn) return;
-    const id = toId(btn.getAttribute('data-heat-id'));
-    if (!id) return;
-    const heat = heats.find(x => x.heat_id === id); // from full list, not sliced
-    if (!heat) return;
-
-    // Let selectHeat handle selectedRaceId and rendering
-    selectHeat(heat);
-  };
-
-  railEmpty && (railEmpty.hidden = heats.length > 0);
-
-  // Auto-select first if nothing selected
-  if (!selectedRaceId && heats[0]) {
-    selectedRaceId = heats[0].heat_id;
-    selectHeat(heats[0]);
-    const first = listEl.querySelector('.heat-card');
-    if (first) {
-      first.classList.add('heat-card--selected');
-      first.setAttribute('aria-current', 'true');
-    }
-  }
-}
+      <div class="mt-2 small ${isSelected ? 'text-white-50' : 'text-body-secondary'}">
+        ${when}
+      </div>
+    </button>
+  `;
+    }).join('');
 
 
-// Select a heat (from object or id), update UI + exports, and remember it.
-function selectHeat(heatOrId) {
-  // Accept either a heat object or a raw id
-  const id = typeof heatOrId === 'number'
-    ? heatOrId
-    : toId(heatOrId?.heat_id ?? heatOrId?.race_id ?? heatOrId?.id);
+    listEl.innerHTML = html;
 
-  if (!id) return;
-  // Allow re-selection to force render (removed early return)
-  // if (id === selectedRaceId) return; // no-op if already selected
+    // Delegated click
+    listEl.onclick = (ev) => {
+      const btn = ev.target.closest('.heat-card');
+      if (!btn) return;
+      const id = toId(btn.getAttribute('data-heat-id'));
+      if (!id) return;
+      const heat = heats.find(x => x.heat_id === id); // from full list, not sliced
+      if (!heat) return;
 
-  selectedRaceId = id;
+      // Let selectHeat handle selectedRaceId and rendering
+      selectHeat(heat);
+    };
 
-  // Persist selection for next visit/session
-  try { localStorage.setItem('rc.race_id', String(id)); } catch {}
+    railEmpty && (railEmpty.hidden = heats.length > 0);
 
-  // Reflect selection in the URL without reloading (supports ?race or ?race_id)
-  try {
-    const u = new URL(window.location.href);
-    if (u.searchParams.has('race_id')) {
-      u.searchParams.set('race_id', String(id));
-    } else {
-      u.searchParams.set('race', String(id));
-    }
-    history.replaceState(null, '', u.toString());
-  } catch {}
-
-  // Update the left-rail visual selection if that card exists
-  if (heatListEl) {
-    heatListEl.querySelectorAll('.heat-card').forEach(btn => {
-      const btnId = toId(btn.getAttribute('data-heat-id'));
-      const match = btnId === id;
-      btn.classList.toggle('heat-card--selected', match);
-      btn.setAttribute('aria-current', match ? 'true' : 'false');
-      if (match) {
-        // keep the selected card in view
-        try { btn.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch {}
+    // Auto-select first if nothing selected
+    if (!selectedRaceId && heats[0]) {
+      selectedRaceId = heats[0].heat_id;
+      selectHeat(heats[0]);
+      const first = listEl.querySelector('.heat-card');
+      if (first) {
+        first.classList.add('heat-card--selected');
+        first.setAttribute('aria-current', 'true');
       }
-    });
+    }
   }
 
-  // Enable/disable rail admin buttons based on selection
-  updateAdminEnabled();
 
-  // Choose default view mode and render
-  chooseDefaultView(id)
-    .then(() => renderFinalOrLive(id))
-    .then(() => wireExports(id))
-    .catch(err => {
-      console.warn(err);
-      toast?.(err?.message || 'Failed to load results for selected heat.');
-    });
-}
+  // Select a heat (from object or id), update UI + exports, and remember it.
+  function selectHeat(heatOrId) {
+    // Accept either a heat object or a raw id
+    const id = typeof heatOrId === 'number'
+      ? heatOrId
+      : toId(heatOrId?.heat_id ?? heatOrId?.race_id ?? heatOrId?.id);
+
+    if (!id) return;
+    // Allow re-selection to force render (removed early return)
+    // if (id === selectedRaceId) return; // no-op if already selected
+
+    selectedRaceId = id;
+
+    // Persist selection for next visit/session
+    try { localStorage.setItem('rc.race_id', String(id)); } catch { }
+
+    // Reflect selection in the URL without reloading (supports ?race or ?race_id)
+    try {
+      const u = new URL(window.location.href);
+      if (u.searchParams.has('race_id')) {
+        u.searchParams.set('race_id', String(id));
+      } else {
+        u.searchParams.set('race', String(id));
+      }
+      history.replaceState(null, '', u.toString());
+    } catch { }
+
+    // Update the left-rail visual selection if that card exists
+    if (heatListEl) {
+      heatListEl.querySelectorAll('.heat-card').forEach(btn => {
+        const btnId = toId(btn.getAttribute('data-heat-id'));
+        const match = btnId === id;
+        btn.classList.toggle('heat-card--selected', match);
+        btn.setAttribute('aria-current', match ? 'true' : 'false');
+        if (match) {
+          // keep the selected card in view
+          try { btn.scrollIntoView({ block: 'nearest', behavior: 'smooth' }); } catch { }
+        }
+      });
+    }
+
+    // Enable/disable rail admin buttons based on selection
+    updateAdminEnabled();
+
+    // Choose default view mode and render
+    chooseDefaultView(id)
+      .then(() => renderFinalOrLive(id))
+      .then(() => wireExports(id))
+      .catch(err => {
+        console.warn(err);
+        toast?.(err?.message || 'Failed to load results for selected heat.');
+      });
+  }
 
 
   // ---------------------------------------------------------------------------
@@ -689,15 +696,15 @@ function selectHeat(heatOrId) {
       // Normalize ms fields: prefer *_ms; else convert seconds.
       const bestMs = e.best_ms ?? (e.best != null ? Math.round(Number(e.best) * 1000) : null);
       const lastMs = e.last_ms ?? (e.last != null ? Math.round(Number(e.last) * 1000) : null);
-      const gapMs  = e.gap_ms  ?? (e.gap_s != null ? Math.round(Number(e.gap_s) * 1000) : null);
+      const gapMs = e.gap_ms ?? (e.gap_s != null ? Math.round(Number(e.gap_s) * 1000) : null);
       const paceMs = e.pace_5 != null ? Math.round(Number(e.pace_5) * 1000) : null;
 
       // Format brake status
       let brakeHtml = '-';
       if (e.brake_valid === true) {
-        brakeHtml = '<span class="badge badge--pass">Pass</span>';
+        brakeHtml = '<span class="badge text-bg-success">Pass</span>';
       } else if (e.brake_valid === false) {
-        brakeHtml = '<span class="badge badge--fail">Fail</span>';
+        brakeHtml = '<span class="badge text-bg-danger">Fail</span>';
       }
 
       return `
@@ -811,7 +818,7 @@ function selectHeat(heatOrId) {
 
     // Fast lap (live): best or best_ms
     const bests = rows.map(r => (r.best_ms ?? (r.best != null ? Math.round(Number(r.best) * 1000) : null)))
-                      .filter(v => v != null && Number(v) > 0);
+      .filter(v => v != null && Number(v) > 0);
     const minBest = bests.length ? Math.min(...bests) : null;
     if (statFastEl) statFastEl.textContent = minBest != null ? `${fmtSec(minBest)}s` : '-';
   }
@@ -819,15 +826,15 @@ function selectHeat(heatOrId) {
   // ---------------------------------------------------------------------------
   // Header helpers
   // ---------------------------------------------------------------------------
-  function setTitle(text)   { if (heatTitleEl)  heatTitleEl.textContent  = text || '-'; }
-  function setWindow(text)  { if (heatWindowEl) heatWindowEl.textContent = text || '-'; }
+  function setTitle(text) { if (heatTitleEl) heatTitleEl.textContent = text || '-'; }
+  function setWindow(text) { if (heatWindowEl) heatWindowEl.textContent = text || '-'; }
 
   function fmtDuration(ms) {
     if (!Number.isFinite(ms)) return '-';
     const s = Math.floor(ms / 1000);
     const m = Math.floor(s / 60);
     const r = s % 60;
-    return `${String(m).padStart(2,'0')}:${String(r).padStart(2,'0')}`;
+    return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
   }
 
   // ---------------------------------------------------------------------------
@@ -915,7 +922,7 @@ function selectHeat(heatOrId) {
   // ---------------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', async () => {
     checkBackendHealth(); // Update DB status pill
-    
+
     wireTabs();
     wireAdminButtons();
     wireExportAll();  // Wire the bulk export button
@@ -929,13 +936,13 @@ function selectHeat(heatOrId) {
     // Wire view pills and set up view mode
     wireViewPills();
     if (selectedRaceId) {
-      try { 
-        localStorage.setItem('rc.race_id', String(selectedRaceId)); 
-      } catch {}
-      
+      try {
+        localStorage.setItem('rc.race_id', String(selectedRaceId));
+      } catch { }
+
       // Enable admin buttons since we have a selection
       updateAdminEnabled();
-      
+
       try {
         await chooseDefaultView(selectedRaceId);
         await renderFinalOrLive(selectedRaceId);
