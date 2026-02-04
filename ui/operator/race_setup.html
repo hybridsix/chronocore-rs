@@ -1,399 +1,486 @@
 <!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+<html lang="en" data-bs-theme="dark">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>CCRS - Race Setup</title>
 
-    <!-- Shared styles -->
-    <link rel="stylesheet" href="/ui/css/base.css" />
-    <link rel="stylesheet" href="/ui/css/operator.css" />
+  <!-- Bootstrap only (no custom CSS) -->
+  <link rel="stylesheet" href="/ui/css/bootstrap.min.css" />
 
-  <!-- Page-specific styles -->
-  <link rel="stylesheet" href="/ui/css/race_setup.css" />
+  <!-- Shared JS -->
+  <script src="../js/base.js" defer></script>
+  <!-- Page controller -->
+  <script src="../js/race_setup.js" defer></script>
+</head>
 
-    <!-- Shared JS -->
-    <script src="../js/base.js" defer></script>
-    <!-- Page controller -->
-    <script src="../js/race_setup.js" defer></script>
-  </head>
-
-  <body class="race-setup">
-    <!-- =============================================================
-      HEADER - identical structure to Diagnostics (icons.svg + app-nav)
-    ============================================================= -->
-    <header class="app-header">
-      <div class="brand">
-  <a class="brand-link" href="/ui/operator/index.html">
-          <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="CCRS Logo" />
-          <div class="brand__wordmark">
-            <div class="wordmark__top">
-              <span class="wordmark__big">CHRONO</span>
-              <span class="wordmark__big">CORE</span>
-            </div>
-            <div class="wordmark__bottom">RACE SOFTWARE</div>
-          </div>
+<body class="min-vh-100 d-flex flex-column">
+  <!-- HEADER (canonical) -->
+  <header>
+    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
+      <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/ui/operator/index.html">
+          <img src="/ui/img/CCRS_Logo.svg" alt="CCRS Logo" class="d-inline-block" height="36">
+          <span class="lh-1">
+            <span class="d-block fw-bold text-uppercase">CHRONO</span>
+            <span class="d-block fw-bold text-uppercase">CORE</span>
+            <small class="d-block text-uppercase opacity-75" style="letter-spacing:.12em;">RACE SOFTWARE</small>
+          </span>
         </a>
 
-        <div class="page-label">Race Setup</div>
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#operatorNav"
+          aria-controls="operatorNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="operatorNav">
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/index.html">Home</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_setup.html">Race Setup</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_control.html">Race Control</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/entrants.html">Entrants &amp; Tags</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/results.html">Results</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/diag.html">Diagnostics</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/moxie_board.html">Moxie Board</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/settings.html">Settings</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/about.html">About</a></li>
+          </ul>
+        </div>
+
+        <button id="themeToggle" type="button" class="btn btn-sm btn-outline-secondary ms-2"
+          title="Toggle light/dark theme" aria-label="Toggle theme">
+          🌙
+        </button>
       </div>
+    </nav>
+  </header>
 
-      <div class="app-header__tools">
-  <nav class="app-nav">
-          <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
-            <svg class="icon"><use href="../img/icons.svg#home"></use></svg>
-            <span class="sr-only">Home</span>
-          </a>
+  <!-- MAIN -->
+  <main class="container py-4 flex-grow-1">
+    <form id="raceForm" autocomplete="off">
+      <div class="row g-4">
 
-          <div class="app-nav__menu" id="appsMenu" data-open="false">
-            <button type="button" class="app-nav__btn" title="Menu">
-              <svg class="icon"><use href="../img/icons.svg#menu"></use></svg>
-              <span class="sr-only">Open menu</span>
-            </button>
-            <div class="app-nav__panel" id="appsPanel">
-              <a href="/ui/operator/race_setup.html">Race Setup</a>
-              <a href="/ui/operator/race_control.html">Race Control</a>
-              <a href="/ui/operator/entrants.html">Entrants &amp; Tags</a>
-              <a href="/ui/operator/results.html">Results</a>
-              <a href="/ui/operator/diag.html">Diagnostics</a>
-              <a href="/ui/operator/moxie_board.html">Moxie Board</a>
-              <a href="/ui/operator/settings.html">Settings</a>
-              <a href="/ui/operator/about.html">About</a>
+        <!-- LEFT: Event / Mode -->
+        <div class="col-12 col-lg-4">
+          <div class="card border-secondary h-100">
+            <div class="card-header border-secondary bg-body-tertiary py-2">
+              <h6 class="m-0 fw-semibold text-uppercase">Event &amp; Mode</h6>
+            </div>
+            <div class="card-body">
+
+              <div class="mb-3">
+                <label class="form-label" for="eventLabel">Event Label</label>
+                <input id="eventLabel" name="event_label" type="text" class="form-control"
+                  placeholder="Maker Faire Orlando 2025" />
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label" for="sessionLabel">Session Label</label>
+                <input id="sessionLabel" name="session_label" type="text" class="form-control" placeholder="Sprint 2" />
+              </div>
+
+              <div class="mb-3">
+                <label class="form-label" for="modeSelect">Mode</label>
+                <select id="modeSelect" name="mode_id" class="form-select">
+                  <!-- options populated by JS; last option is Custom -->
+                </select>
+                <div class="form-text">
+                  Built-in presets from <code>race_modes.yaml</code>. Choose <strong>Custom</strong> to define a new
+                  one.
+                </div>
+              </div>
+
+              <div id="customSave" class="mb-3">
+                <label class="form-label" for="customLabel">Save as new mode</label>
+                <div class="input-group">
+                  <input id="customLabel" type="text" class="form-control" placeholder="Mode name (shown in menu)" />
+                  <button type="button" id="btnSaveMode" class="btn btn-primary">Save</button>
+                </div>
+                <div class="form-text">
+                  Uses the name to create an ID (e.g., “Night Sprint” → <code>night-sprint</code>). If that mode already
+                  exists, you'll be asked to confirm overwrite.
+                </div>
+              </div>
+
+              <hr class="border-secondary my-4" />
+
+              <div class="mb-2">
+                <div class="form-label mb-2">Start Type</div>
+
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="start_type" value="standing" id="startStanding"
+                    checked />
+                  <label class="form-check-label" for="startStanding">Standing Start</label>
+                </div>
+
+                <div class="form-check">
+                  <input class="form-check-input" type="radio" name="start_type" value="rolling" id="startRolling" />
+                  <label class="form-check-label" for="startRolling">Rolling Start</label>
+                </div>
+              </div>
+
             </div>
           </div>
-        </nav>
-      </div>
-    </header>
+        </div>
 
-    <!-- =============================================================
-         MAIN CONTENT
-    ============================================================= -->
-    <main class="wrap">
-      <section class="page-body">
-        <form id="raceForm" class="rs-grid" autocomplete="off">
-          <!-- ===== LEFT: Event / Mode ===== -->
-          <section class="card rs-card">
-            <h2 class="card__title">Event &amp; Mode</h2>
-
-            <div class="field">
-              <label class="label" for="eventLabel">Event Label</label>
-              <input id="eventLabel" name="event_label" class="input" type="text"
-                     placeholder="Maker Faire Orlando 2025" />
+        <!-- CENTER: Timing & Scoring -->
+        <div class="col-12 col-lg-4">
+          <div class="card border-secondary h-100">
+            <div class="card-header border-secondary bg-body-tertiary py-2">
+              <h6 class="m-0 fw-semibold text-uppercase">Timing &amp; Scoring</h6>
             </div>
+            <div class="card-body">
 
-            <div class="field">
-              <label class="label" for="sessionLabel">Session Label</label>
-              <input id="sessionLabel" name="session_label" class="input" type="text"
-                     placeholder="Sprint 2" />
-            </div>
+              <div class="mb-3">
+                <div class="form-label mb-2">Limit</div>
 
-            <div class="field">
-              <label class="label" for="modeSelect">Mode</label>
-              <select id="modeSelect" name="mode_id" class="input">
-                <!-- options populated by JS; last option is Custom -->
-              </select>
-              <div class="hint">Built-in presets from race_modes.yaml. Choose <strong>Custom</strong> to define a new one.</div>
-            </div>
-
-            <!-- Custom mode save UI (revealed only when Custom is selected) -->
-            <div id="customSave" class="field">
-              <label class="label" for="customLabel">Save as new mode</label>
-              <div class="row">
-                <input id="customLabel" class="input medium" type="text"
-                      placeholder="Mode name (shown in menu)" />
-                <button type="button" id="btnSaveMode" class="btn btn-primary">Save</button>
-              </div>
-              <div class="hint">
-                Uses the name to create an ID (e.g., “Night Sprint” → <code>night-sprint</code>).
-                If that mode already exists, you'll be asked to confirm overwrite.
-              </div>
-            </div>
-
-            <div class="divider"></div>
-
-            <!-- Start Type -->
-            <fieldset class="field">
-              <legend class="label">Start Type</legend>
-              <div class="row">
-                <label class="radio">
-                  <input type="radio" name="start_type" value="standing" id="startStanding" checked>
-                  <span>Standing Start</span>
-                </label>
-                <label class="radio">
-                  <input type="radio" name="start_type" value="rolling" id="startRolling">
-                  <span>Rolling Start</span>
-                </label>
-              </div>
-            </fieldset>
-
-          </section>
-
-          <!-- ===== CENTER: Timing & Scoring ===== -->
-          <section class="card rs-card">
-            <h2 class="card__title">Timing &amp; Scoring</h2>
-
-            <!-- Limit choice (time | laps) -->
-            <fieldset class="field">
-              <legend class="label">Limit</legend>
-              <div class="row">
-                <label class="radio">
-                  <input type="radio" name="limit_type" value="time" id="limitTime">
-                  <span>Time</span>
-                </label>
-                <label class="radio">
-                  <input type="radio" name="limit_type" value="laps" id="limitLaps">
-                  <span>Laps</span>
-                </label>
-              </div>
-
-              <!-- Time inputs -->
-              <!-- Laps input (always visible; disabled when Limit=Time) -->
-              <div class="row" id="rowLapsValue">
-                <label class="sub label-col" for="limitValueLaps">Laps</label>
-                <input id="limitValueLaps" name="limit_value_laps"
-                      class="input small" type="number" min="1" step="1" value="10" />
-              </div>
-
-              <!-- Duration in minutes (always visible; disabled when Limit=Laps) -->
-              <div class="row" id="rowTimeValue">
-                <label class="sub label-col" for="limitValueS">Duration (min)</label>
-                <input id="limitValueS" name="limit_value_s"
-                      class="input small" type="number" min="0" step="1" value="900" />
-                <span class="sub">0 = unlimited</span>
-              </div>
-
-              <!-- Soft end (time-only; we grey/disable when it doesn’t apply) -->
-              <div class="row" id="rowSoftEnd">
-                <label class="sub label-col" for="limitSoftEnd">Soft end</label>
-                <label class="checkbox">
-                  <input id="limitSoftEnd" type="checkbox" />
-                  <span class="sub">Do not auto-stop at expiry</span>
-                </label>
-              </div>
-            </fieldset>
-
-            <!-- Rank method -->
-            <div class="field">
-              <label class="label" for="rankMethod">Rank method</label>
-              <select id="rankMethod" name="rank_method" class="input">
-                <option value="total_laps">Total Laps</option>
-                <option value="best_lap">Best Lap</option>
-              </select>
-            </div>
-
-            <!-- Min lap filter -->
-            <div class="field">
-              <label class="label" for="minLapS">Minimum Lap (s)</label>
-              <input id="minLapS" name="min_lap_s" class="input small" type="number" min="0" step="0.1" value="4.1" />
-              <div class="hint">Reject laps faster than this to prevent double-reads.</div>
-            </div>
-
-            <!-- Countdowns -->
-            <fieldset class="field">
-              <legend class="label">Countdowns</legend>
-              <div class="row" id="rowStartCountdown">
-                <div class="label-col">
-                  <label class="checkbox">
-                    <input id="startEnabled" type="checkbox" />
-                    <span>Start (s)</span>
-                  </label>
+                <div class="d-flex gap-4 flex-wrap mb-3">
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="limit_type" value="time" id="limitTime" />
+                    <label class="form-check-label" for="limitTime">Time</label>
+                  </div>
+                  <div class="form-check">
+                    <input class="form-check-input" type="radio" name="limit_type" value="laps" id="limitLaps" />
+                    <label class="form-check-label" for="limitLaps">Laps</label>
+                  </div>
                 </div>
-                <input id="startFromS" class="input small" type="number" min="1" step="1" value="10" />
-              </div>
-              <div class="row" id="rowEndCountdown">
-                <div class="label-col">
-                  <label class="checkbox">
-                    <input id="endEnabled" type="checkbox" />
-                    <span>End (s)</span>
-                  </label>
+
+                <div class="row g-2 align-items-center mb-2" id="rowLapsValue">
+                  <div class="col-auto">
+                    <label class="col-form-label" for="limitValueLaps">Laps</label>
+                  </div>
+                  <div class="col">
+                    <input id="limitValueLaps" name="limit_value_laps" class="form-control" type="number" min="1"
+                      step="1" value="10" />
+                  </div>
                 </div>
-                <input id="endFromS" class="input small" type="number" min="1" step="1" value="10" />
-              </div>
-              <div class="row" id="rowTimeout">
-                <div class="label-col">
-                  <label class="checkbox">
-                    <input id="timeoutEnabled" type="checkbox" />
-                    <span>Timeout pad (s)</span>
-                  </label>
+
+                <div class="row g-2 align-items-center mb-2" id="rowTimeValue">
+                  <div class="col-auto">
+                    <label class="col-form-label" for="limitValueS">Duration (min)</label>
+                  </div>
+                  <div class="col">
+                    <input id="limitValueS" name="limit_value_s" class="form-control" type="number" min="0" step="1"
+                      value="900" />
+                  </div>
+                  <div class="col-auto text-body-secondary">0 = unlimited</div>
                 </div>
-                <input id="timeoutS" class="input small" type="number" min="0" step="1" value="0" />
-              </div>
-            </fieldset>
-          </section>
 
-          <!-- ===== RIGHT: Sound & Settings ===== -->
-          <section class="card rs-card rs-right">
-            <h2 class="card__title">Sound &amp; Settings</h2>
-
-            <div class="field">
-              <label class="label" for="lapIndication">Lap indication</label>
-              <select id="lapIndication" class="input">
-                <option value="none">None</option>
-                <option value="beep">Beep</option>
-                <option value="tts">TTS short</option>
-              </select>
-            </div>
-
-            <fieldset class="field">
-              <legend class="label">Rank announcements</legend>
-              <div class="row" id="rowRankAnnouncements">
-                <div class="label-col">
-                  <label class="checkbox">
-                    <input id="rankEnabled" type="checkbox" />
-                    <span>Enabled every</span>
-                  </label>
+                <div class="row g-2 align-items-center" id="rowSoftEnd">
+                  <div class="col-auto">
+                    <label class="col-form-label" for="limitSoftEnd">Soft end</label>
+                  </div>
+                  <div class="col">
+                    <div class="form-check">
+                      <input class="form-check-input" id="limitSoftEnd" type="checkbox" />
+                      <label class="form-check-label" for="limitSoftEnd">Do not auto-stop at expiry</label>
+                    </div>
+                  </div>
                 </div>
-                <input id="rankInterval" class="input small" type="number" min="1" step="1" value="4" />
-                <span class="sub">laps</span>
-              </div>
-              <div class="row">
-                <label class="checkbox">
-                  <input id="rankChangeSpeech" type="checkbox" />
-                  <span>Announce rank changes</span>
-                </label>
-              </div>
-              <div class="row">
-                <label class="checkbox">
-                  <input id="bestLapSpeech" type="checkbox" />
-                  <span>Announce best laps</span>
-                </label>
-              </div>
-            </fieldset>
-
-            <!-- Timing sounds (Beep on seconds, horns, flags) -->
-            <fieldset class="field">
-              <legend class="label">Timing sounds</legend>
-              <div class="row" id="rowBeepSeconds">
-                <div class="label-col">
-                  <label class="checkbox">
-                    <input id="beepSecondsEnabled" type="checkbox" />
-                    <span>Countdown beep on last</span>
-                  </label>
-                </div>
-                <input id="beepSecondsInterval" class="input small" type="number" min="1" step="1" value="1" />
-                <span class="sub">s</span>
               </div>
 
-              <div class="row" id="rowStartingHorn">
-                <label class="checkbox">
-                  <input id="startingHorn" type="checkbox" />
-                  <span>Starting horn</span>
-                </label>
-              </div>
-
-              <div class="row" id="rowWhiteFlag">
-                <div class="label-col">
-                  <label class="checkbox">
-                    <input id="whiteFlagSound" type="checkbox" />
-                    <span>White flag sound at</span>
-                  </label>
-                </div>
-                <select id="whiteFlagMode" class="input small">
-                  <option value="auto">Auto</option>
-                  <option value="last_minute">Last minute</option>
-                  <option value="last_lap">Last lap</option>
+              <div class="mb-3">
+                <label class="form-label" for="rankMethod">Rank method</label>
+                <select id="rankMethod" name="rank_method" class="form-select">
+                  <option value="total_laps">Total Laps</option>
+                  <option value="best_lap">Best Lap</option>
                 </select>
               </div>
 
-              <div class="row" id="rowCheckeredFlag">
-                <label class="checkbox">
-                  <input id="checkeredFlagSound" type="checkbox" />
-                  <span>Checkered flag horn</span>
-                </label>
+              <div class="mb-3">
+                <label class="form-label" for="minLapS">Minimum Lap (s)</label>
+                <input id="minLapS" name="min_lap_s" class="form-control" type="number" min="0" step="0.1"
+                  value="4.1" />
+                <div class="form-text">Reject laps faster than this to prevent double-reads.</div>
               </div>
-            </fieldset>
 
-            <div class="divider"></div>
+              <hr class="border-secondary my-4" />
 
-            <div class="field">
-              <div class="row">
-                <button type="button" id="btnTestBeep" class="btn">Test Beep</button>
-                <button type="button" id="btnTestHorn" class="btn">Test Horn</button>
+              <div class="mb-2">
+                <div class="form-label mb-2">Countdowns</div>
+
+                <div class="row g-2 align-items-center mb-2" id="rowStartCountdown">
+                  <div class="col-12 col-md-6">
+                    <div class="form-check">
+                      <input class="form-check-input" id="startEnabled" type="checkbox" />
+                      <label class="form-check-label" for="startEnabled">Start (s)</label>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <input id="startFromS" class="form-control" type="number" min="1" step="1" value="10" />
+                  </div>
+                </div>
+
+                <div class="row g-2 align-items-center mb-2" id="rowEndCountdown">
+                  <div class="col-12 col-md-6">
+                    <div class="form-check">
+                      <input class="form-check-input" id="endEnabled" type="checkbox" />
+                      <label class="form-check-label" for="endEnabled">End (s)</label>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <input id="endFromS" class="form-control" type="number" min="1" step="1" value="10" />
+                  </div>
+                </div>
+
+                <div class="row g-2 align-items-center" id="rowTimeout">
+                  <div class="col-12 col-md-6">
+                    <div class="form-check">
+                      <input class="form-check-input" id="timeoutEnabled" type="checkbox" />
+                      <label class="form-check-label" for="timeoutEnabled">Timeout pad (s)</label>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-6">
+                    <input id="timeoutS" class="form-control" type="number" min="0" step="1" value="0" />
+                  </div>
+                </div>
               </div>
-              <div class="hint">Quick audio sanity check for the ops desk.</div>
+
             </div>
-
-           <div class="divider"></div>
-
-            <fieldset class="field">
-              <legend class="label">Bypass</legend>
-              <div class="row">
-                <label class="checkbox">
-                  <input id="decoderBypass" type="checkbox" />
-                  <span class="sub">Decoder bypass (allow start without decoders)</span>
-                </label>
-              </div>
-              <div class="row">
-                <label class="checkbox">
-                  <input id="entrantsBypass" type="checkbox" />
-                  <span class="sub">Entrants bypass (allow start with no entrants)</span>
-                </label>
-              </div>
-            </fieldset>
-          </section>
-        </form>
-
-        <!-- Sticky action row -->
-  <div class="sticky-row">
-          <div class="left-col">
-            <div class="summary"><span id="summaryText">-</span></div>
-            <hr class="sticky-sep" />
-            <div class="readiness">
-              <span class="chip" id="chipDB">DB: -</span>
-              <span class="chip" id="chipDecoder">Decoder: -</span>
-              <span class="chip" id="chipEntrants">Entrants: -</span>
-            </div>
-          </div>
-          <div class="actions">
-            <button type="button" class="btn btn--primary btn--start-large" id="btnStartRace">Start Race</button>
           </div>
         </div>
-      </section>
-    </main>
 
-    <!-- Footer -->
-    <footer class="app-footer">
-      <div class="footer-left">
-        <div class="status-dot" id="netDot"></div>
-        <div id="netMsg">Ready</div>
-      </div>
-      <div class="footer-center">
-  <div class="pill pill--db" id="readyPill" hidden>DB: ready</div>
-  <div class="pill pill--db" id="engineLabel" hidden>Engine: -</div>
-      </div>
-      <div class="footer-right"></div>
-    </footer>
+        <!-- RIGHT: Sound & Settings -->
+        <div class="col-12 col-lg-4">
+          <div class="card border-secondary h-100">
+            <div class="card-header border-secondary bg-body-tertiary py-2">
+              <h6 class="m-0 fw-semibold text-uppercase">Sound &amp; Settings</h6>
+            </div>
+            <div class="card-body">
 
-    <script>
-      // Reuse the same small dropdown controller as Diagnostics
-      (function () {
-        const menu = document.getElementById('appsMenu');
-        if (!menu) return;
-        const btn   = menu.querySelector('.app-nav__btn');
-        const panel = menu.querySelector('.app-nav__panel');
-        function openMenu(on) {
-          menu.dataset.open = on ? 'true' : 'false';
-          // aria-expanded removed
+              <div class="mb-3">
+                <label class="form-label" for="lapIndication">Lap indication</label>
+                <select id="lapIndication" class="form-select">
+                  <option value="none">None</option>
+                  <option value="beep">Beep</option>
+                  <option value="tts">TTS short</option>
+                </select>
+              </div>
+
+              <div class="mb-3">
+                <div class="form-label mb-2">Rank announcements</div>
+
+                <div class="row g-2 align-items-center mb-2" id="rowRankAnnouncements">
+                  <div class="col-12 col-md-7">
+                    <div class="form-check">
+                      <input class="form-check-input" id="rankEnabled" type="checkbox" />
+                      <label class="form-check-label" for="rankEnabled">Enabled every</label>
+                    </div>
+                  </div>
+                  <div class="col-8 col-md-3">
+                    <input id="rankInterval" class="form-control" type="number" min="1" step="1" value="4" />
+                  </div>
+                  <div class="col-4 col-md-2 text-body-secondary">laps</div>
+                </div>
+
+                <div class="form-check mb-2">
+                  <input class="form-check-input" id="rankChangeSpeech" type="checkbox" />
+                  <label class="form-check-label" for="rankChangeSpeech">Announce rank changes</label>
+                </div>
+
+                <div class="form-check">
+                  <input class="form-check-input" id="bestLapSpeech" type="checkbox" />
+                  <label class="form-check-label" for="bestLapSpeech">Announce best laps</label>
+                </div>
+              </div>
+
+              <hr class="border-secondary my-4" />
+
+              <div class="mb-3">
+                <div class="form-label mb-2">Timing sounds</div>
+
+                <div class="row g-2 align-items-center mb-2" id="rowBeepSeconds">
+                  <div class="col-12 col-md-7">
+                    <div class="form-check">
+                      <input class="form-check-input" id="beepSecondsEnabled" type="checkbox" />
+                      <label class="form-check-label" for="beepSecondsEnabled">Countdown beep on last</label>
+                    </div>
+                  </div>
+                  <div class="col-8 col-md-3">
+                    <input id="beepSecondsInterval" class="form-control" type="number" min="1" step="1" value="1" />
+                  </div>
+                  <div class="col-4 col-md-2 text-body-secondary">s</div>
+                </div>
+
+                <div class="form-check mb-2" id="rowStartingHorn">
+                  <input class="form-check-input" id="startingHorn" type="checkbox" />
+                  <label class="form-check-label" for="startingHorn">Starting horn</label>
+                </div>
+
+                <div class="row g-2 align-items-center mb-2" id="rowWhiteFlag">
+                  <div class="col-12 col-md-7">
+                    <div class="form-check">
+                      <input class="form-check-input" id="whiteFlagSound" type="checkbox" />
+                      <label class="form-check-label" for="whiteFlagSound">White flag sound at</label>
+                    </div>
+                  </div>
+                  <div class="col-12 col-md-5">
+                    <select id="whiteFlagMode" class="form-select">
+                      <option value="auto">Auto</option>
+                      <option value="last_minute">Last minute</option>
+                      <option value="last_lap">Last lap</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-check" id="rowCheckeredFlag">
+                  <input class="form-check-input" id="checkeredFlagSound" type="checkbox" />
+                  <label class="form-check-label" for="checkeredFlagSound">Checkered flag horn</label>
+                </div>
+              </div>
+
+              <hr class="border-secondary my-4" />
+
+              <div class="mb-3">
+                <div class="d-flex gap-2 flex-wrap">
+                  <button type="button" id="btnTestBeep" class="btn btn-secondary">Test Beep</button>
+                  <button type="button" id="btnTestHorn" class="btn btn-secondary">Test Horn</button>
+                </div>
+                <div class="form-text">Quick audio sanity check for the ops desk.</div>
+              </div>
+
+              <hr class="border-secondary my-4" />
+
+              <div class="mb-0">
+                <div class="form-label mb-2">Bypass</div>
+
+                <div class="form-check mb-2">
+                  <input class="form-check-input" id="decoderBypass" type="checkbox" />
+                  <label class="form-check-label" for="decoderBypass">
+                    Decoder bypass (allow start without decoders)
+                  </label>
+                </div>
+
+                <div class="form-check">
+                  <input class="form-check-input" id="entrantsBypass" type="checkbox" />
+                  <label class="form-check-label" for="entrantsBypass">
+                    Entrants bypass (allow start with no entrants)
+                  </label>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- ACTION ROW -->
+        <div class="col-12">
+          <div
+            class="border-top border-secondary pt-3 d-flex flex-column flex-md-row gap-3 align-items-start align-items-md-center justify-content-between">
+            <div class="w-100">
+              <div class="text-body-secondary">
+                <span id="summaryText">-</span>
+              </div>
+
+              <div class="d-flex gap-2 flex-wrap mt-2">
+                <span class="badge text-bg-secondary" id="chipDB">DB: -</span>
+                <span class="badge text-bg-secondary" id="chipDecoder">Decoder: -</span>
+                <span class="badge text-bg-secondary" id="chipEntrants">Entrants: -</span>
+              </div>
+            </div>
+
+            <div class="flex-shrink-0">
+              <button type="button" class="btn btn-lg btn-success" id="btnStartRace">Start Race</button>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </form>
+  </main>
+
+  <!-- FOOTER (canonical) -->
+  <footer class="mt-auto border-top">
+    <div class="container-fluid py-2">
+      <div class="row align-items-center text-center">
+        <div class="col d-flex align-items-center gap-2 justify-content-start">
+          <span class="badge text-bg-secondary" id="netDot">Connecting…</span>
+          <span class="text-body-secondary" id="netMsg"></span>
+        </div>
+
+        <div class="col">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="goto('about')">
+            v0.2.0
+          </button>
+        </div>
+
+        <div class="col d-flex justify-content-end">
+          <span class="badge text-bg-secondary font-monospace" id="wallClock">--:--:--</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Bootstrap JS (required for burger menu) -->
+  <script src="/ui/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Minimal footer clock/status glue (Bootstrap-only UI; no custom CSS) -->
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const { setNetStatus } = window.CCRS;
+
+      function startSimpleWallClock(selector) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        const fmt = (n) => String(n).padStart(2, '0');
+        function tick() {
+          const d = new Date();
+          el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
         }
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openMenu(menu.dataset.open !== 'true');
-          if (menu.dataset.open === 'true') {
-            const first = panel.querySelector('a');
-            if (first) first.focus();
+        tick();
+        setInterval(tick, 1000);
+      }
+
+      startSimpleWallClock('#wallClock');
+
+      let _reachTimer = null;
+      let _reachFailures = 0;
+      function startReachabilityPoll(ms = 2000) {
+        if (_reachTimer) clearInterval(_reachTimer);
+        _reachTimer = setInterval(async () => {
+          try {
+            const url = window.CCRS.apiUrl('/healthz');
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
+            _reachFailures = 0;
+            window.CCRS.setNetStatus('ok');
+          } catch (err) {
+            _reachFailures++;
+            if (_reachFailures >= 2) window.CCRS.setNetStatus('disconnected');
+            console.warn('reachability failed:', err?.message || err);
           }
-        });
-        document.addEventListener('click', () => openMenu(false));
-        document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openMenu(false); });
-        panel.addEventListener('keydown', (e) => {
-          const items = Array.from(panel.querySelectorAll('a'));
-          const i = items.indexOf(document.activeElement);
-          if (e.key === 'ArrowDown') { e.preventDefault(); (items[i + 1] || items[0]).focus(); }
-          else if (e.key === 'ArrowUp') { e.preventDefault(); (items[i - 1] || items[items.length - 1]).focus(); }
-          else if (e.key === 'Home') { e.preventDefault(); (items[0] || document.activeElement).focus(); }
-          else if (e.key === 'End') { e.preventDefault(); (items[items.length - 1] || document.activeElement).focus(); }
-        });
-      })();
-    </script>
-  </body>
+        }, ms);
+      }
+
+      // Optional: map CCRS net status to badge colors
+      const netDot = document.getElementById('netDot');
+      const _orig = setNetStatus;
+      window.CCRS.setNetStatus = function (status) {
+        _orig(status);
+        if (!netDot) return;
+
+        netDot.classList.remove('text-bg-secondary', 'text-bg-success', 'text-bg-danger', 'text-bg-warning');
+
+        if (status === 'ok') {
+          netDot.classList.add('text-bg-success');
+          netDot.textContent = 'Online';
+        } else if (status === 'connecting') {
+          netDot.classList.add('text-bg-warning');
+          netDot.textContent = 'Connecting…';
+        } else if (status === 'disconnected') {
+          netDot.classList.add('text-bg-danger');
+          netDot.textContent = 'Offline';
+        } else {
+          netDot.classList.add('text-bg-secondary');
+          netDot.textContent = 'Status';
+        }
+      };
+
+      window.CCRS.setNetStatus('connecting');
+      startReachabilityPoll(2000);
+    });
+  </script>
+</body>
+
 </html>

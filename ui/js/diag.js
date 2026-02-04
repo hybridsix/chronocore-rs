@@ -25,25 +25,25 @@
   // ---------------------------------------------------------------------
   // DOM references - all optional-safe
   // ---------------------------------------------------------------------
-  const bodyEl       = $('#liveBody');
-  const btnPause     = $('#btnPause');
-  const btnClear     = $('#btnClear');
-  const chkBeep      = $('#chkBeep');
+  const bodyEl = $('#liveBody');
+  const btnPause = $('#btnPause');
+  const btnClear = $('#btnClear');
+  const chkBeep = $('#chkBeep');
   const chkKnownOnly = $('#chkKnownOnly');
-  const chkShowRssi  = $('#chkShowRssi');
-  const diagWarn     = $('#diagWarn');
+  const chkShowRssi = $('#chkShowRssi');
+  const diagWarn = $('#diagWarn');
 
   // ---------------------------------------------------------------------
   // Runtime + state
   // ---------------------------------------------------------------------
-  let debounceMs    = 250;   // guard between beeps
+  let debounceMs = 250;   // guard between beeps
   let beepMaxPerSec = 5;     // global beep throttle
   let diagnosticsOn = true;  // if false, show warning banner
 
-  let paused          = false; // UI pause flag
-  let lastBeepAt      = 0;     // timestamp of last beep
+  let paused = false; // UI pause flag
+  let lastBeepAt = 0;     // timestamp of last beep
   let beepsThisSecond = 0;     // rolling counter for rate limit
-  let currentSecond   = 0;     // track 1s windows
+  let currentSecond = 0;     // track 1s windows
 
   let es = null; // EventSource instance
   let pageLoadTime = null; // Track when page loads to filter old data
@@ -52,7 +52,7 @@
   // Boot sequence
   // ---------------------------------------------------------------------
   document.addEventListener('DOMContentLoaded', init);
-  
+
   // Handle browser back/forward cache (bfcache) - clear when page is restored
   window.addEventListener('pageshow', (event) => {
     if (event.persisted) {
@@ -73,7 +73,7 @@
     // Record page load time to filter out old data
     pageLoadTime = Date.now();
     console.log('[diag] Page load time:', new Date(pageLoadTime).toISOString());
-    
+
     // Clear any leftover data from previous session - do this first before anything else
     const tbody = document.getElementById('liveBody');
     if (tbody) {
@@ -85,7 +85,7 @@
       }
       console.log('[diag] Table cleared on init, row count:', tbody.rows?.length || 0);
     }
-    
+
     // Populate header pill if helper available
     if (typeof CCRS.effectiveEngineLabel === 'function' && engineLabel) {
       engineLabel.textContent = 'Engine: ' + CCRS.effectiveEngineLabel();
@@ -176,7 +176,7 @@
   }
 
   function applyRuntime(rt) {
-    debounceMs    = get(rt, 'engine.ingest.debounce_ms', 250);
+    debounceMs = get(rt, 'engine.ingest.debounce_ms', 250);
     beepMaxPerSec = get(rt, 'engine.diagnostics.beep.max_per_sec', 5);
     diagnosticsOn = !!get(rt, 'engine.diagnostics.enabled', true);
   }
@@ -186,7 +186,7 @@
   // ---------------------------------------------------------------------
   function openStream() {
     beginWarmup();                         // <- start silent window
-    if (es) try { es.close(); } catch {}
+    if (es) try { es.close(); } catch { }
     es = new EventSource('/diagnostics/stream');
 
     es.addEventListener('open', () => console.log('[diag] SSE open'));
@@ -239,34 +239,68 @@
     const { flash = true } = opts;
 
     const tr = document.createElement('tr');
-    if (flash) tr.className = 'newRow';
 
-    // Build table row content safely
-    const ts   = formatTime(evt.time);
-  const src  = evt.source || '-';
-  const tag  = evt.tag_id || '-';
-  const num  = (evt.entrant && (evt.entrant.num || evt.entrant.number)) || '-';
-  const name = (evt.entrant && evt.entrant.name) || '-';
-  const rssi = evt.rssi != null ? String(evt.rssi) : '-';
+    // Use a Bootstrap contextual class to flash; we'll remove it shortly.
+    if (flash) tr.classList.add('table-primary');
 
-    tr.innerHTML = `
-      <td class="col-time">${ts}</td>
-      <td class="col-source">${esc(src)}</td>
-      <td class="col-tag">${esc(tag)}</td>
-      <td class="col-num">${esc(num)}</td>
-      <td class="col-entrant">${esc(name)}</td>
-      <td class="col-rssi">${renderRssiCell(rssi)}</td>
-    `;
+    // Build safe cell values
+    const ts = formatTime(evt.time);
+    const src = evt.source || '-';
+    const tag = evt.tag_id || '-';
+    const num = (evt.entrant && (evt.entrant.num || evt.entrant.number)) || '-';
+    const name = (evt.entrant && evt.entrant.name) || '-';
+    // pass numeric RSSI through as a number when possible, else null
+    const rssiVal = (evt.rssi != null && evt.rssi !== '') ? Number(evt.rssi) : null;
+
+    // helper to create a td with optional classes and optional inline width
+    function td(textOrNode, classes = [], widthPx = null) {
+      const tdEl = document.createElement('td');
+      if (typeof textOrNode === 'string') {
+        tdEl.textContent = textOrNode;
+      } else if (textOrNode instanceof Node) {
+        tdEl.appendChild(textOrNode);
+      }
+      if (classes.length) tdEl.className = classes.join(' ');
+      if (widthPx) tdEl.style.width = widthPx + 'px';
+      return tdEl;
+    }
+
+    // Time - keep it nowrap so it doesn't wrap on small screens
+    tr.appendChild(td(ts, ['text-nowrap'], 180));
+
+    // Source
+    tr.appendChild(td(src, [], 180));
+
+    // Tag - monospace makes tag ids easier to scan
+    // Bootstrap 5: 'font-monospace' ; Bootstrap 4: 'text-monospace'
+    tr.appendChild(td(tag, ['font-monospace']));
+
+    // Number - centered, semibold
+    tr.appendChild(td(String(num), ['text-center', 'fw-semibold'], 80));
+
+    // Entrant name - allow it to wrap naturally
+    tr.appendChild(td(name));
+
+    // RSSI - renderRssiCell returns the inner markup (progress + value).
+    // We'll put it into the cell via innerHTML intentionally.
+    const rssiTd = document.createElement('td');
+    rssiTd.className = 'text-center';
+    // If renderRssiCell expects a number/null, pass rssiVal; if it expects string, adapt accordingly.
+    rssiTd.innerHTML = renderRssiCell(rssiVal);
+    if (rssiVal === null) rssiTd.setAttribute('aria-hidden', 'true');
+    tr.appendChild(rssiTd);
 
     // Insert at top (newest first)
     if (bodyEl.firstChild) bodyEl.insertBefore(tr, bodyEl.firstChild);
     else bodyEl.appendChild(tr);
 
-    // Highlight only when flashing is enabled
+    // Remove the flash class after a short interval to produce the "flash" effect
     if (flash) {
-      setTimeout(() => tr.classList.remove('newRow'), 520);
+      // 520ms to match previous behavior; adjust if you prefer faster/slower
+      setTimeout(() => tr.classList.remove('table-primary'), 520);
     }
   }
+
 
   function trimRows(max) {
     if (!bodyEl) return;
@@ -294,27 +328,36 @@
     return (clamped - MIN) / (MAX - MIN);
   }
 
-  // Hue from red (0deg) -> yellow (60deg) -> green (120deg)
+  // Map normalized strength (0..1)
   function strengthToColor(str) {
-    const hue = 0 + 120 * Math.max(0, Math.min(1, str)); // 0..120
-    // Slightly brighter at higher strength
-    const light = 45 + 10 * str; // 45%..55%
-    return `hsl(${hue.toFixed(0)} 90% ${light.toFixed(0)}%)`;
+    // coerce & clamp to 0..1 (digit-by-digit style)
+    const n = Number(str) || 0;
+    const s = Math.max(0, Math.min(1, n));
+
+    // thresholds chosen to match red->yellow->green progression
+    if (s < 0.33) return 'bg-danger';   // low strength -> red
+    if (s < 0.66) return 'bg-warning';  // mid strength -> yellow
+    return 'bg-success';                // high strength -> green
   }
 
-  // Build the RSSI cell innerHTML (number + smooth bar)
+  // Build the RSSI cell HTML using Bootstrap progress (no custom CSS)
   function renderRssiCell(rssi) {
-  const val = (rssi ?? rssi === 0) ? String(rssi) : '-';
+    const val = (rssi ?? rssi === 0) ? String(rssi) : '-';
+    // Convert RSSI numeric -> relative strength 0..1 using your existing helper
     const s = rssiToStrength(rssi);
-    const pct = (s * 100).toFixed(0) + '%';
-    const color = strengthToColor(s);
+    const pct = (Math.round(Math.max(0, Math.min(1, s)) * 100)) + '%';
+    const barClass = strengthToColor(s);
+
     return `
-      <div class="rssiWrap">
-        <span class="rssiVal">${val}</span>
-        <span class="rssiBar"><span class="rssiFill" style="width:${pct}; background-color:${color};"></span></span>
+    <div class="d-flex align-items-center" style="min-width:160px;">
+      <div class="me-2 text-monospace small" aria-hidden="true">${val}</div>
+      <div class="progress flex-grow-1" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(s * 100)}" title="${pct}">
+        <div class="progress-bar ${barClass}" style="width: ${pct};"></div>
       </div>
-    `;
+    </div>
+  `;
   }
+
 
   // ---------------------------------------------------------------------
   // UI controls
@@ -376,7 +419,7 @@
       const ss = String(d.getSeconds()).padStart(2, '0');
       const ms = String(d.getMilliseconds()).padStart(3, '0');
       return `${hh}:${mm}:${ss}.${ms}`;
-  } catch { return iso || '-'; }
+    } catch { return iso || '-'; }
   }
 
   function esc(s) {
@@ -387,5 +430,3 @@
     try { return p.split('.').reduce((a, k) => a?.[k], o) ?? d; } catch { return d; }
   }
 })();
-
-

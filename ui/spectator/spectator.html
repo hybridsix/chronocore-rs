@@ -5,75 +5,148 @@
   <title>ChronoCore - Spectator</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Your real styles -->
-  <link rel="stylesheet" href="/ui/css/base.css?v=1">
-  <link rel="stylesheet" href="/ui/css/spectator.css?v=1">
+  <!-- Bootstrap only -->
+  <link rel="stylesheet" href="/ui/css/bootstrap.min.css" />
 
   <!-- Helpers; page ships tiny shims if this isn't present -->
   <script src="/ui/js/base.js?v=1" defer></script>
 </head>
-<body>
-  <header>
-    <div class="logo">
-      <img src="/ui/img/PRS_Logo.svg" alt="PRS Logo"
-           onerror="this.onerror=null;this.src='/ui/PRS_Logo.svg'">
-    </div>
-    <div class="title">Live Timing - Spectator</div>
-    <!-- Race info summary pill -->
-    <div class="pill pill-info" id="raceInfo">-</div>
-    <!-- Simulator status pill (hidden until state arrives) -->
-    <div class="sim-wrap">
-      <div class="pill hidden" id="simPill">SIMULATOR ACTIVE</div>
-    </div>
-    <div class="raceclock-wrap">
-      <div class="raceclock-label">Race&nbsp;Clock</div>
-      <div class="pill pill-xl" id="raceClock">--:--</div>
+
+<body class="min-vh-100 d-flex flex-column">
+
+  <!-- ================= HEADER ================= -->
+  <header class="border-bottom">
+    <div class="container-fluid py-2">
+      <div class="d-flex flex-wrap align-items-center gap-3">
+
+        <!-- Brand -->
+        <div class="d-flex align-items-center gap-2">
+          <img src="/ui/img/PRS_Logo.svg" alt="PRS Logo" height="36"
+               onerror="this.onerror=null;this.src='/ui/PRS_Logo.svg'">
+          <div class="fw-semibold">Live Timing - Spectator</div>
+        </div>
+
+        <!-- Race info -->
+        <span class="badge text-bg-secondary ms-0 ms-md-2" id="raceInfo">-</span>
+
+        <!-- Sim pill -->
+        <span class="badge text-bg-warning d-none" id="simPill">SIMULATOR ACTIVE</span>
+
+        <!-- Race clock (right aligned) -->
+        <div class="ms-auto d-flex align-items-center gap-2">
+          <div class="text-body-secondary small">Race Clock</div>
+          <span class="badge text-bg-secondary fs-6 font-monospace px-3 py-2" id="raceClock">--:--</span>
+        </div>
+        <!-- Theme toggle (theme-aware button; no outline-light) -->
+        <button id="themeToggle" type="button" class="btn btn-sm btn-outline-secondary ms-2"
+          title="Toggle light/dark theme" aria-label="Toggle theme">
+          🌙
+        </button>
+      </div>
     </div>
   </header>
 
-  <main>
+  <!-- ================= MAIN ================= -->
+  <main class="container-fluid py-3 flex-grow-1">
+
     <!-- Flag banner -->
-    <div id="flagBanner" class="flag hidden">
-      <div class="flag__icon"></div>
-      <div class="flag__label" id="flagLabel">-</div>
+    <div id="flagBanner" class="alert alert-secondary d-none py-2" role="status">
+      <div class="fw-semibold" id="flagLabel">-</div>
     </div>
 
-    <section class="card">
-      <h2>Leaderboard</h2>
-      <div class="table">
-        <div class="thead">
-          <div>Position</div><div>Car #</div><div>Team</div>
-          <div class="right">Laps</div><div class="right">Last Lap</div><div class="right">Pace</div><div class="right">Best Lap</div>
-        </div>
-        <div class="rows" id="rows"></div>
+    <section class="card border-secondary">
+      <div class="card-header border-secondary d-flex align-items-center justify-content-between">
+        <h2 class="h5 mb-0">Leaderboard</h2>
+        <span class="text-body-secondary small">Top 16</span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-hover align-middle mb-0">
+          <thead>
+            <tr>
+              <th scope="col">Position</th>
+              <th scope="col">Car #</th>
+              <th scope="col">Team</th>
+              <th scope="col" class="text-start">Laps</th>
+              <th scope="col" class="text-start">Last Lap</th>
+              <th scope="col" class="text-start">Pace</th>
+              <th scope="col" class="text-start">Best Lap</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
       </div>
     </section>
   </main>
 
-  <footer>
-    <div class="footer-left">
-      <div class="status-dot" id="netDot"></div>
-      <div id="netMsg">Connecting…</div>
+  <!-- ================= FOOTER ================= -->
+  <footer class="mt-auto border-top">
+    <div class="container-fluid py-2">
+      <div class="row align-items-center text-center">
+        <div class="col d-flex align-items-center gap-2 justify-content-start">
+          <span class="badge text-bg-secondary" id="netDot">•</span>
+          <span id="netMsg" class="text-body-secondary">Connecting…</span>
+        </div>
+
+        <div class="col">
+          <span id="wallClock" class="badge text-bg-secondary font-monospace">--:--:--</span>
+        </div>
+
+        <div class="col d-flex justify-content-end">
+          <span class="text-body-secondary small">
+            API:
+            <a class="link-light" href="/race/state" target="_blank" rel="noopener">/race/state</a>
+          </span>
+        </div>
+      </div>
     </div>
-    <div id="wallClock" class="pill">--:--:--</div>
-    <div class="footer-right">API: <a class="link" href="/race/state" target="_blank">/race/state</a></div>
   </footer>
+
+  <!-- Bootstrap JS -->
+  <script src="/ui/js/bootstrap.bundle.min.js"></script>
 
   <script>
     // --- Minimal shims if /ui/js/base.js isn't around -----------------------
     (function () {
-  if (window.CCRS && typeof window.CCRS.fetchJSON === "function") return;
+      if (window.CCRS && typeof window.CCRS.fetchJSON === "function") return;
+
       const $ = (s)=>document.querySelector(s);
-      async function fetchJSON(url){ const r=await fetch(url,{cache:"no-store"}); if(!r.ok) throw new Error(r.status); return r.json(); }
-      function makePoller(fn,ms,onErr){ let t=null; const tick=async()=>{ try{await fn();}catch(e){onErr&&onErr(e);} finally{ t=setTimeout(tick,ms);} }; return { start(){ if(!t) tick(); }, stop(){ if(t) clearTimeout(t); t=null; } }; }
-      function setNetStatus(ok,msg){ const d=$("#netDot"), m=$("#netMsg"); if(d) d.style.background = ok ? "var(--ok)" : "var(--error)"; if(m) m.textContent = msg || (ok?"OK":"Disconnected"); }
+      async function fetchJSON(url){
+        const r = await fetch(url, { cache:"no-store" });
+        if(!r.ok) throw new Error(r.status);
+        return r.json();
+      }
+      function makePoller(fn,ms,onErr){
+        let t=null;
+        const tick=async()=>{
+          try{ await fn(); }
+          catch(e){ onErr && onErr(e); }
+          finally{ t=setTimeout(tick,ms); }
+        };
+        return { start(){ if(!t) tick(); }, stop(){ if(t) clearTimeout(t); t=null; } };
+      }
+      function setNetStatus(ok,msg){
+        const dot = $("#netDot"), m = $("#netMsg");
+        if(dot) dot.className = ok ? "badge text-bg-success" : "badge text-bg-danger";
+        if(m) m.textContent = msg || (ok ? "OK" : "Disconnected");
+      }
       function fmtClock(ms){
         if(ms==null) return "--:--";
         const s=Math.max(0,Math.floor(ms/1000));
         const m=Math.floor(s/60), ss=s%60;
         return `${String(m).padStart(2,"0")}:${String(ss).padStart(2,"0")}`;
       }
-      function startWallClock(sel){ const el=$(sel); const up=()=>{ const d=new Date(); el.textContent = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`; }; up(); const id=setInterval(up,1000); return ()=>clearInterval(id); }
+      function startWallClock(sel){
+        const el = $(sel);
+        if(!el) return ()=>{};
+        const up=()=>{
+          const d=new Date();
+          el.textContent = `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}:${String(d.getSeconds()).padStart(2,"0")}`;
+        };
+        up();
+        const id=setInterval(up,1000);
+        return ()=>clearInterval(id);
+      }
       window.CCRS = { $, fetchJSON, makePoller, setNetStatus, fmtClock, startWallClock };
     })();
 
@@ -90,15 +163,13 @@
       blue:      "Blue - Driver Swap"
     };
 
-    // Zero-lap detection tracking (like race_control.js)
-    const PRELAP_PLACEHOLDER = '--:--.---';
-    const DETECTION_PHASES = new Set(['green', 'white', 'yellow', 'red', 'blue', 'checkered']);
+    const PRELAP_PLACEHOLDER = "--:--.---";
+    const DETECTION_PHASES = new Set(["green", "white", "yellow", "red", "blue", "checkered"]);
     const zeroLapDetections = new Set();
     const seenCountSnapshot = new Map();
     let lastPhaseForDetections = null;
 
-    // Best lap tracking for glow effect
-    const bestLapTracker = new Map(); // entrant_id -> best lap time in seconds
+    const bestLapTracker = new Map(); // entrant_id -> best lap time (sec)
 
     function refreshSeenBaseline(rows) {
       seenCountSnapshot.clear();
@@ -124,9 +195,7 @@
 
       if (!DETECTION_PHASES.has(lastPhaseForDetections)) {
         zeroLapDetections.clear();
-        if (seenCountSnapshot.size === 0) {
-          refreshSeenBaseline(rows);
-        }
+        if (seenCountSnapshot.size === 0) refreshSeenBaseline(rows);
       }
 
       lastPhaseForDetections = phaseLower;
@@ -136,39 +205,29 @@
         if (!Number.isFinite(id)) continue;
         const reads = Math.max(0, Number(row?.reads ?? 0));
         const prev = seenCountSnapshot.get(id);
-        
-        // Debug logging
-        console.log(`[ZeroLap] id=${id}, reads=${reads}, prev=${prev}, detected=${zeroLapDetections.has(id)}`);
-        
+
         if (prev === undefined) {
-          if (reads > 0) {
-            console.log(`[ZeroLap] DETECT (new): id=${id}, reads=${reads}`);
-            zeroLapDetections.add(id);
-          }
+          if (reads > 0) zeroLapDetections.add(id);
         } else if (reads > prev) {
-          console.log(`[ZeroLap] DETECT (increment): id=${id}, reads=${reads}, prev=${prev}`);
           zeroLapDetections.add(id);
         }
         seenCountSnapshot.set(id, reads);
       }
     }
 
-    // Format lap time with leading zeros (matching race_control.js)
     function fmtLapTime(sec) {
-      if (sec == null) return '-';
-      // m:ss.mmm where m can grow; .mmm is 3 digits
+      if (sec == null) return "-";
       const ms = Math.round((sec - Math.floor(sec)) * 1000);
       const s  = Math.floor(sec) % 60;
       const m  = Math.floor(sec / 60);
       return `${m}:${String(s).padStart(2,'0')}.${String(ms).padStart(3,'0')}`;
     }
 
-    // Format limit for race info display (minutes only, no seconds)
     function formatLimit(lim) {
-      if (!lim || typeof lim !== 'object') return null;
-      const t = String(lim.type || '').toLowerCase();
+      if (!lim || typeof lim !== "object") return null;
+      const t = String(lim.type || "").toLowerCase();
 
-      if (t === 'time') {
+      if (t === "time") {
         const seconds = (lim.value_s != null) ? Number(lim.value_s)
                       : (lim.value    != null) ? Number(lim.value)
                       : null;
@@ -176,280 +235,159 @@
           const minutes = Math.floor(seconds / 60);
           return `Time ${minutes}m`;
         }
-        if (seconds === 0) return 'Unlimited';
-      } else if (t === 'laps') {
+        if (seconds === 0) return "Unlimited";
+      } else if (t === "laps") {
         const laps = (lim.value_laps != null) ? Number(lim.value_laps)
                   : (lim.value       != null) ? Number(lim.value)
                   : null;
-        if (Number.isFinite(laps)) {
-          return `Laps ${laps}`;
-        }
+        if (Number.isFinite(laps)) return `Laps ${laps}`;
       }
       return null;
     }
 
-    // Render race info summary pill
     function renderRaceInfo(state) {
-      const el = document.getElementById('raceInfo');
+      const el = document.getElementById("raceInfo");
       if (!el) return;
 
       const parts = [];
-      
-      // Race type (e.g., "Sprint", "Endurance")
       const raceType = state?.race_type || state?.state?.race_type;
-      if (raceType) {
-        parts.push(raceType.charAt(0).toUpperCase() + raceType.slice(1));
-      }
-      
-      // Session label (event name)
+      if (raceType) parts.push(raceType.charAt(0).toUpperCase() + raceType.slice(1));
+
       const sessionLabel = state?.session_label || state?.state?.session_label;
-      if (sessionLabel && sessionLabel !== '-') {
-        parts.push(sessionLabel);
-      }
-      
-      // Limit (time or laps)
+      if (sessionLabel && sessionLabel !== "-") parts.push(sessionLabel);
+
       const limitStr = formatLimit(state?.limit);
       if (limitStr) parts.push(limitStr);
 
-      el.textContent = parts.length > 0 ? parts.join(' • ') : '-';
-    }
-
-    function updateZeroLapDetections(state, phase) {
-      const phaseLower = String(phase || '').toLowerCase();
-      
-      // Clear detections when transitioning to pre-race or countdown
-      if (phaseLower === 'pre' || phaseLower === 'countdown') {
-        zeroLapDetections.clear();
-        return;
-      }
-      
-      // Only track during green/white/checkered phases
-      if (!['green', 'white', 'checkered'].includes(phaseLower)) {
-        zeroLapDetections.clear();
-        return;
-      }
-      
-      // Track entrants with 0 laps that have detection reads
-      const standings = state?.standings || [];
-      standings.forEach(row => {
-        const id = row.entrant_id;
-        const laps = row.laps || 0;
-        const reads = row.reads || 0;
-        
-        if (laps === 0 && Number.isFinite(id)) {
-          if (reads > 0) zeroLapDetections.add(id);
-        } else if (laps > 0 && Number.isFinite(id)) {
-          zeroLapDetections.add(id);
-        }
-      });
-    }
-
-    // Footer wall clock
-    startWallClock("#wallClock");
-
-    // --- Smooth race clock state -------------------------------------------
-    let running = false;
-    let lastSnapTime = 0;  // ms (Date.now()) when snapshot arrived
-    let lastClockMs  = 0;  // snapshot.clock_ms at that moment
-
-    function renderClockTick(){
-      let ms = lastClockMs;
-      if (running) ms += (Date.now() - lastSnapTime);
-      $("#raceClock").textContent = fmtClock(ms);
+      el.textContent = parts.length ? parts.join(" • ") : "-";
     }
 
     function renderFlag(flag) {
-      const host = document.querySelector('#flagBanner');
-      const lbl  = document.querySelector('#flagLabel');
+      const host = document.getElementById("flagBanner");
+      const lbl  = document.getElementById("flagLabel");
       if (!host || !lbl) return;
 
-      const f = String(flag || '').toLowerCase();
-
+      const f = String(flag || "").toLowerCase();
       if (!f) {
-        host.className = 'flag hidden';
-        host.dataset.currentFlag = '';
-        lbl.textContent = '';
-        host.removeAttribute('title');
+        host.classList.add("d-none");
+        lbl.textContent = "";
         return;
-      }
-
-      const prev = host.dataset.currentFlag || '';
-      host.className = `flag flag--${f}`;
-
-      const pulsing = new Set(['yellow','red','blue','checkered']);
-      if (pulsing.has(f)) host.classList.add('is-pulsing'); else host.classList.remove('is-pulsing');
-
-      if (f === 'green' && prev !== 'green') {
-        host.classList.remove('flash'); void host.offsetWidth;
-        host.classList.add('flash');
-        host.addEventListener('animationend', (e) => {
-          if (e.animationName === 'greenFlash') host.classList.remove('flash');
-        }, { once: true });
-      } else if (f !== 'green') {
-        host.classList.remove('flash');
       }
 
       const text = FLAG_TITLES[f] || (f.charAt(0).toUpperCase() + f.slice(1));
       lbl.textContent = text;
-  host.setAttribute('title', text);
-      host.dataset.currentFlag = f;
+
+      // Choose alert color by flag using Bootstrap only
+      host.className = "alert py-2 mb-3";
+      if (f === "green") host.classList.add("alert-success");
+      else if (f === "yellow") host.classList.add("alert-warning");
+      else if (f === "red") host.classList.add("alert-danger");
+      else if (f === "checkered") host.classList.add("alert-info");
+      else host.classList.add("alert-secondary");
+
+      host.classList.remove("d-none");
     }
 
+    function renderSim(sim, label) {
+      const el = document.getElementById("simPill");
+      if (!el) return;
+      const on = (sim === true);
+      if (on) {
+        el.textContent = (label && String(label).trim().length) ? label : "SIMULATOR ACTIVE";
+        el.title = el.textContent;
+        el.classList.remove("d-none");
+      } else {
+        el.classList.add("d-none");
+        el.textContent = "";
+        el.removeAttribute("title");
+      }
+    }
+
+    function extractRows(s){ return s?.standings ?? s?.entries ?? s?.rows ?? []; }
+
     function renderStandings(rows) {
-      const rowsEl = $("#rows");
+      const tbody = document.getElementById("rows");
+      if (!tbody) return;
+
       if (!Array.isArray(rows) || !rows.length) {
-        rowsEl.innerHTML = "";
+        tbody.innerHTML = "";
         return;
       }
 
-      // Limit to top 16 entrants
       const displayRows = rows.slice(0, 16);
+      tbody.innerHTML = "";
 
-      // Get existing rows keyed by entrant_id
-      const existing = new Map();
-      Array.from(rowsEl.children).forEach(el => {
-        const key = el.dataset.key;
-        if (key) existing.set(key, el);
-      });
+      for (let i = 0; i < displayRows.length; i++) {
+        const r = displayRows[i];
+        const pos = i + 1;
 
-      const toKeep = new Set();
+        const entrantId = Number(r.entrant_id);
+        const car  = r.number ?? r.car ?? r.carNum ?? "";
+        const name = r.name ?? r.team ?? r.driver ?? `Tag ${r.tag ?? ""}`;
+        const laps = Number(r.laps ?? 0);
 
-      displayRows.forEach((r, i) => {
-        // Use entrant_id if available, otherwise create stable key from tag or index
-        const key = r.entrant_id ? String(r.entrant_id) : `tag_${r.tag || i}`;
-        toKeep.add(key);
-        
-        const pos   = i + 1;
-        const car   = r.number ?? r.car ?? r.carNum ?? "";
-        const name  = r.name ?? r.team ?? r.driver ?? `Tag ${r.tag ?? ""}`;
-        const laps  = r.laps ?? 0;
-        const entrantId = r.entrant_id;
+        const hasDetect = Number.isFinite(entrantId) && zeroLapDetections.has(entrantId);
+        const showPlaceholder = (laps <= 0) && hasDetect;
 
-        // Zero-lap logic
-        const hasZeroLap = Number.isFinite(entrantId) && zeroLapDetections.has(entrantId);
-        const awaitingDetection = (laps <= 0) && !hasZeroLap;
-        const showPlaceholder = (laps <= 0) && hasZeroLap;
+        const last = showPlaceholder ? PRELAP_PLACEHOLDER : (typeof r.last === "number" ? fmtLapTime(r.last) : "-");
+        const pace = showPlaceholder ? PRELAP_PLACEHOLDER : (typeof r.pace === "number" || typeof r.pace_5 === "number" ? fmtLapTime(r.pace || r.pace_5) : "-");
+        const best = showPlaceholder ? PRELAP_PLACEHOLDER : (typeof r.best === "number" ? fmtLapTime(r.best) : "-");
 
-        // Format lap times with placeholder for zero-lap detections and leading zeros
-        const last = showPlaceholder ? PRELAP_PLACEHOLDER : 
-                     (typeof r.last === "number") ? fmtLapTime(r.last) : "-";
-        const pace = showPlaceholder ? PRELAP_PLACEHOLDER :
-                     (typeof r.pace === "number" || typeof r.pace_5 === "number") ? fmtLapTime(r.pace || r.pace_5) : "-";
-        const best = showPlaceholder ? PRELAP_PLACEHOLDER :
-                     (typeof r.best === "number") ? fmtLapTime(r.best) : "-";
-
-        // Check for new personal best (only trigger flash on laps > 2)
+        // New personal best highlight (only after lap 2)
         let hasNewBest = false;
-        if (typeof r.best === "number" && r.best > 0 && laps > 2) {
+        if (Number.isFinite(entrantId) && typeof r.best === "number" && r.best > 0 && laps > 2) {
           const prevBest = bestLapTracker.get(entrantId);
           if (prevBest === undefined || r.best < prevBest) {
             hasNewBest = true;
             bestLapTracker.set(entrantId, r.best);
           }
-        } else if (typeof r.best === "number" && r.best > 0) {
-          // Still track best lap, just don't flash
+        } else if (Number.isFinite(entrantId) && typeof r.best === "number" && r.best > 0) {
           bestLapTracker.set(entrantId, r.best);
         }
 
-        // Reuse existing element or create new
-        let el = existing.get(key);
-        const isNew = !el;
-        if (isNew) {
-          el = document.createElement("div");
-          el.className = "row";
-          el.dataset.key = key;
-          el.innerHTML = `
-            <div class="pos"></div>
-            <div class="car"></div>
-            <div class="name"></div>
-            <div class="right laps"></div>
-            <div class="right time last"></div>
-            <div class="right time pace"></div>
-            <div class="right time best"></div>`;
-          // Add to DOM immediately for new elements
-          rowsEl.appendChild(el);
-          // Set initial position without transition
-          el.style.transition = 'none';
-          el.style.transform = `translateY(${i * 54}px)`;
-          // Force reflow then re-enable transition
-          void el.offsetHeight;
-          el.style.transition = '';
-        }
-
-        // Update content
-        const cells = el.children;
-        if (cells[0].textContent !== String(pos)) cells[0].textContent = pos;
-        if (cells[1].textContent !== car) cells[1].textContent = car;
-        if (cells[2].textContent !== name) cells[2].textContent = name;
-        if (cells[3].textContent !== String(laps)) cells[3].textContent = laps;
-        if (cells[4].textContent !== last) cells[4].textContent = last;
-        if (cells[5].textContent !== pace) cells[5].textContent = pace;
-        if (cells[6].textContent !== best) cells[6].textContent = best;
-
-        // Apply glow effect to best lap cell if new personal best (flash 3 times)
-        const bestCell = cells[6];
+        const tr = document.createElement("tr");
         if (hasNewBest && !showPlaceholder) {
-          // Clear any existing animation
-          bestCell.classList.remove('glow-activate-subtle');
-          void bestCell.offsetHeight; // Force reflow
-          
-          let flashCount = 0;
-          const flashInterval = setInterval(() => {
-            bestCell.classList.add('glow-flash', 'glow-activate-subtle');
-            setTimeout(() => {
-              bestCell.classList.remove('glow-activate-subtle');
-              flashCount++;
-              if (flashCount >= 3) {
-                clearInterval(flashInterval);
-              }
-            }, 800);
-          }, 900); // Slightly longer than animation to allow completion
+          tr.classList.add("table-success");
+          setTimeout(() => tr.classList.remove("table-success"), 1200);
         }
 
-        // Update classes
-        el.classList.toggle('is-awaiting-detect', awaitingDetection);
-
-        // Update transform (will animate if element already exists)
-        if (!isNew) {
-          el.style.transform = `translateY(${i * 54}px)`;
-        }
-      });
-
-      // Remove rows no longer in top 16
-      existing.forEach((el, key) => {
-        if (!toKeep.has(key)) el.remove();
-      });
-    }
-
-    function renderSim(sim, label) {
-      const el = document.querySelector('#simPill');
-      if (!el) return;
-      const on = (sim === true);
-      if (on) {
-        el.textContent = label && String(label).trim().length ? label : "SIMULATOR ACTIVE";
-        el.title = el.textContent;
-        el.classList.remove('hidden');
-        el.classList.add('pulsing');
-      } else {
-        el.classList.add('hidden');
-        el.classList.remove('pulsing');
-        el.textContent = "";
-        el.removeAttribute('title');
+        tr.innerHTML = `
+          <td>${pos}</td>
+          <td>${car}</td>
+          <td>${name}</td>
+          <td class="text-start">${laps}</td>
+          <td class="text-start font-monospace">${last}</td>
+          <td class="text-start font-monospace">${pace}</td>
+          <td class="text-start font-monospace">${best}</td>
+        `;
+        tbody.appendChild(tr);
       }
     }
 
+    // Footer wall clock
+    startWallClock("#wallClock");
+
+    // Smooth race clock state
+    let running = false;
+    let lastSnapTime = 0;
+    let lastClockMs  = 0;
+
+    function renderClockTick(){
+      let ms = lastClockMs;
+      if (running) ms += (Date.now() - lastSnapTime);
+      const el = document.getElementById("raceClock");
+      if (el) el.textContent = fmtClock(ms);
+    }
+
     // Poll /race/state at ~3 Hz and tick clock locally at 10 Hz
-    function extractRows(s){ return s?.standings ?? s?.entries ?? s?.rows ?? []; }
     const poller = makePoller(async () => {
       const s = await fetchJSON("/race/state");
 
-      // Update smooth clock state
       running      = !!s.running;
       lastClockMs  = s.clock_ms || 0;
       lastSnapTime = Date.now();
 
-      // Update zero-lap detections (needs phase as lowercase string)
-      const phaseLower = String(s.phase || 'pre').toLowerCase();
+      const phaseLower = String(s.phase || "pre").toLowerCase();
       updateZeroLapDetections(s, phaseLower);
 
       renderRaceInfo(s);
@@ -458,17 +396,13 @@
       renderSim(s.sim, s.sim_label);
 
       const n = Array.isArray(s?.standings) ? Math.min(s.standings.length, 16) : 0;
-  setNetStatus(true, `OK - ${n} karts`);
+      setNetStatus(true, `OK - ${n} karts`);
     }, 333, () => {
-  setNetStatus(false, "Disconnected - retrying…");
-      // Keep last good clock rendered; don't blank it here
+      setNetStatus(false, "Disconnected - retrying…");
     });
     poller.start();
 
-    // Local clock ticker
     setInterval(renderClockTick, 100);
-
-    // Initial placeholder render
     renderClockTick();
   </script>
 </body>

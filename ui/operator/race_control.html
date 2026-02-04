@@ -1,255 +1,335 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" data-bs-theme="dark">
+
 <head>
   <meta charset="utf-8" />
   <title>CCRS - Race Control</title>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-  <!-- Common operator CSS -->
-  <link rel="stylesheet" href="/ui/css/base.css" />
-  <link rel="stylesheet" href="/ui/css/operator.css" />
-  <!-- Page-specific CSS -->
-  <link rel="stylesheet" href="/ui/css/race_control.css" />
-</head>
-
-<body class="race-control">
-  <!-- ==============================================================
-    HEADER - standardized (same shell as other operator pages)
-  ============================================================== -->
-  <header class="app-header">
-    <div class="brand">
-  <a class="brand-link" href="/ui/operator/index.html">
-        <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="CCRS Logo" />
-  <div class="brand__wordmark">
-          <div class="wordmark__top">
-            <span class="wordmark__big">CHRONO</span>
-            <span class="wordmark__big">CORE</span>
-          </div>
-          <div class="wordmark__bottom">RACE SOFTWARE</div>
-        </div>
-      </a>
-      <div class="page-label">Race Control</div>
-    </div>
-
-    <div class="app-header__tools">
-      <nav class="app-nav">
-        <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
-          <svg class="icon"><use href="../img/icons.svg#home"></use></svg>
-          <span class="sr-only">Home</span>
-        </a>
-
-        <div class="app-nav__menu" id="appsMenu" data-open="false">
-          <button type="button" class="app-nav__btn" title="Menu">
-            <svg class="icon"><use href="../img/icons.svg#menu"></use></svg>
-            <span class="sr-only">Open menu</span>
-          </button>
-          <div class="app-nav__panel" id="appsPanel">
-            <a href="/ui/operator/race_setup.html">Race Setup</a>
-            <a href="/ui/operator/race_control.html">Race Control</a>
-            <a href="/ui/operator/entrants.html">Entrants &amp; Tags</a>
-            <a href="/ui/operator/results.html">Results</a>
-            <a href="/ui/operator/diag.html">Diagnostics</a>
-            <a href="/ui/operator/moxie_board.html">Moxie Board</a>
-            <a href="/ui/operator/settings.html">Settings</a>
-            <a href="/ui/operator/about.html">About</a>
-          </div>
-        </div>
-      </nav>
-    </div>
-  </header>
-
-  <!-- ==============================================================
-       MAIN CONTENT
-       Toolbar → two-column grid:
-       - Left column: Flags (spans both rows)
-       - Right column: Race clock (top) and Race data (bottom)
-  ============================================================== -->
-  <main class="rcWrap">
-    <!-- Top toolbar -->
-    <div class="toolBar">
-      <div class="left">
-        <!-- Start type display -->
-        <div class="toolbar-label">Start</div>
-        <div class="pill" id="startTypePill">Standing</div>
-
-        <div class="sep">|</div>
-
-        <!-- Race summary -->
-        <div class="toolbar-spacer"></div>
-         <div class="rc-summary"><span id="rcSummaryText">-</span></div>
-
-        
-      
-      </div>
-
-        <div class="toolbar-center">
-          <div id="flagPill">
-            <span id="flagPillText">Pre-race</span>
-          </div>
-        </div>
-    </div>
-
-    <!-- Two-column grid -->
-    <div class="rcGrid">
-      <!-- Left: Flags (span both rows on the left) -->
-  <section class="pane" id="paneFlags">
-        <h2 class="pane__head" id="flagsTitle">Flags</h2>
-        <div class="pane__body">
-          <div id="flagColumn">
-            <!-- Half-height pre-race button (same width as column) -->
-            <div id="preFlagRow">
-              <button class="flag flag--pre" data-flag="pre" type="button">Pre-race</button>
-            </div>
-
-            <!-- Uniform single-column flag pad -->
-            <div class="flag-pad" id="flagPad">
-              <button class="flag flag--green"     data-flag="green"     type="button">Green</button>
-              <button class="flag flag--yellow"    data-flag="yellow"    type="button">Yellow</button>
-              <button class="flag flag--red"       data-flag="red"       type="button">Red</button>
-              <button class="flag flag--blue"      data-flag="blue"      type="button">Blue</button>
-              <button class="flag flag--white"     data-flag="white"     type="button">White</button>
-              <button class="flag flag--checkered" data-flag="checkered" type="button">Checkered</button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Right (row 1): Race clock -->
-  <section class="pane" id="paneClock">
-        <h2 class="pane__head" id="clockTitle">Race clock</h2>
-        <div class="pane__body clockBody">
-          <!-- NEW: actions live in the same row as the clock -->
-          <div class="clockActions">
-            <button id="btnStartRace"  class="btn btn-success">Start race</button>
-            <button id="btnEndRace"    class="btn">End race</button>
-            <button id="btnAbortReset" class="btn btn-danger">Abort &amp; reset</button>
-          </div>
-          <!-- Post-finish actions (hidden until CHECKERED) -->
-          <div id="postFinishActions" class="post-finish hidden">
-            <button id="btnFreezeGrid" class="btn btn--freeze-grid hidden">
-              Freeze grid standings
-            </button>
-            <button id="btnResults" class="btn btn--results">
-              Open results &amp; exports
-            </button>
-          </div>
-          <div class="clockDisplay">
-            <div class="clockMeta">
-              <span class="toolbar-label">Mode</span>
-              <button id="btnClockMode" class="btn btn-primary btn--sm" type="button"
-                      title="Toggle elapsed/remaining">Remaining</button>
-            </div>
-            <div id="raceClock" class="bigClock">00:00:00</div>
-          </div>
-          <!--<div id="flagBanner" aria-live="polite">
-            <span id="flagLabel">PRE</span>
-            <span id="flagSublabel"></span>
-          </div>-->
-        </div>
-      </section>
-
-<!-- Right (row 2): Race data -->
-<section class="pane" id="paneLive">
-  <h2 class="pane__head" id="liveTitle">Race data</h2>
-  <div class="pane__body rcLiveBody">
-
-    <!-- PRE/COUNTDOWN: Seen list (table skin matches Standings) -->
-    <div id="panelSeen">
-      <div class="liveHead standingsHead">
-        <div class="cell hdr title">Seen <span class="muted">(</span><span id="seenCount">0</span><span class="muted">/</span><span id="seenTotal">0</span><span class="muted">)</span></div>
-      </div>
-
-      <div class="seenScroll">
-        <table id="rcSeen" class="rcTable">
-          <thead>
-            <tr>
-              <th class="tag">TAG</th>
-              <th class="num">Number</th>
-              <th class="name">Name</th>
-              <th class="reads">Reads</th>
-            </tr>
-          </thead>
-          <tbody id="seenTbody"></tbody>
-        </table>
-      </div>
-    </div>
-
-
-    <!-- RACING/CHECKERED: Standings (scrolls inside only this pane) -->
-  <div id="panelStandings" class="hidden">
-      <!-- NEW: match the "Seen" header bar so both states consume equal height -->
-      <div class="liveHead standingsHead">
-        <div class="cell hdr title">Standings</div>
-      </div>
-
-      <div class="standingsScroll">
-        <table id="rcStandings">
-          <thead>
-            <tr>
-              <th class="pos">Pos</th>
-              <th class="num">Number</th>
-              <th class="name">Name</th>
-              <th class="brake col-brake">Brake</th>
-              <th class="laps">Laps</th>
-              <th class="last">Last</th>
-              <th class="pace">Pace</th>
-              <th class="best">Best</th>
-            </tr>
-          </thead>
-          <tbody><!-- rows injected by race_control.js --></tbody>
-        </table>
-      </div>
-    </div>
-</section>
-
-    </div>
-  </main>
-
-  <!-- ==============================================================
-    FOOTER - standardized
-  ============================================================== -->
-  <footer class="app-footer">
-    <div class="footer-left">
-  <div class="status-dot" id="netDot"></div>
-      <div id="netMsg">Ready</div>
-    </div>
-    <div class="footer-center">
-      <div class="pill pill--db" id="readyPill">DB: ready</div>
-  <div class="pill pill--db" id="engineLabel">Engine: -</div>
-    </div>
-    <div class="footer-right"></div>
-  </footer>
+  <!-- Bootstrap only (no custom CSS) -->
+  <link rel="stylesheet" href="/ui/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="/ui/css/chrono.css" />
 
   <!-- JS -->
   <script src="../js/base.js" defer></script>
   <script src="../js/race_control.js" defer></script>
+</head>
 
-  <!-- Inline menu toggle -->
+<body class="min-vh-100 d-flex flex-column">
+  <!-- HEADER (canonical) -->
+  <header>
+    <!-- Theme-aware navbar: no navbar-dark/bg-dark -->
+    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
+      <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/ui/operator/index.html">
+          <img src="/ui/img/CCRS_Logo.svg" alt="CCRS Logo" class="d-inline-block" height="36">
+          <span class="lh-1">
+            <span class="d-block fw-bold text-uppercase">CHRONO</span>
+            <span class="d-block fw-bold text-uppercase">CORE</span>
+            <small class="d-block text-uppercase opacity-75" style="letter-spacing:.12em;">RACE SOFTWARE</small>
+          </span>
+        </a>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#operatorNav"
+          aria-controls="operatorNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="operatorNav">
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+            <li class="nav-item"><a class="nav-link" aria-current="page" href="/ui/operator/index.html">Home</a>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_setup.html">Race Setup</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_control.html">Race Control</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/entrants.html">Entrants &amp; Tags</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/results.html">Results</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/diag.html">Diagnostics</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/moxie_board.html">Moxie Board</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/settings.html">Settings</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/about.html">About</a></li>
+          </ul>
+        </div>
+        <!-- Theme toggle (theme-aware button; no outline-light) -->
+        <button id="themeToggle" type="button" class="btn btn-sm btn-outline-secondary ms-2"
+          title="Toggle light/dark theme" aria-label="Toggle theme">
+          🌙
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- MAIN -->
+  <main class="container-fluid py-3 flex-grow-1">
+    <!-- Toolbar -->
+    <div class="card border-secondary mb-3">
+      <div class="card-body py-2">
+        <div class="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+          <!-- Left cluster -->
+          <div class="d-flex align-items-center gap-2 flex-wrap">
+            <span class="text-body-secondary">Start</span>
+            <span class="badge text-bg-secondary" id="startTypePill">Standing</span>
+
+            <span class="text-body-secondary mx-1">|</span>
+
+            <div class="text-body-secondary">
+              <span id="rcSummaryText">-</span>
+            </div>
+          </div>
+
+          <!-- Center flag pill -->
+          <div>
+            <span class="badge text-bg-secondary px-3 py-2" id="flagPill">
+              <span id="flagPillText">Pre-race</span>
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Two-column layout -->
+    <div class="row g-3">
+      <!-- LEFT: Flags -->
+      <div class="col-12 col-lg-4 col-xl-3">
+        <div class="card border-secondary h-100">
+          <div class="card-header border-secondary">
+            <h6 class="m-0 fw-semibold text-uppercase" id="flagsTitle">Flags</h6>
+          </div>
+          <div class="card-body">
+            <div class="d-grid gap-2">
+              <button class="btn btn-lg btn-flag btn-secondary" data-flag="pre" type="button">Pre-race</button>
+
+              <button class="btn btn-lg btn-flag btn-success" data-flag="green" type="button">Green</button>
+              <button class="btn btn-lg btn-flag btn-warning" data-flag="yellow" type="button">Yellow</button>
+              <button class="btn btn-lg btn-flag btn-danger" data-flag="red" type="button">Red</button>
+              <button class="btn btn-lg btn-flag btn-primary" data-flag="blue" type="button">Blue</button>
+              <button class="btn btn-lg btn-flag btn-light text-dark" data-flag="white" type="button">White</button>
+              <button type="button" class="btn btn-lg btn-flag btn-flag-checkered w-100"
+                data-flag="checkered">Checkered</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- RIGHT: Clock + Live data -->
+      <div class="col-12 col-lg-8 col-xl-9">
+        <div class="row g-3">
+          <!-- Clock -->
+          <div class="col-12">
+            <div class="card border-secondary">
+              <div
+                class="card-header border-secondary d-flex align-items-center justify-content-between flex-wrap gap-2">
+                <h6 class="m-0 fw-semibold text-uppercase" id="clockTitle">Race clock</h6>
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <span class="text-body-secondary">Mode</span>
+                  <button id="btnClockMode" class="btn btn-sm btn-primary" type="button"
+                    title="Toggle elapsed/remaining">
+                    Remaining
+                  </button>
+                </div>
+              </div>
+
+              <div class="card-body">
+                <div class="d-flex gap-2 flex-wrap mb-3">
+                  <button id="btnStartRace" class="btn btn-success" type="button">Start race</button>
+                  <button id="btnEndRace" class="btn btn-light" type="button">End race</button>
+                  <button id="btnAbortReset" class="btn btn-danger" type="button">Abort &amp; reset</button>
+                </div>
+
+                <div id="postFinishActions" class="d-none">
+                  <div class="d-flex gap-2 flex-wrap mb-3">
+                    <button id="btnFreezeGrid" class="btn btn-outline-warning d-none" type="button">
+                      Freeze grid standings
+                    </button>
+                    <button id="btnResults" class="btn btn-primary" type="button">
+                      Open results &amp; exports
+                    </button>
+                  </div>
+                </div>
+
+                <div class="text-center">
+                  <div id="raceClock" class="display-1 fw-bold font-monospace">00:00:00</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Live data -->
+          <div class="col-12">
+            <div class="card border-secondary">
+              <div class="card-header border-secondary">
+                <h6 class="m-0 fw-semibold text-uppercase" id="liveTitle">Race data</h6>
+              </div>
+
+              <div class="card-body p-0">
+                <!-- Seen -->
+                <div id="panelSeen">
+                  <div
+                    class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom border-secondary">
+                    <h6 class="m-0 fw-semibold text-uppercase">
+                      Seen
+                      <span class="text-body-secondary">
+                        (<span id="seenCount">0</span>/<span id="seenTotal">0</span>)
+                      </span>
+                    </h6>
+                  </div>
+
+                  <div class="table-responsive" style="max-height: 50vh;">
+                    <table id="rcSeen" class="table table-striped table-hover align-middle mb-0">
+                      <thead class="sticky-top">
+                        <tr>
+                          <th scope="col">TAG</th>
+                          <th scope="col">Number</th>
+                          <th scope="col">Name</th>
+                          <th scope="col">Reads</th>
+                        </tr>
+                      </thead>
+                      <tbody id="seenTbody"></tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <!-- Standings -->
+                <div id="panelStandings" class="d-none">
+                  <div
+                    class="d-flex align-items-center justify-content-between px-3 py-2 border-bottom border-secondary">
+                    <div class="fw-semibold">Standings</div>
+                  </div>
+
+                  <div class="table-responsive" style="max-height: 50vh;">
+                    <table id="rcStandings" class="table table-dark table-striped table-hover align-middle mb-0">
+                      <thead class="sticky-top">
+                        <tr>
+                          <th scope="col">Pos</th>
+                          <th scope="col">Number</th>
+                          <th scope="col">Name</th>
+                          <th scope="col">Brake</th>
+                          <th scope="col">Laps</th>
+                          <th scope="col">Last</th>
+                          <th scope="col">Pace</th>
+                          <th scope="col">Best</th>
+                        </tr>
+                      </thead>
+                      <tbody><!-- rows injected by race_control.js --></tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <!-- FOOTER (canonical) -->
+  <footer class="mt-auto border-top">
+    <div class="container-fluid py-2">
+      <div class="row align-items-center text-center">
+        <div class="col d-flex align-items-center gap-2 justify-content-start">
+          <span class="badge text-bg-secondary" id="netDot">Connecting…</span>
+          <span class="text-body-secondary" id="netMsg"></span>
+        </div>
+
+        <div class="col">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="goto('about')">
+            v0.2.0
+          </button>
+        </div>
+
+        <div class="col d-flex justify-content-end">
+          <span class="badge text-bg-secondary font-monospace" id="wallClock">--:--:--</span>
+        </div>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Bootstrap JS (required for burger menu) -->
+  <script src="/ui/js/bootstrap.bundle.min.js"></script>
+
+  <!-- Minimal footer clock/status glue (Bootstrap-only UI; no custom CSS) -->
   <script>
-    (function () {
-      const menu  = document.getElementById('appsMenu');
-      if (!menu) return;
-      const btn   = menu.querySelector('.app-nav__btn');
-      const panel = menu.querySelector('.app-nav__panel');
-      function openMenu(on) { menu.dataset.open = on ? 'true' : 'false'; }
-      btn.addEventListener('click', (e) => {
-        e.stopPropagation();
-        openMenu(menu.dataset.open !== 'true');
-        if (menu.dataset.open === 'true') {
-          const first = panel.querySelector('a'); if (first) first.focus();
+    window.addEventListener('DOMContentLoaded', () => {
+      const { setNetStatus } = window.CCRS;
+
+      function startSimpleWallClock(selector) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        const fmt = (n) => String(n).padStart(2, '0');
+        function tick() {
+          const d = new Date();
+          el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
         }
-      });
-      document.addEventListener('click', () => openMenu(false));
-      document.addEventListener('keydown', (e) => { if (e.key === 'Escape') openMenu(false); });
-      panel.addEventListener('keydown', (e) => {
-        const items = Array.from(panel.querySelectorAll('a'));
-        const i = items.indexOf(document.activeElement);
-        if (e.key === 'ArrowDown') { e.preventDefault(); (items[i+1] || items[0]).focus(); }
-        else if (e.key === 'ArrowUp') { e.preventDefault(); (items[i-1] || items[items.length-1]).focus(); }
-        else if (e.key === 'Home')   { e.preventDefault(); (items[0] || document.activeElement).focus(); }
-        else if (e.key === 'End')    { e.preventDefault(); (items[items.length-1] || document.activeElement).focus(); }
-      });
-    })();
+        tick();
+        setInterval(tick, 1000);
+      }
+
+      startSimpleWallClock('#wallClock');
+
+      let _reachTimer = null;
+      let _reachFailures = 0;
+      function startReachabilityPoll(ms = 2000) {
+        if (_reachTimer) clearInterval(_reachTimer);
+        _reachTimer = setInterval(async () => {
+          try {
+            const url = window.CCRS.apiUrl('/healthz');
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
+            _reachFailures = 0;
+            window.CCRS.setNetStatus('ok');
+          } catch (err) {
+            _reachFailures++;
+            if (_reachFailures >= 2) window.CCRS.setNetStatus('disconnected');
+            console.warn('reachability failed:', err?.message || err);
+          }
+        }, ms);
+      }
+
+      async function checkUIFeatures() {
+        try {
+          const url = window.CCRS.apiUrl('/config/ui_features');
+          const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          if (r.ok) {
+            const config = await r.json();
+            const moxieBtn = document.querySelector('[data-role="moxie-btn"]');
+            if (moxieBtn && config.moxie_board?.enabled) {
+              moxieBtn.classList.remove('d-none');
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load UI features config:', err?.message || err);
+        }
+      }
+
+      // Optional: map CCRS net status to badge colors
+      const netDot = document.getElementById('netDot');
+      const _orig = setNetStatus;
+      window.CCRS.setNetStatus = function (status) {
+        _orig(status);
+        if (!netDot) return;
+
+        netDot.classList.remove('text-bg-secondary', 'text-bg-success', 'text-bg-danger', 'text-bg-warning');
+
+        if (status === 'ok') {
+          netDot.classList.add('text-bg-success');
+          netDot.textContent = 'Online';
+        } else if (status === 'connecting') {
+          netDot.classList.add('text-bg-warning');
+          netDot.textContent = 'Connecting…';
+        } else if (status === 'disconnected') {
+          netDot.classList.add('text-bg-danger');
+          netDot.textContent = 'Offline';
+        } else {
+          netDot.classList.add('text-bg-secondary');
+          netDot.textContent = 'Status';
+        }
+      };
+
+      window.CCRS.setNetStatus('connecting');
+      startReachabilityPoll(2000);
+      checkUIFeatures();
+    });
   </script>
 </body>
+
 </html>

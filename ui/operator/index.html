@@ -1,223 +1,250 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
+
+<head>
+  <meta charset="utf-8" />
   <title>CCRS - Operator Console</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <!-- CSS imports
-         - base.css: global variables, tokens, layout utilities
-         - spectator.css: shared flag banner + standings styles (optional)
-         - operator.css: operator-specific styles (grid layout, cards, hero area)
-    -->
-    <link rel="stylesheet" href="/ui/css/base.css" />
-    <!-- <link rel="stylesheet" href="../css/spectator.css" /> -->
-    <link rel="stylesheet" href="/ui/css/operator.css" />
+  <!-- Bootstrap only (must be 5.3+ for data-bs-theme to work) -->
+  <link rel="stylesheet" href="/ui/css/bootstrap.min.css" />
 
-    <!-- JS imports
-         - base.js: shared helpers (setNetStatus, startWallClock, fmtClock, etc.)
-    -->
-    <script src="/ui/js/base.js" defer></script>
+  <!-- JS -->
+  <script src="/ui/js/base.js" defer></script>
+  <script src="/ui/js/bootstrap.bundle.min.js" defer></script>
 
-    <script>
-      /**
-       * goto(screenId)
-       * Operator navigation helper. When running embedded (pywebview) we call
-       * into the Python API; otherwise fall back to a plain HTML redirect.
-       */
-      async function goto(screenId) {
-        if (window.pywebview?.api?.goto) {
-          try {
-            await window.pywebview.api.goto(screenId);
-          } catch (e) {
-            console.error('goto failed:', e);
-          }
-        } else {
-          // Fallback: load target page directly. Some screen IDs map to
-          // filenames that don't match the ID (historical names). Handle
-          // those special cases here so the plain-browser fallback works.
-          location.href = screenId + '.html';
-        }
+  <script>
+    /**
+     * goto(screenId)
+     * Operator navigation helper. When running embedded (pywebview) we call
+     * into the Python API; otherwise fall back to a plain HTML redirect.
+     */
+    async function goto(screenId) {
+      if (window.pywebview?.api?.goto) {
+        try { await window.pywebview.api.goto(screenId); } catch (e) { console.error('goto failed:', e); }
+      } else {
+        location.href = screenId + '.html';
       }
+    }
 
-      /**
-       * openSpectator()
-       * Open the spectator UI in a new browser tab. Prefer the pywebview
-       * API when available, otherwise open the local spectator page.
-       */
-      async function openSpectator() {
-        if (window.pywebview?.api?.open_spectator) {
-          try {
-            await window.pywebview.api.open_spectator();
-            return;
-          } catch (e) {
-            console.error(e);
-          }
-        }
-        window.open('/ui/spectator/spectator.html', '_blank');
+    /**
+     * openSpectator()
+     * Open the spectator UI in a new browser tab. Prefer the pywebview API when available.
+     */
+    async function openSpectator() {
+      if (window.pywebview?.api?.open_spectator) {
+        try { await window.pywebview.api.open_spectator(); return; } catch (e) { console.error(e); }
       }
-    </script>
-        <!-- BACK-compat shim for CCRS.apiUrl() -->
-    <script>
-      window.CCRS = window.CCRS || {};
+      window.open('/ui/spectator/spectator.html', '_blank');
+    }
+  </script>
 
-      // Back-compat shim: make CCRS.apiUrl a function if it isn't one yet
-      if (typeof window.CCRS.apiUrl !== 'function') {
-        window.CCRS.apiUrl = function (path) {
-          const base = (typeof window.CCRS.apiBase === 'string' && window.CCRS.apiBase) ? window.CCRS.apiBase : '';
-          return base + path;
-        };
-      }
-    </script>
+  <!-- BACK-compat shim for CCRS.apiUrl() -->
+  <script>
+    window.CCRS = window.CCRS || {};
+    if (typeof window.CCRS.apiUrl !== 'function') {
+      window.CCRS.apiUrl = function (path) {
+        const base = (typeof window.CCRS.apiBase === 'string' && window.CCRS.apiBase) ? window.CCRS.apiBase : '';
+        return base + path;
+      };
+    }
+  </script>
+</head>
 
+<body class="min-vh-100 d-flex flex-column bg-body text-body">
 
-  </head>
+  <!-- HEADER -->
+  <header>
+    <!-- Theme-aware navbar: no navbar-dark/bg-dark -->
+    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
+      <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/ui/operator/index.html">
+          <img src="/ui/img/CCRS_Logo.svg" alt="CCRS Logo" class="d-inline-block" height="36">
+          <span class="lh-1">
+            <span class="d-block fw-bold text-uppercase">CHRONO</span>
+            <span class="d-block fw-bold text-uppercase">CORE</span>
+            <small class="d-block text-uppercase opacity-75" style="letter-spacing:.12em;">RACE SOFTWARE</small>
+          </span>
+        </a>
 
-  <body class="index">
-    <!-- HEADER: wordmark -->
-    <header class="app-header">
-      <!-- ChronoCore brand (logo + wordmark) -->
-      <div class="brand">
-        <!-- Logo on the left -->
-        <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo">
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#operatorNav"
+          aria-controls="operatorNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
 
-        <!-- Stacked wordmark on the right -->
-  <div class="brand__wordmark">
-          <div class="wordmark__top">
-            <span class="wordmark__big">CHRONO</span>
-            <span class="wordmark__big">CORE</span>
+        <div class="collapse navbar-collapse" id="operatorNav">
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+            <li class="nav-item"><a class="nav-link" aria-current="page" href="/ui/operator/index.html">Home</a>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_setup.html">Race Setup</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_control.html">Race Control</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/entrants.html">Entrants &amp; Tags</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/results.html">Results</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/diag.html">Diagnostics</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/moxie_board.html">Moxie Board</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/settings.html">Settings</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/about.html">About</a></li>
+          </ul>
+        </div>
+        <!-- Theme toggle (theme-aware button; no outline-light) -->
+        <button id="themeToggle" type="button" class="btn btn-sm btn-outline-secondary ms-2"
+          title="Toggle light/dark theme" aria-label="Toggle theme">
+          🌙
+        </button>
+      </div>
+    </nav>
+  </header>
+
+  <!-- MAIN -->
+  <main class="container py-4 flex-grow-1">
+    <div class="row justify-content-center">
+      <div class="col-12 col-lg-8 col-xl-6">
+        <!-- Theme-aware card: no bg-dark / border-secondary -->
+        <div class="card shadow-sm">
+          <div class="card-body p-4">
+
+            <div class="d-flex align-items-center justify-content-center gap-3 mb-3">
+              <img src="/ui/img/PRS_Logo.svg" alt="PRS Logo" class="img-fluid" style="max-height: 48px;">
+              <div class="h4 text-body-secondary">Timing • Control • Moxie</div>
+            </div>
+            <hr class="my-3">
+
+            <div class="d-grid gap-2">
+              <button class="btn btn-lg btn-primary" type="button" onclick="goto('race_setup')">Race Setup</button>
+
+              <!-- Theme-aware outlines: use outline-secondary (not outline-light) -->
+              <button class="btn btn-lg btn-primary" type="button" onclick="goto('race_control')">Race
+                Control</button>
+              <button class="btn btn-lg btn-primary" type="button" onclick="goto('entrants')">Entrants &amp;
+                Tags</button>
+              <button class="btn btn-lg btn-primary" type="button" onclick="goto('results')">Results</button>
+              <button class="btn btn-lg btn-primary" type="button" onclick="goto('diag')">Diagnostics / Live
+                Sensors</button>
+              <button class="btn btn-lg btn-primary" type="button" onclick="goto('settings')">Setup &amp;
+                Devices</button>
+
+              <!-- Moxie Board (conditionally shown) -->
+              <button class="btn btn-lg btn-warning d-none" type="button" data-role="moxie-btn"
+                onclick="goto('moxie_board')">
+                Moxie Board
+              </button>
+
+              <hr class="my-3">
+
+              <button class="btn btn-lg btn-info" type="button" onclick="openSpectator()">Open Spectator View</button>
+            </div>
+
           </div>
-          <div class="wordmark__bottom">RACE SOFTWARE</div>
         </div>
       </div>
-    </header>
+    </div>
+  </main>
 
-    <!-- MAIN: split 2-column layout (LEFT = Navigation / Actions) -->
-    <main class="wrap grid2-520">
-      <!-- LEFT COLUMN: Operator actions / navigation -->
-      <section class="hero card">
-        <div class="hero__inner">
-          <div class="hero__brand">
-            <!-- PRS logo (static asset) -->
-            <img class="brand-mark" src="../img/PRS_Logo.svg" alt="PRS Logo">
-            <p class="sub">Timing • Control • Moxie</p>
-          </div>
+  <!-- FOOTER -->
+  <footer class="mt-auto border-top">
+    <div class="container-fluid py-2">
+      <div class="row align-items-center text-center">
 
-          <!-- Navigation buttons (goto() handles routing) -->
-          <div class="hero__actions">
-            <button class="btn btn-primary" onclick="goto('race_setup')">Race Setup</button>
-            <button class="btn" onclick="goto('race_control')">Race Control</button>
-            <button class="btn" onclick="goto('entrants')">Entrants & Tags</button>
-            <button class="btn" onclick="goto('results')">Results</button>
-            <button class="btn" onclick="goto('diag')">Diagnostics / Live Sensors</button>
-            <button class="btn" onclick="goto('settings')">Setup & Devices</button>
-            <!-- Moxie Board button (conditionally shown) -->
-            <button class="btn moxie-board-btn" onclick="goto('moxie_board')" style="display: none;">Moxie Board</button>
-            <!-- Separator between operator tools and spectator link -->
-            <hr class="section-sep">
-            <button class="btn" onclick="openSpectator()">Open Spectator View</button>
-          </div>
+        <div class="col d-flex align-items-center gap-2 justify-content-start">
+          <span class="badge text-bg-secondary" id="netDot">Connecting…</span>
+          <span class="text-body-secondary" id="netMsg"></span>
         </div>
-      </section>
-    </main>
 
-    <!-- FOOTER: connection status + wall clock + version pill -->
-    <footer class="app-footer">
-      <div class="footer-left">
-        <!-- Network status dot + message -->
-        <div class="status-dot" id="netDot"></div>
-        <div id="netMsg"></div>
+        <div class="col">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="goto('about')">v0.2.0</button>
+        </div>
+
+        <div class="col d-flex justify-content-end">
+          <span class="badge text-bg-secondary font-monospace" id="wallClock">--:--:--</span>
+        </div>
+
       </div>
-      <!-- Wall clock (real-world clock, separate from race clock) -->
-      <div id="wallClock" class="pill">--:--:--</div>
-    </footer>
+    </div>
+  </footer>
 
-    <!-- Build version indicator -->
-    <div class="version-pill" onclick="goto('about')">v0.2.0</div>
+  <!-- PAGE WIRING -->
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const { setNetStatus } = window.CCRS;
 
-
-
-    <!-- PAGE WIRING (poll /race/state and update DOM) -->
-    <script>
-      window.addEventListener('DOMContentLoaded', () => {
-        // CCRS is guaranteed to exist now because deferred scripts run before this event
-
-        // Pull only what we actually use on the Home page
-        const { setNetStatus } = window.CCRS; // using CCRS.apiUrl/jsonFetch directly from window.CCRS
-
-        /**
-         * startSimpleWallClock(selector)
-         * Lightweight real-world clock for the footer. Keeps Operator Home
-         * decoupled from race UI helpers.
-         */
-        function startSimpleWallClock(selector) {
-          const el = document.querySelector(selector);
-          if (!el) return;
-          const fmt = (n) => String(n).padStart(2, '0');
-          function tick() {
-            const d = new Date();
-            el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
-          }
-          tick();
-          setInterval(tick, 1000);
+      function startSimpleWallClock(selector) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        const fmt = (n) => String(n).padStart(2, '0');
+        function tick() {
+          const d = new Date();
+          el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
         }
+        tick();
+        setInterval(tick, 1000);
+      }
 
-        // Kick off the footer wall clock immediately
-        startSimpleWallClock('#wallClock');
+      startSimpleWallClock('#wallClock');
 
-        /**
-         * Lightweight reachability check
-         * We don't render live race widgets on Home, but it's still useful
-         * to reflect whether the engine answers. This poller only updates the
-         * footer status text and does NOT touch any other DOM.
-         */
-        // Local lightweight poller (makePoller not provided in production base.js)
-        let _reachTimer = null;
-        let _reachFailures = 0;
-        function startReachabilityPoll(ms = 2000) {
-          if (_reachTimer) clearInterval(_reachTimer);
-          _reachTimer = setInterval(async () => {
-            try {
-              const url = window.CCRS.apiUrl('/healthz');
-              const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-              if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
-
-              _reachFailures = 0;
-              setNetStatus('ok');
-            } catch (err) {
-              _reachFailures++;
-              if (_reachFailures >= 2) setNetStatus('disconnected');
-              console.warn('reachability failed:', err?.message || err);
-            }
-          }, ms);
-        }
-
-        /**
-         * Check UI feature configuration and show/hide conditional elements
-         */
-        async function checkUIFeatures() {
+      let _reachTimer = null;
+      let _reachFailures = 0;
+      function startReachabilityPoll(ms = 2000) {
+        if (_reachTimer) clearInterval(_reachTimer);
+        _reachTimer = setInterval(async () => {
           try {
-            const url = window.CCRS.apiUrl('/config/ui_features');
+            const url = window.CCRS.apiUrl('/healthz');
             const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
-            if (r.ok) {
-              const config = await r.json();
-              
-              // Show/hide Moxie Board button based on config
-              const moxieBtn = document.querySelector('.moxie-board-btn');
-              if (moxieBtn && config.moxie_board?.enabled) {
-                moxieBtn.style.display = 'block';
-              }
-            }
+            if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
+            _reachFailures = 0;
+            window.CCRS.setNetStatus('ok');
           } catch (err) {
-            console.warn('Failed to load UI features config:', err?.message || err);
+            _reachFailures++;
+            if (_reachFailures >= 2) window.CCRS.setNetStatus('disconnected');
+            console.warn('reachability failed:', err?.message || err);
           }
+        }, ms);
+      }
+
+      async function checkUIFeatures() {
+        try {
+          const url = window.CCRS.apiUrl('/config/ui_features');
+          const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          if (r.ok) {
+            const config = await r.json();
+            const moxieBtn = document.querySelector('[data-role="moxie-btn"]');
+            if (moxieBtn && config.moxie_board?.enabled) {
+              moxieBtn.classList.remove('d-none');
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load UI features config:', err?.message || err);
         }
+      }
 
-        setNetStatus('connecting');
-        startReachabilityPoll(2000);
-        checkUIFeatures();
-      });
-    </script>
-  </body>
+      // Optional: map CCRS net status to badge colors
+      const netDot = document.getElementById('netDot');
+      const _orig = setNetStatus;
+      window.CCRS.setNetStatus = function (status) {
+        _orig(status);
+        if (!netDot) return;
+
+        netDot.classList.remove('text-bg-secondary', 'text-bg-success', 'text-bg-danger', 'text-bg-warning');
+
+        if (status === 'ok') {
+          netDot.classList.add('text-bg-success');
+          netDot.textContent = 'Online';
+        } else if (status === 'connecting') {
+          netDot.classList.add('text-bg-warning');
+          netDot.textContent = 'Connecting…';
+        } else if (status === 'disconnected') {
+          netDot.classList.add('text-bg-danger');
+          netDot.textContent = 'Offline';
+        } else {
+          netDot.classList.add('text-bg-secondary');
+          netDot.textContent = 'Status';
+        }
+      };
+
+      window.CCRS.setNetStatus('connecting');
+      startReachabilityPoll(2000);
+      checkUIFeatures();
+    });
+  </script>
+</body>
+
 </html>
-

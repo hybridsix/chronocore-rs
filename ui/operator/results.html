@@ -1,243 +1,349 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Results - ChronoCore</title>
 
-    <!-- Shared operator styles -->
-    <link rel="stylesheet" href="../css/base.css" />
-    <link rel="stylesheet" href="../css/operator.css" />
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Results - ChronoCore</title>
 
-    <!-- Page-specific styles -->
-    <link rel="stylesheet" href="../css/results.css" />
+  <!-- Bootstrap only -->
+  <link rel="stylesheet" href="/ui/css/bootstrap.min.css" />
 
-    <!-- Shared JS (net status, helpers you already use) -->
-    <script src="../js/base.js" defer></script>
+  <!-- Shared JS -->
+  <script src="../js/base.js" defer></script>
+  <script src="../js/results.js" defer></script>
+</head>
 
-    <!-- Page JS -->
-    <script src="../js/results.js" defer></script>
-  </head>
+<body class="min-vh-100 d-flex flex-column">
 
-  <body class="op-page results">
-    <!-- ============================================================= -->
-    <!-- Header (canonical operator header)                           -->
-    <!-- ============================================================= -->
-    <header class="app-header">
-      <div class="brand">
-        <a class="brand-link" href="/ui/operator/index.html">
-          <img class="brand-logo" src="../img/CCRS_Logo.svg" alt="ChronoCore Logo" />
-          <div class="brand__wordmark" aria-label="ChronoCore Race Software">
-            <div class="wordmark__top">
-              <span class="wordmark__big">CHRONO</span>
-              <span class="wordmark__big">CORE</span>
-            </div>
-            <div class="wordmark__bottom">RACE SOFTWARE</div>
-          </div>
+  <!-- ================= HEADER (canonical) ================= -->
+  <header>
+    <!-- Theme-aware navbar: no navbar-dark/bg-dark -->
+    <nav class="navbar navbar-expand-lg bg-body-tertiary border-bottom">
+      <div class="container-fluid">
+        <a class="navbar-brand d-flex align-items-center gap-2" href="/ui/operator/index.html">
+          <img src="/ui/img/CCRS_Logo.svg" alt="CCRS Logo" class="d-inline-block" height="36">
+          <span class="lh-1">
+            <span class="d-block fw-bold text-uppercase">CHRONO</span>
+            <span class="d-block fw-bold text-uppercase">CORE</span>
+            <small class="d-block text-uppercase opacity-75" style="letter-spacing:.12em;">RACE SOFTWARE</small>
+          </span>
         </a>
-        <div class="page-label">Results</div>
+
+        <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#operatorNav"
+          aria-controls="operatorNav" aria-expanded="false" aria-label="Toggle navigation">
+          <span class="navbar-toggler-icon"></span>
+        </button>
+
+        <div class="collapse navbar-collapse" id="operatorNav">
+          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
+            <li class="nav-item"><a class="nav-link" aria-current="page" href="/ui/operator/index.html">Home</a>
+            </li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_setup.html">Race Setup</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/race_control.html">Race Control</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/entrants.html">Entrants &amp; Tags</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/results.html">Results</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/diag.html">Diagnostics</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/moxie_board.html">Moxie Board</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/settings.html">Settings</a></li>
+            <li class="nav-item"><a class="nav-link" href="/ui/operator/about.html">About</a></li>
+          </ul>
+        </div>
+        <!-- Theme toggle (theme-aware button; no outline-light) -->
+        <button id="themeToggle" type="button" class="btn btn-sm btn-outline-secondary ms-2"
+          title="Toggle light/dark theme" aria-label="Toggle theme">
+          🌙
+        </button>
       </div>
+    </nav>
+  </header>
 
-      <div class="app-header__tools">
-        <nav class="app-nav">
-          <a class="app-nav__link" href="/ui/operator/index.html" title="Home">
-            <svg class="icon"><use href="../img/icons.svg#home"></use></svg>
-            <span class="sr-only">Home</span>
-          </a>
+  <!-- ================= MAIN ================= -->
+  <main class="container-fluid py-3 flex-grow-1">
 
-          <div class="app-nav__menu" id="appsMenu" data-open="false">
-            <button type="button" class="app-nav__btn" title="Menu">
-              <svg class="icon"><use href="../img/icons.svg#menu"></use></svg>
-              <span class="sr-only">Open menu</span>
-            </button>
-            <div class="app-nav__panel" id="appsPanel">
-              <a href="/ui/operator/race_setup.html">Race Setup</a>
-              <a href="/ui/operator/race_control.html">Race Control</a>
-              <a href="/ui/operator/entrants.html">Entrants &amp; Tags</a>
-              <a href="/ui/operator/results.html">Results</a>
-              <a href="/ui/operator/diag.html">Diagnostics</a>
-              <a href="/ui/operator/moxie_board.html">Moxie Board</a>
-              <a href="/ui/operator/settings.html">Settings</a>
-              <a href="/ui/operator/about.html">About</a>
-            </div>
-          </div>
-        </nav>
-      </div>
-    </header>
+    <div class="row g-3">
 
-    <!-- ============================================================= -->
-    <!-- Main: fixed-canvas layout (no outer scrollbar)                -->
-    <!-- ============================================================= -->
-    <main class="wrap">
-      <section class="results-layout">
-        <!-- --------------------------------------------------------- -->
-        <!-- Left rail: heats list + admin controls                    -->
-        <!-- --------------------------------------------------------- -->
-        <aside class="rail">
-          <div class="rail__head">
-            <h2 class="rail__title">Heats</h2>
-            <button id="btnRefreshHeats" class="btn btn-small" title="Refresh heats list">Refresh</button>
-          </div>
+      <!-- LEFT: Heats rail -->
+      <aside class="col-12 col-lg-3">
+        <div class="card border-secondary h-100">
+          <div class="card-body d-flex flex-column gap-3">
 
-          <div id="heatList" class="rail__list"><!-- populated by JS --></div>
-          <div class="rail__empty" id="railEmpty" hidden>No heats found.</div>
-
-          <!-- Admin actions pinned in the rail (Delete, Copy, Purge) -->
-          <div id="railAdmin" class="rail-admin">
-            <div class="rail-admin__group">
-              <button id="btnCopyLinks"  type="button" class="btn btn--secondary">Copy Links</button>
-              <button id="btnDeleteHeat" type="button" class="btn btn--danger">Delete Heat</button>
-              <button id="btnPurgeAll"   type="button" class="btn btn--danger-outline">Delete ALL</button>
-            </div>
-            <small class="rail-admin__hint">Actions affect frozen results only — not live race data.</small>
-          </div>
-        </aside>
-
-        <!-- --------------------------------------------------------- -->
-        <!-- Right / main pane                                         -->
-        <!-- --------------------------------------------------------- -->
-        <section class="pane">
-          <!-- Top bar: identity (no mode chips here anymore) -->
-          <div class="topbar">
-            <div class="topbar__left">
-              <div class="heat-title" id="heatTitle">-</div>
-              <div class="heat-window" id="heatWindow">-</div>
+            <div class="d-flex align-items-center justify-content-between">
+              <h5 class="mb-0">Heats</h5>
+              <button id="btnRefreshHeats" class="btn btn-sm btn-outline-light" type="button"
+                title="Refresh heats list">
+                Refresh
+              </button>
             </div>
 
-            <div class="topbar__right">
-              <div class="stats">
-                <div class="stat">
-                  <div class="stat__label">Fast Lap</div>
-                  <div class="stat__value" id="statFast">-</div>
+            <div class="flex-grow-1 overflow-auto border border-secondary rounded p-2" style="min-height: 240px;">
+              <div id="heatList" class="list-group"><!-- populated by JS --></div>
+              <div id="railEmpty" class="text-body-secondary small d-none">No heats found.</div>
+            </div>
+
+            <div id="railAdmin" class="border-top pt-3">
+              <div class="d-grid gap-2">
+                <button id="btnCopyLinks" type="button" class="btn btn-outline-light">Copy Links</button>
+                <button id="btnDeleteHeat" type="button" class="btn btn-outline-danger">Delete Heat</button>
+                <button id="btnPurgeAll" type="button" class="btn btn-danger">Delete ALL</button>
+              </div>
+              <div class="text-body-secondary small mt-2">
+                Actions affect frozen results only — not live race data.
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </aside>
+
+      <!-- RIGHT: Main pane -->
+      <section class="col-12 col-lg-9">
+        <div class="card border-secondary h-100">
+          <div class="card-body d-flex flex-column gap-3">
+
+            <!-- Top identity bar -->
+            <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+              <div>
+                <div class="h5 mb-1" id="heatTitle">-</div>
+                <div class="text-body-secondary small" id="heatWindow">-</div>
+              </div>
+
+              <div class="d-flex gap-3">
+                <div class="text-end">
+                  <div class="text-body-secondary small">Fast Lap</div>
+                  <div class="fw-semibold" id="statFast">-</div>
                 </div>
-                <div class="stat">
-                  <div class="stat__label">Classified</div>
-                  <div class="stat__value" id="statCars">-</div>
+                <div class="text-end">
+                  <div class="text-body-secondary small">Classified</div>
+                  <div class="fw-semibold" id="statCars">-</div>
                 </div>
               </div>
             </div>
-          </div>
 
-          <!-- View controls: SINGLE source toggle (Frozen vs Live Preview) -->
-          <!-- Replaces previous chips + Freeze controls entirely.         -->
-          <div class="results-controls">
-            <div class="pillbar" role="tablist" aria-label="Results view mode">
-              <button id="pillFrozen" class="pill is-on" role="tab" aria-selected="true">Frozen</button>
-              <button id="pillLive"   class="pill" role="tab" aria-selected="false" title="Preview live engine state">Live Preview</button>
+            <!-- View controls -->
+            <div class="d-flex flex-wrap align-items-center gap-2">
+              <div class="btn-group" role="tablist" aria-label="Results view mode">
+                <button id="pillFrozen" class="btn btn-outline-light" type="button" role="tab" aria-selected="true">
+                  Frozen
+                </button>
+                <button id="pillLive" class="btn btn-outline-light" type="button" role="tab" aria-selected="false"
+                  title="Preview live engine state">
+                  Live Preview
+                </button>
+              </div>
+
+              <div id="penaltyBar" class="ms-2 d-none">
+                <button id="btnDemote" class="btn btn-sm btn-outline-danger" type="button"
+                  title="Move the selected entrant down one position">
+                  Demote
+                </button>
+              </div>
+
+              <div id="viewHint" class="text-body-secondary small ms-auto" aria-live="polite"></div>
             </div>
 
-            <!-- Hidden for now; will show when penalties/DQ logic ships -->
-            <div id="penaltyBar" class="penaltybar" hidden>
-              <button id="btnDemote" class="btn btn--tiny btn--danger" type="button" title="Move the selected entrant down one position">Demote</button>
+            <!-- Tabs -->
+            <ul class="nav nav-tabs" id="tabs" role="tablist">
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-standings" data-bs-toggle="tab" data-bs-target="#panel-standings"
+                  type="button" role="tab">
+                  Standings
+                </button>
+              </li>
+              <li class="nav-item" role="presentation">
+                <button class="nav-link" id="tab-laps" data-bs-toggle="tab" data-bs-target="#panel-laps" type="button"
+                  role="tab">
+                  Lap Table
+                </button>
+              </li>
+            </ul>
+
+            <!-- Tab panels -->
+            <div class="tab-content flex-grow-1">
+
+              <!-- Standings -->
+              <div class="tab-pane fade show pt-3" id="panel-standings" role="tabpanel" aria-labelledby="tab-standings">
+                <div class="border border-secondary rounded">
+                  <div class="table-responsive">
+                    <table id="tblStandings" class="table table-striped table-hover align-middle mb-0 w-100">
+                      <thead>
+                        <tr>
+                          <th>Pos</th>
+                          <th>#</th>
+                          <th>Name</th>
+                          <th>Laps</th>
+                          <th>Def</th>
+                          <th>Last</th>
+                          <th>Best</th>
+                          <th>Grid</th>
+                          <th>Brake</th>
+                          <th>Pits</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tbodyStandings"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div id="standingsEmpty" class="text-body-secondary small mt-2 d-none">No standings yet.</div>
+              </div>
+
+              <!-- Laps -->
+              <div class="tab-pane fade pt-3" id="panel-laps" role="tabpanel" aria-labelledby="tab-laps">
+                <div class="border border-secondary rounded">
+                  <div class="table-responsive">
+                    <table id="tblLaps" class="table table-striped table-hover align-middle mb-0 w-100 font-monospace">
+                      <thead>
+                        <tr>
+                          <th>#</th>
+                          <th>Name</th>
+                          <th>Lap</th>
+                          <th>Lap ms</th>
+                          <th>Lap</th>
+                          <th>Cumul ms</th>
+                          <th>Cumul</th>
+                          <th>ts_ms</th>
+                          <th>UTC</th>
+                          <th>Flag</th>
+                          <th>Src</th>
+                          <th>Loc ID</th>
+                          <th>Loc</th>
+                          <th>Inf</th>
+                        </tr>
+                      </thead>
+                      <tbody id="tbodyLaps"></tbody>
+                    </table>
+                  </div>
+                </div>
+                <div id="lapsEmpty" class="text-body-secondary small mt-2 d-none">No laps recorded.</div>
+              </div>
+
             </div>
 
-            <div id="viewHint" class="view-hint" aria-live="polite"></div>
-          </div>
-
-          <!-- Tabs -->
-          <div class="tabs" id="tabs">
-            <button class="tab is-active" data-tab="standings">Standings</button>
-            <button class="tab" data-tab="laps">Lap Table</button>
-          </div>
-
-          <!-- Tab: Standings -->
-          <div class="panel" id="panel-standings">
-            <div class="table-wrap">
-              <table id="tblStandings" class="table">
-                <thead>
-                  <tr>
-                    <th>Pos</th>
-                    <th>#</th>
-                    <th>Name</th>
-                    <th>Laps</th>
-                    <th>Def</th>
-                    <th>Last</th>
-                    <th>Best</th>
-                    <th>Grid</th>
-                    <th>Brake</th>
-                    <th>Pits</th>
-                  </tr>
-                </thead>
-                <tbody id="tbodyStandings"><!-- rows via JS --></tbody>
-              </table>
-              <div class="empty" id="standingsEmpty" hidden>No standings yet.</div>
+            <!-- Exports -->
+            <div class="border-top pt-3">
+              <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-outline-light" id="btnStandingsCSV" type="button">Standings CSV</button>
+                <button class="btn btn-outline-light" id="btnStandingsJSON" type="button">Standings JSON</button>
+                <button class="btn btn-outline-light" id="btnLapsCSV" type="button">Laps CSV</button>
+                <button class="btn btn-outline-light" id="btnLapsJSON" type="button">Laps JSON</button>
+                <button class="btn btn-outline-secondary" id="btnPassesCSV" type="button" disabled>Passes CSV</button>
+                <button class="btn btn-secondary ms-auto" id="btnExportAll" type="button">Export All Heats</button>
+              </div>
             </div>
-          </div>
 
-          <!-- Tab: Laps table -->
-          <div class="panel is-hidden" id="panel-laps">
-            <div class="table-wrap">
-              <table id="tblLaps" class="table table--mono">
-                <thead>
-                  <tr>
-                    <th>#</th>
-                    <th>Name</th>
-                    <th>Lap</th>
-                    <th>Lap ms</th>
-                    <th>Lap</th>
-                    <th>Cumul ms</th>
-                    <th>Cumul</th>
-                    <th>ts_ms</th>
-                    <th>UTC</th>
-                    <th>Flag</th>
-                    <th>Src</th>
-                    <th>Loc ID</th>
-                    <th>Loc</th>
-                    <th>Inf</th>
-                  </tr>
-                </thead>
-                <tbody id="tbodyLaps"><!-- rows via JS (chunked render) --></tbody>
-              </table>
-              <div class="empty" id="lapsEmpty" hidden>No laps recorded.</div>
-            </div>
           </div>
-
-          <!-- Exports -->
-          <div class="exports">
-            <button class="btn" id="btnStandingsCSV">Standings CSV</button>
-            <button class="btn" id="btnStandingsJSON">Standings JSON</button>
-            <button class="btn" id="btnLapsCSV">Laps CSV</button>
-            <button class="btn" id="btnLapsJSON">Laps JSON</button>
-            <button class="btn" id="btnPassesCSV" disabled>Passes CSV</button>
-            <button class="btn btn--archive" id="btnExportAll">Export All Heats</button>
-          </div>
-        </section>
+        </div>
       </section>
-    </main>
 
-    <!-- ============================================================= -->
-    <!-- Footer                                                        -->
-    <!-- ============================================================= -->
-    <footer class="app-footer">
-      <div class="footer-left">
-        <span id="netDot" class="status-dot"></span>
-        <span id="netMsg" class="pill pill--db">DB: Offline</span>
-      </div>
-      <div class="footer-center"></div>
-      <div class="footer-right">
-        <span class="muted">ChronoCoreRS</span>
-      </div>
-    </footer>
+    </div>
+  </main>
 
-    <!-- Small, self-contained menu toggler -->
-    <script>
-      (function () {
-        const menu = document.getElementById('appsMenu');
-        if (!menu) return;
-        const btn = menu.querySelector('.app-nav__btn');
-        const panel = menu.querySelector('.app-nav__panel');
-        function openMenu(on) { menu.dataset.open = on ? 'true' : 'false'; }
-        btn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          openMenu(menu.dataset.open !== 'true');
-          if (menu.dataset.open === 'true') {
-            const first = panel.querySelector('a');
-            if (first) first.focus();
+  <!-- ================= FOOTER (canonical) ================= -->
+  <footer class="mt-auto border-top">
+    <div class="container-fluid py-2">
+      <div class="row align-items-center text-center">
+
+        <div class="col d-flex align-items-center gap-2 justify-content-start">
+          <span class="badge text-bg-secondary" id="netDot">Connecting…</span>
+          <span class="text-body-secondary" id="netMsg"></span>
+        </div>
+
+        <div class="col">
+          <button type="button" class="btn btn-sm btn-secondary" onclick="goto('about')">v0.2.0</button>
+        </div>
+
+        <div class="col d-flex justify-content-end">
+          <span class="badge text-bg-secondary font-monospace" id="wallClock">--:--:--</span>
+        </div>
+
+      </div>
+    </div>
+  </footer>
+
+  <!-- Bootstrap JS -->
+  <script src="/ui/js/bootstrap.bundle.min.js"></script>
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const { setNetStatus } = window.CCRS;
+
+      function startSimpleWallClock(selector) {
+        const el = document.querySelector(selector);
+        if (!el) return;
+        const fmt = (n) => String(n).padStart(2, '0');
+        function tick() {
+          const d = new Date();
+          el.textContent = `${fmt(d.getHours())}:${fmt(d.getMinutes())}:${fmt(d.getSeconds())}`;
+        }
+        tick();
+        setInterval(tick, 1000);
+      }
+
+      startSimpleWallClock('#wallClock');
+
+      let _reachTimer = null;
+      let _reachFailures = 0;
+      function startReachabilityPoll(ms = 2000) {
+        if (_reachTimer) clearInterval(_reachTimer);
+        _reachTimer = setInterval(async () => {
+          try {
+            const url = window.CCRS.apiUrl('/healthz');
+            const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+            if (!r.ok) throw new Error(`healthz ${r.status} ${r.statusText}`);
+            _reachFailures = 0;
+            window.CCRS.setNetStatus('ok');
+          } catch (err) {
+            _reachFailures++;
+            if (_reachFailures >= 2) window.CCRS.setNetStatus('disconnected');
+            console.warn('reachability failed:', err?.message || err);
           }
-        });
-        document.addEventListener('click', () => openMenu(false));
-        document.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') openMenu(false); });
-      })();
-    </script>
-  </body>
+        }, ms);
+      }
+
+      async function checkUIFeatures() {
+        try {
+          const url = window.CCRS.apiUrl('/config/ui_features');
+          const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          if (r.ok) {
+            const config = await r.json();
+            const moxieBtn = document.querySelector('[data-role="moxie-btn"]');
+            if (moxieBtn && config.moxie_board?.enabled) {
+              moxieBtn.classList.remove('d-none');
+            }
+          }
+        } catch (err) {
+          console.warn('Failed to load UI features config:', err?.message || err);
+        }
+      }
+
+      // Optional: map CCRS net status to badge colors
+      const netDot = document.getElementById('netDot');
+      const _orig = setNetStatus;
+      window.CCRS.setNetStatus = function (status) {
+        _orig(status);
+        if (!netDot) return;
+
+        netDot.classList.remove('text-bg-secondary', 'text-bg-success', 'text-bg-danger', 'text-bg-warning');
+
+        if (status === 'ok') {
+          netDot.classList.add('text-bg-success');
+          netDot.textContent = 'Online';
+        } else if (status === 'connecting') {
+          netDot.classList.add('text-bg-warning');
+          netDot.textContent = 'Connecting…';
+        } else if (status === 'disconnected') {
+          netDot.classList.add('text-bg-danger');
+          netDot.textContent = 'Offline';
+        } else {
+          netDot.classList.add('text-bg-secondary');
+          netDot.textContent = 'Status';
+        }
+      };
+
+      window.CCRS.setNetStatus('connecting');
+      startReachabilityPoll(2000);
+      checkUIFeatures();
+    });
+  </script>
+</body>
+
 </html>

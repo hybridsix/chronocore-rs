@@ -30,7 +30,7 @@
   const DECODER_BYPASS_KEY = 'ccrs.decoderBypass';
 
   // Shorthand DOM helpers
-  const $  = (sel, root) => (root || document).querySelector(sel);
+  const $ = (sel, root) => (root || document).querySelector(sel);
   const $$ = (sel, root) => Array.from((root || document).querySelectorAll(sel));
 
   // Cache handles to inputs (IDs match template markup)
@@ -131,7 +131,7 @@
 
   // Pretty duration for the Summary line
   function secondsToHuman(s) {
-  if (!Number.isFinite(s) || s < 0) return '-';
+    if (!Number.isFinite(s) || s < 0) return '-';
     if (s === 0) return 'Unlimited';
     const m = Math.floor(s / 60);
     const ss = s % 60;
@@ -221,7 +221,7 @@
   function slugifyLabel(label) {
     const slug = (label || '')
       .toLowerCase()
-      .normalize('NFKD').replace(/[\u0300-\u036f]/g,'')
+      .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
       .trim()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-+|-+$/g, '')
@@ -298,7 +298,7 @@
       els.optLaps.checked = true;
       els.rowLapsValue.hidden = false;
       els.rowTimeValue.hidden = true;
-      els.rowSoftEnd.hidden  = true;
+      els.rowSoftEnd.hidden = true;
       if (els.limitValueLaps) els.limitValueLaps.value = base.limit.value_laps ?? 10;
     } else {
       // time (including time=0 for free play)
@@ -319,17 +319,17 @@
 
     // Countdowns (timeout default 0)
     if (els.startEnabled) els.startEnabled.checked = !!base.countdown?.start_enabled;
-    if (els.startFromS)   els.startFromS.value     = base.countdown?.start_from_s ?? 10;
-    if (els.endEnabled)   els.endEnabled.checked   = !!base.countdown?.end_enabled;
-    if (els.endFromS)     els.endFromS.value       = base.countdown?.end_from_s ?? 10;
-    if (els.timeoutS)     els.timeoutS.value       = base.countdown?.timeout_s ?? 0;
+    if (els.startFromS) els.startFromS.value = base.countdown?.start_from_s ?? 10;
+    if (els.endEnabled) els.endEnabled.checked = !!base.countdown?.end_enabled;
+    if (els.endFromS) els.endFromS.value = base.countdown?.end_from_s ?? 10;
+    if (els.timeoutS) els.timeoutS.value = base.countdown?.timeout_s ?? 0;
 
     // Announcements
-    if (els.lapIndication)     els.lapIndication.value      = base.announcements?.lap_indication ?? 'beep';
-    if (els.rankEnabled)       els.rankEnabled.checked      = !!base.announcements?.rank_enabled;
-    if (els.rankInterval)      els.rankInterval.value       = base.announcements?.rank_interval_laps ?? 4;
-    if (els.rankChangeSpeech)  els.rankChangeSpeech.checked = !!base.announcements?.rank_change_speech;
-    if (els.bestLapSpeech)     els.bestLapSpeech.checked    = !!base.announcements?.best_lap_speech;
+    if (els.lapIndication) els.lapIndication.value = base.announcements?.lap_indication ?? 'beep';
+    if (els.rankEnabled) els.rankEnabled.checked = !!base.announcements?.rank_enabled;
+    if (els.rankInterval) els.rankInterval.value = base.announcements?.rank_interval_laps ?? 4;
+    if (els.rankChangeSpeech) els.rankChangeSpeech.checked = !!base.announcements?.rank_change_speech;
+    if (els.bestLapSpeech) els.bestLapSpeech.checked = !!base.announcements?.best_lap_speech;
 
     // Keep a snapshot and repaint summary
     config = formToConfig();
@@ -341,12 +341,12 @@
     const isTime = !!els.optTime?.checked;
 
     // Mutually exclusive entry fields
-    if (els.limitValueS)     els.limitValueS.disabled     = !isTime;
-    if (els.limitValueLaps)  els.limitValueLaps.disabled  =  isTime;
+    if (els.limitValueS) els.limitValueS.disabled = !isTime;
+    if (els.limitValueLaps) els.limitValueLaps.disabled = isTime;
 
     // Grey entire rows accordingly
     els.rowTimeValue?.classList.toggle('is-disabled', !isTime);
-    els.rowLapsValue?.classList.toggle('is-disabled',  isTime);
+    els.rowLapsValue?.classList.toggle('is-disabled', isTime);
 
     // Soft end applies only when time > 0
     const minutes = parseInt(els.limitValueS?.value || '0', 10) || 0;
@@ -415,17 +415,17 @@
     }
 
     // Sounds block (optional controls may be absent in the markup)
-    const beepLastOn  = !!($('#beepOnLast')?.checked);
+    const beepLastOn = !!($('#beepOnLast')?.checked);
     const beepLastVal = parseInt($('#beepOnLastValue')?.value || '0', 10) || 0;
     const whiteModeSel = $('#whiteFlagMode')?.value || 'auto';
-    const whiteAtVal   = parseInt($('#whiteFlagAt')?.value || '60', 10) || 60;
+    const whiteAtVal = parseInt($('#whiteFlagAt')?.value || '60', 10) || 60;
 
     cfg.sounds = {
       countdown_beep_last_s: beepLastOn ? beepLastVal : 0,
       starting_horn: !!($('#startingHorn')?.checked),
       white_flag: (whiteModeSel === 'time') ? { mode: 'time', at_s: whiteAtVal } :
-                 (whiteModeSel === 'off')  ? { mode: 'off' } :
-                                             { mode: 'auto' },
+        (whiteModeSel === 'off') ? { mode: 'off' } :
+          { mode: 'auto' },
       checkered_horn: !!($('#checkeredHorn')?.checked)
     };
 
@@ -435,18 +435,18 @@
   // Convert the UI cfg into the backend's expected 'session_config' shape
   function toSessionConfig(cfg) {
     return {
-      event_label:   cfg.event_label,
+      event_label: cfg.event_label,
       session_label: cfg.session_label,
-      mode_id:       cfg.mode_id || 'sprint',
-      start_type:    cfg.start_type || 'standing',
-      limit:         cfg.limit,
-      rank_method:   cfg.rank_method,
-      min_lap_s:     cfg.min_lap_s,
-      countdown:     cfg.countdown,
+      mode_id: cfg.mode_id || 'sprint',
+      start_type: cfg.start_type || 'standing',
+      limit: cfg.limit,
+      rank_method: cfg.rank_method,
+      min_lap_s: cfg.min_lap_s,
+      countdown: cfg.countdown,
       announcements: cfg.announcements,
-      sounds:        cfg.sounds,
+      sounds: cfg.sounds,
       bypass: {
-        decoder:  !!cfg.decoder_bypass,
+        decoder: !!cfg.decoder_bypass,
         entrants: !!cfg.entrants_bypass,
       },
       ...(cfg.relay ? { relay: cfg.relay } : {}),
@@ -488,7 +488,7 @@
   // ------------------------------------------------------------------------
   // Audio helpers
   // ------------------------------------------------------------------------
-  async function playSound(name, fallback='beep') {
+  async function playSound(name, fallback = 'beep') {
     const cacheBust = Date.now();
     const urls = [
       `/config/sounds/${name}?v=${cacheBust}`,
@@ -516,7 +516,7 @@
         osc.connect(gain).connect(actx.destination); osc.start();
         setTimeout(() => { osc.stop(); actx.close(); }, 100);
       }
-    } catch {}
+    } catch { }
     return false;
   }
 
@@ -617,7 +617,7 @@
     const cfg = formToConfig();
 
     // Guardrails (matches previous UX)
-    const decoderOk  = els.decoderBypass?.checked || els.chipDecoder?.classList.contains('ok');
+    const decoderOk = els.decoderBypass?.checked || els.chipDecoder?.classList.contains('ok');
     const entrantsOk = els.chipEntrants?.classList.contains('ok') || els.chipEntrants?.classList.contains('warn');
     if (!decoderOk || !entrantsOk) {
       alert('Not ready: need entrants and (decoder or bypass).');
@@ -674,7 +674,7 @@
         osc.connect(gain).connect(actx.destination);
         osc.start();
         setTimeout(() => { osc.stop(); actx.close(); }, 180);
-      } catch {}
+      } catch { }
     });
     els.btnTestHorn?.addEventListener('click', () => { playSound('start_horn.wav', 'horn'); });
   }
@@ -707,7 +707,7 @@
     bindReadiness();
     bindActions();
 
-  // Wire dynamic row enable/disable helpers
+    // Wire dynamic row enable/disable helpers
     wireRowToggles();
   }
 
@@ -719,7 +719,7 @@
   // ------------------------------------------------------------
   function setRowEnabled(rowSel, cbSel, on) {
     const row = document.querySelector(rowSel);
-    const cb  = cbSel ? document.querySelector(cbSel) : null;
+    const cb = cbSel ? document.querySelector(cbSel) : null;
     if (!row) return;
 
     // Visual dimming
@@ -745,14 +745,14 @@
   // Wire up existing rows (only if they exist in markup)
   function wireRowToggles() {
     // Countdowns
-    bindToggleRow('#startEnabled',   '#rowStartCountdown');
-    bindToggleRow('#endEnabled',     '#rowEndCountdown');
+    bindToggleRow('#startEnabled', '#rowStartCountdown');
+    bindToggleRow('#endEnabled', '#rowEndCountdown');
 
     // Timeout: prefer a checkbox if present; otherwise dim when value == 0
     (function () {
-      const cb   = document.querySelector('#timeoutEnabled');
-      const row  = '#rowTimeout';
-      const pad  = document.querySelector('#timeoutS');
+      const cb = document.querySelector('#timeoutEnabled');
+      const row = '#rowTimeout';
+      const pad = document.querySelector('#timeoutS');
 
       if (cb) {
         bindToggleRow('#timeoutEnabled', row);
@@ -771,6 +771,6 @@
 
     // Timing sounds (right pane)
     bindToggleRow('#beepSecondsEnabled', '#rowBeepSeconds');
-    bindToggleRow('#whiteFlagSound',     '#rowWhiteFlag');
+    bindToggleRow('#whiteFlagSound', '#rowWhiteFlag');
   }
 })();

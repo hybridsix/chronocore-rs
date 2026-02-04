@@ -11,6 +11,7 @@
    - window.CCRS = {
        $,
        $$,
+       apiUrl,      // NEW: stable API URL builder (apiBase + path)
        fetchJSON,
        postJSON,
        makePoller,
@@ -22,7 +23,7 @@
    - NO legacy shims. This file is CCRS-only by design.
    - Keep this file small, dependency-free, and boring. Stability wins here.
    - Keep functions side-effect-free unless obviously UI-related (setNetStatus).
-  - Multi-line, verbose comments are intentional - they document our intent.
+   - Multi-line, verbose comments are intentional - they document our intent.
    ========================================================================== */
 (function () {
   'use strict';
@@ -34,15 +35,8 @@
      $$ -> All matching elements as a real Array (querySelectorAll -> Array)
      These helpers reduce repetitive boilerplate in the UI code. Keep them tiny.
      ------------------------------------------------------------------------ */
-  const $ = (
-    selector,
-    root = document
-  ) => root.querySelector(selector);
-
-  const $$ = (
-    selector,
-    root = document
-  ) => Array.from(root.querySelectorAll(selector));
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
 
   /* ------------------------------------------------------------------------
      FULLSCREEN KEYBOARD CONTROLS
@@ -54,9 +48,7 @@
 
   document.addEventListener('keydown', (e) => {
     // Check if pywebview API is available (only in desktop mode)
-    if (!window.pywebview || !window.pywebview.api) {
-      return;
-    }
+    if (!window.pywebview || !window.pywebview.api) return;
 
     // F11 key - toggle fullscreen
     if (e.key === 'F11') {
@@ -80,6 +72,24 @@
   });
 
   /* ------------------------------------------------------------------------
+     API URL BUILDER (NEW)
+     ------------------------------------------------------------------------
+     apiUrl(path)
+       - Stable URL builder used across all Operator UI pages.
+       - If CCRS.apiBase is set (ex: "http://127.0.0.1:8080"), apiUrl()
+         returns apiBase + path.
+       - If CCRS.apiBase is empty/missing, apiUrl() returns the path as-is.
+       - Ensures a missing apiUrl never breaks pages (results.html error).
+     ------------------------------------------------------------------------ */
+  function apiUrl(path) {
+    const p = String(path || '');
+    const base = (typeof window.CCRS?.apiBase === 'string' && window.CCRS.apiBase)
+      ? window.CCRS.apiBase
+      : '';
+    return base + p;
+  }
+
+  /* ------------------------------------------------------------------------
      NETWORK HELPERS
      ------------------------------------------------------------------------
      fetchJSON(url, init)
@@ -91,10 +101,7 @@
        - POST helper that sets Content-Type and JSON-stringifies the body.
        - Returns the raw Response so callers can choose .json() or .text().
      ------------------------------------------------------------------------ */
-  async function fetchJSON(
-    url,
-    init = {}
-  ) {
+  async function fetchJSON(url, init = {}) {
     const headers = Object.assign(
       { 'Accept': 'application/json' },
       init.headers || {}
@@ -108,7 +115,7 @@
     if (!res.ok) {
       // Prefer response text for human-friendly error messages.
       const text = await res.text().catch(() => '');
-      const err  = new Error(text || `HTTP ${res.status} for ${url}`);
+      const err = new Error(text || `HTTP ${res.status} for ${url}`);
       // Attach the Response object for optional inspection by callers.
       err.response = res;
       throw err;
@@ -118,11 +125,7 @@
     return res.json();
   }
 
-  function postJSON(
-    url,
-    body,
-    init = {}
-  ) {
+  function postJSON(url, body, init = {}) {
     const headers = Object.assign(
       { 'Content-Type': 'application/json' },
       init.headers || {}
@@ -151,13 +154,9 @@
        poll.start();
        // later: poll.stop();
      ------------------------------------------------------------------------ */
-  function makePoller(
-    fn,
-    intervalMs = 2000,
-    onError
-  ) {
+  function makePoller(fn, intervalMs = 2000, onError) {
     let timerId = null;
-    let active  = false;
+    let active = false;
 
     async function tick() {
       if (!active) return;
@@ -166,9 +165,7 @@
       } catch (err) {
         if (onError) onError(err);
       } finally {
-        if (active) {
-          timerId = setTimeout(tick, intervalMs);
-        }
+        if (active) timerId = setTimeout(tick, intervalMs);
       }
     }
 
@@ -200,18 +197,15 @@
            --ok    -> success color (e.g., green)
            --error -> error color  (e.g., red)
      ------------------------------------------------------------------------ */
-  function setNetStatus(
-    ok,
-    message
-  ) {
+  function setNetStatus(ok, message) {
     const dot = document.getElementById('netDot');
     const msg = document.getElementById('netMsg');
 
     if (dot) {
       dot.style.background = ok ? 'var(--ok)' : 'var(--error)';
-      dot.style.boxShadow  = ok
-        ? '0 0 0 2px #0a1a24'   // subtle ring for contrast on dark footers
-        : '0 0 0 2px #2a1010';  // subtle ring with reddish hue on errors
+      dot.style.boxShadow = ok
+        ? '0 0 0 2px #0a1a24'
+        : '0 0 0 2px #2a1010';
     }
 
     if (msg && typeof message === 'string') {
@@ -221,13 +215,6 @@
 
   /* ------------------------------------------------------------------------
      UI-WIDE CONFIG DEFAULTS
-     ------------------------------------------------------------------------
-     These are safe defaults used by the Operator UI. Pages can override at
-     runtime if needed, but do not mutate CONFIG in-place unless necessary.
-     - SSE_URL       : Event stream for live tag reads (if the browser supports it)
-     - POLL_URL      : Fallback polling endpoint for recent tag reads
-     - POLL_INTERVAL : ms between polls when SSE is not active
-     - MIN_TAG_LEN   : basic guard against accidental short inputs
      ------------------------------------------------------------------------ */
   const CONFIG = {
     SSE_URL: '/sensors/stream',
@@ -242,13 +229,76 @@
   window.CCRS = Object.assign(
     window.CCRS || {},
     {
-      $,            // querySelector helper
-      $$,           // querySelectorAll -> Array helper
-      fetchJSON,    // GET/POST JSON convenience (throws on !ok)
-      postJSON,     // POST JSON convenience (returns Response)
-      makePoller,   // simple resilient polling loop
-      setNetStatus, // footer indicator update
-      CONFIG        // shared defaults
+      $,
+      $$,
+      apiUrl,      // NEW
+      fetchJSON,
+      postJSON,
+      makePoller,
+      setNetStatus,
+      CONFIG
     }
   );
+})();
+
+// Theme (light/dark) toggle
+(function () {
+  const STORAGE_KEY = 'ccrs.theme';
+  const btn = document.getElementById('themeToggle');
+  if (!btn) return;
+
+  const root = document.documentElement;
+
+  function applyTheme(theme) {
+    root.setAttribute('data-bs-theme', theme);
+    btn.textContent = theme === 'dark' ? '🌙' : '☀️';
+    btn.setAttribute(
+      'aria-label',
+      theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'
+    );
+  }
+
+  function getInitialTheme() {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored === 'light' || stored === 'dark') return stored;
+    return window.matchMedia('(prefers-color-scheme: dark)').matches
+      ? 'dark'
+      : 'light';
+  }
+
+  let theme = getInitialTheme();
+  applyTheme(theme);
+
+  btn.addEventListener('click', () => {
+    theme = theme === 'dark' ? 'light' : 'dark';
+    localStorage.setItem(STORAGE_KEY, theme);
+    applyTheme(theme);
+  });
+})();
+
+// Navbar active link indicator
+(function () {
+  function normalize(path) {
+    // strip query, hash, trailing slash
+    return path.replace(/[?#].*$/, '').replace(/\/$/, '');
+  }
+
+  const current = normalize(window.location.pathname);
+
+  document.querySelectorAll('.navbar .nav-link[href]').forEach(link => {
+    const href = normalize(link.getAttribute('href'));
+    if (!href) return;
+
+    const isActive =
+      current === href ||
+      (href.endsWith('/index.html') && current.endsWith('/operator'));
+
+    if (isActive) {
+      link.classList.add('active');
+      link.setAttribute('aria-current', 'page');
+    } else {
+      link.classList.remove('active');
+      link.removeAttribute('aria-current');
+    }
+  });
 })();
