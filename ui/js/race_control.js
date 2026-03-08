@@ -516,7 +516,8 @@ function renderStandings(state) {
         <td class="num"></td>
         <td class="name"></td>
         <td class="brake col-brake">
-  <button class="btn btn--sm brake-toggle" data-ok="">-</button></td>
+  <button class="btn btn--sm brake-toggle" data-ok="">-</button>
+  <button class="btn btn--sm btn--scratch" title="Scratch current best lap">Scratch</button></td>
         <td class="laps"></td>
         <td class="last"></td>
         <td class="pace"></td>
@@ -535,7 +536,8 @@ function renderStandings(state) {
       if (!tr.querySelector('.brake-toggle')) {
         const td = document.createElement('td');
         td.className = 'brake col-brake';
-  td.innerHTML = `<button class="btn btn--sm brake-toggle" data-ok="">-</button>`;
+  td.innerHTML = `<button class="btn btn--sm brake-toggle" data-ok="">-</button>
+  <button class="btn btn--sm btn--scratch" title="Scratch current best lap">Scratch</button>`;
         // Insert before current index 3 (Laps) to keep order aligned
         const insertBefore = tr.children[3] || null;
         tr.insertBefore(td, insertBefore);
@@ -1700,24 +1702,92 @@ function updateClockModeButton(st) {
     const table = $('#rcStandings');
     if (!table) return;
     table.addEventListener('click', async (ev) => {
-      const btn = ev.target.closest('button.brake-toggle');
-      if (!btn || !isQualifying) return; // ignore outside qualifying
+      // Handle brake toggle button
+      const brakeBtn = ev.target.closest('button.brake-toggle');
+      if (brakeBtn && isQualifying) {
+        const tr = brakeBtn.closest('tr');
+        const entrantId = Number(tr?.dataset?.entrantId);
+        if (!Number.isFinite(entrantId)) return;
 
-      const tr = btn.closest('tr');
-      const entrantId = Number(tr?.dataset?.entrantId);
-      if (!Number.isFinite(entrantId)) return;
+        // Current → next (cycle: - → Pass → Fail → -)
+        const cur = (brakeBtn.dataset.ok === 'true') ? true :
+                    (brakeBtn.dataset.ok === 'false') ? false : null;
+        const next = (cur === null) ? true : (cur === true ? false : null);
 
-  // Current → next (cycle: - → Pass → Fail → -)
-      const cur = (btn.dataset.ok === 'true') ? true :
-                  (btn.dataset.ok === 'false') ? false : null;
-      const next = (cur === null) ? true : (cur === true ? false : null);
+        // Optimistic cache + UI, then persist
+        brakeVerdicts.set(entrantId, next);
+        renderBrakeButton(brakeBtn, entrantId);
+        await persistBrake(entrantId, next);
+        // Re-render from cache (in case of class/text drift)
+        renderBrakeButton(brakeBtn, entrantId);
+        return;
+      }
 
-      // Optimistic cache + UI, then persist
-      brakeVerdicts.set(entrantId, next);
-      renderBrakeButton(btn, entrantId);
-      await persistBrake(entrantId, next);
-      // Re-render from cache (in case of class/text drift)
-      renderBrakeButton(btn, entrantId);
+      // Handle scratch button
+      const scratchBtn = ev.target.closest('button.btn--scratch');
+      if (scratchBtn && isQualifying) {
+        const tr = scratchBtn.closest('tr');
+        const entrantId = Number(tr?.dataset?.entrantId);
+        if (!Number.isFinite(entrantId)) return;
+
+        // Find entrant name for confirmation dialog
+        const nameCell = tr.querySelector('.name');
+        const entrantName = nameCell?.textContent || `Entrant ${entrantId}`;
+
+        // Confirmation dialog
+        const confirmed = confirm(
+          `Scratch current best lap for ${entrantName}?\n\n` +
+          `This will:\n` +
+          `• Clear current best lap time\n` +
+          `• Revert to previous lap (if available)\n` +
+          `• Set brake test: PASS if fallback exists, FAIL if not`
+        );
+
+        if (!confirmed) return;
+
+        // Call scratch API
+        try {
+          const r = await fetch(`/qual/heat/${qualHeatId}/scratch`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ entrant_id: entrantId }),
+          });
+
+          if (!r.ok) {
+            const err = await r.text();
+            alert(`Failed to scratch lap: ${err}`);
+            return;
+          }
+
+          const result = await r.json();
+
+          // Update brake verdict cache based on server response
+          const brakeOk = result.brake_ok;
+          brakeVerdicts.set(entrantId, brakeOk);
+
+          // Update brake button UI
+          const brakeBtn = tr.querySelector('button.brake-toggle');
+          if (brakeBtn) {
+            renderBrakeButton(brakeBtn, entrantId);
+          }
+
+          // Show success message
+          const scratchedTime = result.scratched_best_s ? result.scratched_best_s.toFixed(3) + 's' : 'N/A';
+          const revertedTime = result.previous_best_s ? result.previous_best_s.toFixed(3) + 's' : 'None';
+          const brakeStatus = brakeOk ? 'PASS (valid fallback)' : 'FAIL (no fallback)';
+          alert(
+            `Lap scratched for ${entrantName}\n\n` +
+            `Scratched time: ${scratchedTime}\n` +
+            `Reverted to: ${revertedTime}\n` +
+            `Brake test: ${brakeStatus}`
+          );
+
+        } catch (e) {
+          console.error('Scratch request failed:', e);
+          alert(`Error scratching lap: ${e.message}`);
+        }
+        return;
+      }
     });
   }
 

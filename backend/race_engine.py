@@ -243,6 +243,7 @@ class RaceEngine:
             self.entrants: Dict[int, Entrant] = {}
             self.tag_to_eid: Dict[str, int] = {}
             self._lap_history: Dict[int, List[int]] = {}
+            self._scratched_best_times: Dict[int, float] = {}  # entrant_id -> scratched best_s value
             self._next_provisional_id = 1
             self._provisional_cap = 50
             self._finish_order_counter: int = 0  # Counter for finish order in timed/lap races
@@ -611,8 +612,11 @@ class RaceEngine:
                 # count the lap
                 ent.laps += 1
                 ent.last_s = delta_s
-                if ent.best_s is None or delta_s < ent.best_s:
-                    ent.best_s = delta_s
+                # Only update best_s if this time isn't the scratched time
+                scratched = self._scratched_best_times.get(eid)
+                if (scratched is None or abs(delta_s - scratched) > 0.001):
+                    if ent.best_s is None or delta_s < ent.best_s:
+                        ent.best_s = delta_s
                 ent.pace_buf.append(delta_s)
                 if len(ent.pace_buf) > 5:
                     ent.pace_buf = ent.pace_buf[-5:]
@@ -649,6 +653,49 @@ class RaceEngine:
             self._last_update_utc = UTC_MS()
             self._maybe_checkpoint()
             return {"ok": True, "entrant_id": eid, "lap_added": lap_added, "lap_time_s": lap_time_s, "reason": None}
+
+    def scratch_entrant_best(self, entrant_id: int) -> dict:
+        """Scratch the current best lap for an entrant and revert to previous passing best.
+        
+        Returns dict with:
+        - ok: bool
+        - previous_best_s: the time we reverted to (or None)
+        - scratched_best_s: the time that was scratched
+        - brake_failed: bool - whether brake test was auto-failed
+        """
+        with self._lock:
+            ent = self.entrants.get(entrant_id)
+            if not ent:
+                return {"ok": False, "error": "entrant_not_found"}
+            
+            if ent.best_s is None:
+                return {"ok": False, "error": "no_best_lap"}
+            
+            # Record the current best as scratched
+            scratched_time = ent.best_s
+            self._scratched_best_times[entrant_id] = scratched_time
+            
+            # Recalculate best from lap history, excluding scratched time
+            lap_times_ms = self._lap_history.get(entrant_id, [])
+            valid_times = []
+            for i, lap_ms in enumerate(lap_times_ms):
+                lap_s = lap_ms / 1000.0
+                # Skip the scratched time (with small epsilon for float comparison)
+                if abs(lap_s - scratched_time) > 0.001:
+                    valid_times.append(lap_s)
+            
+            # Update entrant's best to next-best valid time (or None if no valid times left)
+            previous_best = min(valid_times) if valid_times else None
+            ent.best_s = previous_best
+            
+            self._last_update_utc = UTC_MS()
+            
+            return {
+                "ok": True,
+                "entrant_id": entrant_id,
+                "scratched_best_s": round(scratched_time, 3),
+                "previous_best_s": round(previous_best, 3) if previous_best else None,
+            }
 
 
     # ---------- auto checkered flag section ----------

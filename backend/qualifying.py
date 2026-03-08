@@ -57,6 +57,9 @@ from backend.db_schema import (
     set_event_config,
 )
 
+# Import ENGINE to call scratch method
+from backend.race_engine import ENGINE
+
 qual = APIRouter(prefix="/event", tags=["qualifying"])
 qual_brake = APIRouter(prefix="/qual", tags=["qualifying-brake"])
 
@@ -224,3 +227,60 @@ def set_brake_verdict(heat_id: int, body: BrakeVerdictBody):
         conn.close()
     
     return {"heat_id": heat_id, "entrant_id": body.entrant_id, "brake_ok": body.brake_ok}
+
+
+@qual_brake.post("/heat/{heat_id}/scratch")
+def scratch_pass(heat_id: int, body: BrakeVerdictBody):
+    """
+    Scratch the current best lap for an entrant:
+    1. Remove the current best lap time from consideration
+    2. Revert to previous best lap (if any exists)
+    3. Set brake test based on result:
+       - If previous lap exists → PASS (they have a valid fallback)
+       - If no previous lap → FAIL (nothing valid left)
+    
+    Body: { entrant_id: int }
+    Returns: { entrant_id, scratched_best_s, previous_best_s, brake_ok }
+    """
+    entrant_id = body.entrant_id
+    
+    # Call RaceEngine to scratch the best lap
+    result = ENGINE.scratch_entrant_best(entrant_id)
+    
+    if not result.get("ok"):
+        error = result.get("error", "unknown_error")
+        if error == "entrant_not_found":
+            raise HTTPException(404, "Entrant not found in active race")
+        elif error == "no_best_lap":
+            raise HTTPException(400, "Entrant has no best lap to scratch")
+        else:
+            raise HTTPException(400, f"Failed to scratch: {error}")
+    
+    # Determine brake test status based on whether there's a fallback lap
+    previous_best_s = result.get("previous_best_s")
+    has_fallback = previous_best_s is not None
+    
+    # If they have a fallback lap → PASS, if not → FAIL
+    brake_ok = has_fallback
+    
+    # Update brake verdict cache
+    if heat_id not in _brake_verdicts_cache:
+        _brake_verdicts_cache[heat_id] = {}
+    _brake_verdicts_cache[heat_id][entrant_id] = brake_ok
+    
+    # Persist brake test status to database
+    conn = get_conn()
+    try:
+        from backend.db_schema import set_brake_flag
+        set_brake_flag(conn, heat_id, entrant_id, brake_ok)
+        conn.commit()
+    finally:
+        conn.close()
+    
+    return {
+        "heat_id": heat_id,
+        "entrant_id": entrant_id,
+        "scratched_best_s": result.get("scratched_best_s"),
+        "previous_best_s": previous_best_s,
+        "brake_ok": brake_ok,
+    }

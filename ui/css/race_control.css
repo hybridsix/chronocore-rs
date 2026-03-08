@@ -1263,7 +1263,15 @@ body.is-qualifying #rcSeen      td.col-brake { display: table-cell; }
 }
 
 /* Button visual states */
-.brake-toggle { min-width: 6ch; font-weight: 700; }
+.brake-toggle { 
+  width: 7.5ch;
+  min-width: 7.5ch;
+  max-width: 7.5ch;
+  font-weight: 700;
+  text-align: center;
+  flex-shrink: 0;
+  box-sizing: border-box;
+}
 .brake-toggle.is-yes {
   background: linear-gradient(180deg, #1f7a4d, #165a39);
   border-color:#2c5f47; color:#eafff4;
@@ -1274,4 +1282,59 @@ body.is-qualifying #rcSeen      td.col-brake { display: table-cell; }
 }
 .brake-toggle.is-unk {
   background: #172532; border:1px solid #263546; color:#cfd7e3;
+}
+
+/* ===================================================================
+   Scratch Pass Button Styling (Qualifying Only)
+   =================================================================== */
+
+/* Wider brake column to fit both buttons */
+body.is-qualifying #rcStandings th.brake,
+body.is-qualifying #rcStandings td.brake {
+  width: 13ch;
+}
+
+/* Brake cell flex layout for multiple buttons */
+body.is-qualifying td.col-brake {
+  display: flex !important;
+  gap: 8px;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 6px !important;
+}
+
+/* Scratch Pass button styling - matches brake button style with orange color */
+button.btn--scratch {
+  /* Inherit base .btn and .btn--sm properties */
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 10px;
+  font-size: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  
+  /* Orange color scheme matching brake button gradients */
+  background: linear-gradient(180deg, #ff9800, #e67700);
+  border: 1px solid #d86a00;
+  color: #fff;
+  font-weight: 700;
+  min-width: 6ch;
+  white-space: nowrap;
+  box-shadow: none;
+  transition: all 0.15s ease;
+}
+
+button.btn--scratch:hover {
+  background: linear-gradient(180deg, #f57c00, #d86a00);
+  border-color: #c56000;
+}
+
+button.btn--scratch:active {
+  background: linear-gradient(180deg, #d86a00, #c56000);
+  transform: translateY(1px);
+}
+
+/* Hide scratch button outside qualifying */
+body:not(.is-qualifying) button.btn--scratch {
+  display: none !important;
 }
