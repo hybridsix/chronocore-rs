@@ -278,6 +278,40 @@ When loading a subsequent race in the same event:
 - **Race Control**: Standings and Seen tables sort by grid_index when present
 - **Race Setup**: Shows "Grid: frozen" indicator when qualifying grid is active
 - **Results Page**: Displays grid_index column and brake test badges (Pass/Fail)
+
+**Scratch Pass (Lap Invalidation):**
+
+Operators can invalidate an entrant's current best qualifying lap during a session:
+
+**Backend Implementation:**
+- `RaceEngine._scratched_best_times` - Dict[entrant_id, scratched_time] tracks invalidated laps
+- `RaceEngine.scratch_entrant_best(entrant_id)` - Scratches current best, recalculates from lap history
+- Best lap calculation skips scratched times (epsilon comparison: 0.001s tolerance)
+- Returns: `{ok, scratched_best_s, previous_best_s}`
+
+**API Endpoint:**
+```
+POST /qual/heat/{heat_id}/scratch
+Body: {entrant_id: int}
+Returns: {entrant_id, scratched_best_s, previous_best_s, brake_ok}
+```
+
+**Brake Test Logic:**
+- If `previous_best_s` exists → `brake_ok = True` (valid fallback)
+- If `previous_best_s` is None → `brake_ok = False` (no valid time)
+- Brake test verdict persisted to database via `set_brake_flag()`
+
+**Frontend:**
+- Orange "Scratch" button in brake column (qualifying sessions only)
+- Confirmation dialog before action
+- Success feedback shows scratched/reverted times and brake status
+- Updates brake button state optimistically
+
+**Data Persistence:**
+- Scratched times stored in-memory only (`_scratched_best_times`)
+- Excluded from best lap calculation on subsequent passes
+- Raw lap history in `_lap_history` remains intact for audit
+- Brake test verdict saved to `heats.config_json.qual_brake_flags`
 - **CSV Exports**: Include grid_index and brake_valid columns
 
 **Grid Persistence Flow:**

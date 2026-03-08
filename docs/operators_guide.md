@@ -668,6 +668,33 @@ ChronoCore supports a complete qualifying workflow where you can set the startin
 4. **Throw checkered** - When time expires, hit the checkered flag
 5. **Freeze the grid** - An orange "Freeze Grid Standings" button appears with a breathing animation
 
+### Scratch Pass Feature (Invalidating Laps)
+
+During qualifying, you can invalidate an entrant's current best lap using the **Scratch** button:
+
+**When to use:**
+- Driver runs a fast lap but fails the brake test
+- You want to invalidate the current best time and revert to a previous lap
+
+**How to use:**
+1. Locate the driver's row in the Race Control standings table
+2. Click the orange **Scratch** button next to their brake test indicator
+3. Confirm the action in the dialog
+4. The system will:
+   - Remove the current best lap from consideration
+   - Revert to the driver's previous best lap (if one exists)
+   - Update brake test status automatically:
+     - **PASS** if a previous lap exists (valid fallback)
+     - **FAIL** if no previous lap exists (nothing valid left)
+
+**Example scenarios:**
+- Driver A runs 45s (passes brake test), then 40s (fails brake test)
+  - Click Scratch → reverts to 45s, brake test remains **PASS**
+- Driver B runs 50s (fails brake test), only one lap
+  - Click Scratch → no fallback lap, brake test stays **FAIL**
+
+**Note:** The scratched lap is permanently excluded from best lap calculations but remains in the raw lap history for audit purposes. Drivers can continue qualifying and set new times after a scratch.
+
 ### Freezing the Grid
 
 When you click "Freeze Grid Standings":
