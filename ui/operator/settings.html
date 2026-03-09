@@ -295,6 +295,21 @@
                 </select>
                 <p class="help small">How to handle entrants who fail brake tests when freezing the qualifying grid</p>
               </div>
+
+              <div class="stack">
+                <label class="label" for="autoAdoptUnknowns">Auto-Adopt Unknown Entrants</label>
+                <select class="input" id="autoAdoptUnknowns">
+                  <option value="true">Yes - Create entrants automatically</option>
+                  <option value="false">No - Keep as provisional only</option>
+                </select>
+                <p class="help small">Automatically create permanent entrant records for unknown tags when freezing the grid</p>
+              </div>
+
+              <div class="stack">
+                <label class="label" for="autoNumberStart">Auto-Assign Starting Number</label>
+                <input type="number" class="input" id="autoNumberStart" min="1" max="9999" step="1" />
+                <p class="help small">Starting number for auto-adopted entrants (e.g., 901, 902, 903...)</p>
+              </div>
             </div>
           </section>
 

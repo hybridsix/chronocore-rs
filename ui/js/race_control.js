@@ -1385,7 +1385,36 @@ function updateClockModeButton(st) {
           });
 
           console.log('Freeze response:', res);
-          toast(`Grid frozen with ${res.qualifying?.grid?.length || 0} entrants`);
+          
+          // Check if provisional entrants were auto-adopted during freeze
+          // When auto_adopt_unknowns is enabled (default), the backend converts
+          // provisional entrants (negative IDs like -1, -2) into permanent DB records
+          // with auto-assigned numbers (901+) and placeholder names ("Unknown XXXX").
+          //
+          // We show a detailed alert to ensure operators know they need to:
+          // 1. Go to Entrants & Tags page
+          // 2. Edit the auto-adopted entrants (search for numbers 901+)
+          // 3. Update names, numbers, and any other details
+          // 4. THEN start the race (grid positions will work correctly since IDs match)
+          if (res.adopted_count && res.adopted_count > 0) {
+            // Build a formatted list of adopted entrants for the alert message
+            const adoptedList = res.adopted_entrants
+              .map(e => `  • #${e.number} - ${e.name} (Tag: ${e.tag || 'none'})`)
+              .join('\n');
+            
+            // Use native alert() for modal blocking behavior - we want operators
+            // to acknowledge this before proceeding. Toast alone is too easy to miss.
+            const message = `Grid frozen with ${res.qualifying?.grid?.length || 0} entrants.\n\n` +
+                          `${res.adopted_count} unknown entrant(s) were auto-adopted:\n${adoptedList}\n\n` +
+                          `⚠️ These entrants have temporary names and numbers.\n` +
+                          `Please update them in Entrants & Tags before starting the race.`;
+            
+            alert(message);
+            toast(`Grid frozen - ${res.adopted_count} entrant(s) adopted`);
+          } else {
+            // No adoptions - standard success message
+            toast(`Grid frozen with ${res.qualifying?.grid?.length || 0} entrants`);
+          }
           
           // Stop breathing animation and change to success state
           els.btnFreezeGrid.classList.remove('btn--breathing');

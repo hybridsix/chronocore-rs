@@ -77,6 +77,8 @@
 
     // Qualifying
     brakeTestPolicy: document.getElementById('brakeTestPolicy'),
+    autoAdoptUnknowns: document.getElementById('autoAdoptUnknowns'),
+    autoNumberStart: document.getElementById('autoNumberStart'),
 
     // UI & Sounds
     uiTheme: document.getElementById('uiTheme'),
@@ -189,6 +191,8 @@
 
     // Qualifying
     setValue(els.brakeTestPolicy, cfg?.app?.engine?.qualifying?.brake_test_policy || 'demote');
+    setValue(els.autoAdoptUnknowns, String(cfg?.app?.engine?.qualifying?.auto_adopt_unknowns ?? true));
+    setValue(els.autoNumberStart, cfg?.app?.engine?.qualifying?.auto_number_start || 901);
 
     // UI & Sounds
     setValue(els.uiTheme, cfg?.app?.ui?.theme);
@@ -434,7 +438,9 @@
 
     // Qualifying
     patch.app.engine.qualifying = {
-      brake_test_policy: els.brakeTestPolicy?.value || 'demote'
+      brake_test_policy: els.brakeTestPolicy?.value || 'demote',
+      auto_adopt_unknowns: els.autoAdoptUnknowns?.value === 'true',
+      auto_number_start: numOrUndef(els.autoNumberStart?.value, 901)
     };
 
     // UI & Sounds

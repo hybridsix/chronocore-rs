@@ -193,4 +193,14 @@ def get_decoder_cfg(name: str | None = None) -> Dict[str, Any]:
     if name is None:
         return decoders
     return decoders.get(name, {}) or {}
+
+
+def get_qualifying_config() -> Dict[str, Any]:
+    """Return qualifying configuration (brake_test_policy, auto_adopt_unknowns, auto_number_start) or {}."""
+    return (
+        CONFIG.get("app", {})
+              .get("engine", {})
+              .get("qualifying", {})
+        or {}
+    )
 # ---------- End of config_loader.py ----------

@@ -229,7 +229,62 @@ ChronoCore supports a complete qualifying workflow where grid position is determ
 3. Optionally set brake test flags for each entrant during/after qualifying
 4. When checkered flag is thrown, a "Freeze Grid Standings" button appears on Race Control
 5. Operator clicks "Freeze Grid" and chooses a brake test policy
-6. Grid order is frozen and saved to `events.config_json`
+6. **Auto-adoption phase** (if enabled): System detects provisional entrants and creates permanent records
+7. Grid order is frozen and saved to `events.config_json`
+
+**Auto-Adopt Provisional Entrants (New Feature):**
+
+During qualifying, unrecognized transponder tags create "provisional" entrants with negative IDs (e.g., -1, -2) that exist only in RaceEngine memory and results tables. When freezing the grid, the system can automatically convert these into permanent entrant records.
+
+**Problem Solved:**
+- Provisional entrants have negative IDs in results tables
+- When loading a race later, the system fetches enabled entrants from the DB by tag
+- Grid positions map by `entrant_id` → if provisionals remain negative, grid positions won't apply
+- Operators would need to manually create each entrant and fix all references
+
+**Auto-Adopt Behavior** (controlled by `qualifying.auto_adopt_unknowns` config, default: true):
+
+1. **Detection**: During freeze, check `result_standings` for entrants with negative `entrant_id`
+2. **Creation**: For each provisional:
+   - Fetch name and tag from `result_standings` (e.g., "Unknown 3000123")
+   - Assign auto-generated car number (starting from `qualifying.auto_number_start`, default: 901)
+   - Find next available number (increments to avoid conflicts)
+   - INSERT into `entrants` table with `enabled=1`
+3. **ID Mapping**: Build map of old negative ID → new positive ID (e.g., -1 → 18)
+4. **Update References**:
+   - UPDATE `result_standings.entrant_id` (negative → positive)
+   - UPDATE `result_laps.entrant_id` (negative → positive)
+   - UPDATE in-memory lap times dict and brake flags dict
+5. **Grid Storage**: Frozen grid uses new positive IDs
+6. **Return Metadata**: API response includes `adopted_count` and `adopted_entrants[]` array
+
+**Frontend Notification:**
+
+When entrants are auto-adopted, a detailed alert dialog shows:
+- Count of adopted entrants
+- List with assigned numbers, placeholder names, and tags
+- Warning that operators should update these in Entrants & Tags before starting the race
+
+**Database Transaction:**
+
+All auto-adopt operations (INSERT entrants, UPDATE standings/laps, UPDATE event config) occur in a single transaction. If any step fails, the entire adoption rolls back.
+
+**Configuration:**
+
+```yaml
+app:
+  engine:
+    qualifying:
+      brake_test_policy: demote           # demote | use_next_valid | exclude
+      auto_adopt_unknowns: true           # Auto-create entrants for provisionals
+      auto_number_start: 901              # Starting car number for auto-adopted entrants
+```
+
+**Settings UI:**
+
+Two new fields in Settings → Qualifying section:
+- **Auto-Adopt Unknown Entrants**: Yes/No dropdown (default: Yes)
+- **Auto-Assign Starting Number**: Number input (default: 901)
 
 **Data Model:**
 

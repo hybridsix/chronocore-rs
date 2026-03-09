@@ -704,11 +704,22 @@ When you click "Freeze Grid Standings":
    - Their brake test status (pass/fail/null)
    - Their qualifying position
 
-2. You choose a **brake test failure policy**:
+2. **Auto-adopt unknown entrants (enabled by default)**:
+   - If any unrecognized transponder tags appeared during qualifying, the system automatically creates permanent entrant records for them
+   - These entrants are assigned auto-generated car numbers (starting at 901, incrementing to avoid conflicts)
+   - They appear as "Unknown XXXXX" in the entrant list (where XXXXX is the tag number)
+   - A notification dialog shows which entrants were auto-adopted
+   - **Important**: You should update these placeholder names/numbers in the **Entrants & Tags** page before starting the race
+
+3. You choose a **brake test failure policy**:
    - **demote** - Drivers who failed (or have no brake test result) move to the back of the grid, sorted by best lap time
    - **warn** - Show brake test badge but don't affect grid position (display only)
 
-3. The grid is saved to the event config and persists across sessions
+4. The grid is saved to the event config and persists across sessions
+
+**Configuration options** (in Settings → Qualifying):
+- **Auto-Adopt Unknown Entrants**: Enable/disable automatic creation of permanent entrants (default: Yes)
+- **Auto-Assign Starting Number**: Starting car number for auto-adopted entrants (default: 901)
 
 ### Applying the Frozen Grid
 

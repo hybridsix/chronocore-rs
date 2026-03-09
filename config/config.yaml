@@ -44,7 +44,20 @@ app:
     
     # Qualifying session behavior
     qualifying:
-      brake_test_policy: demote  # demote | reject | allow
+      # How to handle entrants who fail brake tests when freezing the qualifying grid
+      brake_test_policy: demote      # demote | use_next_valid | exclude
+      
+      # Auto-adopt provisional entrants when freezing the grid
+      # During qualifying, unrecognized transponder tags are assigned provisional
+      # entrants with negative IDs (-1, -2, etc.) that exist only in RaceEngine memory.
+      # When enabled, freeze converts these into permanent DB records (enabled=true)
+      # so grid positions work correctly when starting the race. Operators can then
+      # edit placeholder names/numbers in Entrants & Tags before going green.
+      auto_adopt_unknowns: true      # true = auto-create entrants | false = keep provisional only
+      
+      # Starting car number for auto-adopted entrants (increments to avoid conflicts)
+      # Example: 901, 902, 903... (high numbers signal "needs review" to operators)
+      auto_number_start: 901         # Starting number for auto-adopted entrants
     
     # Pass detection and debouncing
     ingest:
