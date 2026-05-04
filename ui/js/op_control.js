@@ -151,7 +151,7 @@
   function startPolling() {
     // If base.js provides a makePoller with jitter/backoff, use it
     if (typeof CCRS.makePoller === "function") {
-      CCRS.makePoller(pollState, 1000); // ~1s cadence; base.js may smooth this
+      CCRS.makePoller(pollState, 1000).start(); // ~1s cadence; base.js may smooth this
       return;
     }
     // Simple fallback

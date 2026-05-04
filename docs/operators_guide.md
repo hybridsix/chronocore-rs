@@ -4,7 +4,41 @@ Welcome! This guide will help you run ChronoCore on race day. We'll cover everyt
 
 ---
 
-## 0. What's New (2025-11-13)
+## 0. What's New
+
+### Version 0.9.1 (2026-05-04) - Timing Accuracy and Display Fixes
+
+This release fixes three correctness bugs. Two of them could cause laps to be
+missed or mis-timed during a real race; the third caused the operator control
+display to never update.
+
+**If you ever saw laps not counting even though the transponder was reading:**
+this was most likely BUG-001 below. Update immediately before your next event.
+
+- **[BUG-001 FIXED] Laps lost when transponder reads closely together.**
+  If a transponder was detected multiple times within the minimum-lap window
+  (hardware echo, car idling near the timing loop, brief signal bounce), the
+  timing anchor would drift forward with each rejected read. By the time the
+  car completed a full lap the engine computed a short delta and rejected it
+  too. Result: zero laps counted despite the car clearly crossing the line.
+  Lap times were also short by the length of any duplicate burst at the crossing.
+  Fixed: the timing anchor now only advances when a lap is actually accepted.
+
+- **[BUG-002 FIXED] Operator control page clock and standings never updated.**
+  The polling loop on the Operator Control page (flag buttons, race clock,
+  standings table) was constructed but never started. The page appeared to
+  work at load but showed stale data for the rest of the session.
+  Fixed: the poll loop now starts immediately on page load.
+
+- **[BUG-003 FIXED] Lap event feed skipped laps during network delays.**
+  The live "Last Lap" feed on Race Control showed only one entry per polling
+  cycle even if multiple laps had completed since the previous poll (e.g.,
+  during a brief network hiccup). The standings table was correct; only the
+  feed display was affected.
+  Fixed: the feed now emits one entry per lap completed, including any missed
+  during slow poll cycles.
+
+### Version 0.2.1-alpha and earlier (2025-11-13)
 
 Here's what changed in the latest update:
 

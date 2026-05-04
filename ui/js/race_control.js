@@ -1015,7 +1015,13 @@ function updateClockModeButton(st) {
       const prev = lastLapCounts.get(id) ?? 0;
       const cur  = Number(row.laps || 0);
       if (cur > prev) {
-        appendLapFeedItem(row);
+        // Emit one feed entry per missed lap. If multiple laps occurred between
+        // polls (network hiccup, burst-poll collision) each gets its own row.
+        // Intermediate entries reuse the last/best from the snapshot since only
+        // the most recent values are available.
+        for (let lapN = prev + 1; lapN <= cur; lapN++) {
+          appendLapFeedItem(Object.assign({}, row, { laps: lapN }));
+        }
         lastLapCounts.set(id, cur);
       } else if (!lastLapCounts.has(id)) {
         // Initialize the map on first sight so we don’t backfill old laps

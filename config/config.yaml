@@ -19,7 +19,7 @@
 # ----------------------------------------------------------------------------
 app:
   name: ChronoCore Race Software
-  version: 0.9.0-dev
+  version: 0.9.1
   environment: development  # development | production
   
   # Client engine connection mode

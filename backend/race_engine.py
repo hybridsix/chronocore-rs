@@ -598,18 +598,21 @@ class RaceEngine:
 
             # derive lap time from entrant's last hit; we measure by engine clock deltas
             prev_mark = ent._last_hit_ms
-            ent._last_hit_ms = self.clock_ms
+            # NOTE: _last_hit_ms is only advanced after both thresholds pass.
+            # Advancing it on rejection would drift the anchor forward, causing
+            # legitimate laps to compute a short delta and be incorrectly rejected.
 
             lap_added = False
             lap_time_s = None
             if prev_mark is not None:
                 delta_s = (self.clock_ms - prev_mark) / 1000.0
-                # reject duplicates quickly
+                # reject duplicates quickly - do NOT advance anchor on rejection
                 if delta_s < self.min_lap_dup:
                     return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "dup"}
                 if delta_s < self.min_lap_s:
                     return {"ok": True, "entrant_id": eid, "lap_added": False, "lap_time_s": None, "reason": "min_lap"}
-                # count the lap
+                # both thresholds passed - advance anchor and count the lap
+                ent._last_hit_ms = self.clock_ms
                 ent.laps += 1
                 ent.last_s = delta_s
                 # Only update best_s if this time isn't the scratched time
@@ -648,7 +651,9 @@ class RaceEngine:
                             ent.soft_end_completed = True
                     # Always throw CHECKERED at lap limit (triggers lights/sounds)
                     self._auto_checkered("lap_limit")
-            # else: first crossing sets start mark; no lap yet
+            else:
+                # First crossing: set the anchor so the next crossing can measure a lap.
+                ent._last_hit_ms = self.clock_ms
 
             self._last_update_utc = UTC_MS()
             self._maybe_checkpoint()

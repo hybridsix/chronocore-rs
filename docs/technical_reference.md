@@ -2,6 +2,44 @@
 This document provides a comprehensive reference to the design, architecture, and operation of the ChronoCore Race Software.  
 Lightweight summaries are included for quick readers, while detailed flows and appendices support deeper study.
 
+**Version:** 0.9.1 (2026-05-04)
+
+---
+
+## 0. Release Notes - Version 0.9.1
+
+Three bugs affecting timing correctness and the operator UI were identified
+through simulation and fixed. See `CHANGELOG.md` for full detail.
+
+### BUG-001 - Lap timing anchor drift (`race_engine.py`)
+
+`ent._last_hit_ms` was unconditionally set to `clock_ms` before the
+`min_lap_dup`/`min_lap_s` guards inside `ingest_pass()`. Any rejected read
+(hardware echo, vehicle idling near the timing loop) advanced the anchor,
+causing the next real crossing to compute a short delta and also be rejected.
+Under continuous sub-`min_lap_s` interference this produced zero accepted laps.
+Duplicate bursts at the crossing caused lap times to read short by the burst
+duration.
+
+**Fix:** anchor advances only after both thresholds pass; first crossing sets
+the anchor via an explicit `else:` branch.
+
+### BUG-002 - Operator control poll loop never started (`op_control.js`)
+
+`CCRS.makePoller()` returns a `{start, stop}` handle. The return value was
+discarded without calling `.start()`, so `pollState()` never ran and the
+operator control view showed permanently stale state.
+
+**Fix:** `CCRS.makePoller(pollState, 1000).start()`
+
+### BUG-003 - Intermediate laps dropped from live feed (`race_control.js`)
+
+`updateLapFeed()` called `appendLapFeedItem()` once per poll even when
+multiple laps had completed. The standings were correct; only the feed
+display was affected.
+
+**Fix:** loop from `prev + 1` to `cur`, emitting one feed entry per lap.
+
 ---
 
 ## 1. System Overview
@@ -1450,7 +1488,7 @@ The system uses a single unified configuration file: `config/config.yaml`
 ```yaml
 app:
   name: ChronoCore Race Software
-  version: 0.9.0-dev
+  version: 0.9.1
   environment: development              # development | production
   
   engine:
