@@ -154,15 +154,16 @@ The following describes the authoritative race loop and how it processes events 
    - If the entrant is disabled, the pass is ignored.  
    - **Track passes**: compute lap time, apply filters (`min_lap_s`, `min_lap_dup`), update `laps/last/best/pace_5`.  
    
-   **Lap Crediting Logic (2025-10-31 race weekend fix):**
-   - **First crossing after GREEN**: Sets the start mark (`_last_hit_ms`). No lap credited yet - this is the "arming" pass.
-   - **Second and subsequent crossings**: Calculate delta time since last crossing.
-     - If delta < `min_lap_dup` (default 1.0s): Rejected as duplicate, no lap credited
-     - If delta < `min_lap_s` (default 5.0s): Rejected as too fast, no lap credited  
-     - If delta >= `min_lap_s`: **Lap credited**, increment lap counter, update last/best/pace times
-   - **Best lap tracking**: If credited lap time < current best (or best is null), update `best_s`
-   - **Pre-race crossings**: Any passes during PRE/COUNTDOWN are ignored for lap counting but visible in diagnostics
-   - **Green flag reset**: When transitioning to GREEN, all `_last_hit_ms` timestamps are cleared to ensure first racing lap has accurate timing
+   **Lap Crediting Logic:**
+   - **First crossing after GREEN**: Sets the timing anchor (`_last_hit_ms = clock_ms`). No lap credited yet - this is the "arming" pass.
+   - **Second and subsequent crossings**: Calculate delta time from anchor to current `clock_ms`.
+     - If delta < `min_lap_dup` (default 1.0s): Rejected as hardware duplicate. **Anchor does NOT move.**
+     - If delta < `min_lap_s` (default 5.0s): Rejected as too fast to be a valid lap. **Anchor does NOT move.**
+     - If delta >= `min_lap_s`: **Lap credited.** Anchor advances to current `clock_ms`, lap counter increments, last/best/pace times update.
+   - **Critical invariant**: The anchor (`_last_hit_ms`) only ever advances when a lap is actually credited. Rejected reads are discarded without touching the anchor. This prevents interference (hardware echoes, a car idling near the loop) from drifting the anchor forward and causing legitimate crossings to compute a falsely short delta.
+   - **Best lap tracking**: If credited lap time < current best (or best is null), update `best_s`.
+   - **Pre-race crossings**: Any passes during PRE/COUNTDOWN are ignored for lap counting but visible in diagnostics.
+   - **Green flag reset**: When transitioning to GREEN, all `_last_hit_ms` timestamps are cleared to ensure first racing lap has accurate timing.
    
    - **Pit passes** (if pit_timing enabled): `pit_in` starts a pit window; `pit_out` closes the window, computes pit time, increments `pit_count`.
 
@@ -598,7 +599,7 @@ ChronoCore exposes a set of REST endpoints via FastAPI. Below is a detailed refe
 | Endpoint          | Method | Params / Body                                  | Response                                            | Notes                                                                 |
 |-------------------|--------|------------------------------------------------|-----------------------------------------------------|-----------------------------------------------------------------------|
 | `/race/state`     | GET    | None                                           | `{ race_id, race_type, flag, running, clock_ms, ... }` | Returns the authoritative snapshot of current race state.            |
-|                   |        |                                                | `standings: [ { entrant_id, tag, number, ... } ]`| UIs poll this at ~3 Hz for live updates.                              |
+|                   |        |                                                | `standings: [ { entrant_id, tag, number, ... } ]`| UIs poll this at 1 Hz normally; 250 ms burst after events.           |
 |                   |        |                                                | `last_update_utc, features`                         |                                                                       |
 | `/engine/flag`    | POST   | `{ "flag": "pre" | "green" | "yellow" ... }` | `{ "ok": true }`                                     | Sets the current race flag. `green` starts the clock; `checkered` freezes it. `blue` is informational only. |
 | `/engine/pass`    | POST   | `{ tag, ts_ns?, source, device_id? }`          | `{ ok, entrant_id, lap_added, lap_time_s, reason }` | Ingests a timing pass. Adds a lap if Δt ≥ min_lap_s (default ~5.0s).  |
@@ -1073,9 +1074,13 @@ When deleting frozen results via `DELETE /results/{race_id}`:
 
 The Operator and Spectator UIs are static HTML/CSS/JS clients that poll the `/race/state` endpoint for live updates.
 
-**Standard polling rate:** ~3 Hz (every ~333ms) during normal operation.
+**Standard polling rate:** 1 Hz (every 1000 ms) during normal operation.
 
-**Adaptive polling:** After a flag change, the Operator UI polls at ~250ms for 2 seconds to ensure the banner updates appear immediately.
+**Burst polling:** After a flag change, transponder detection, or race control action, the Operator UI automatically switches to 250 ms polling for 3-4 seconds to ensure flag banners, standings, and clock updates appear immediately. After the burst window expires the rate drops back to 1 Hz.
+
+**Polling implementation:** `race_control.js` uses a `setTimeout`-based chain (not `setInterval`) via `CCRS.makePoller().start()`. The next tick is scheduled in the `finally` block after each response, so slow network responses cannot cause tick overlap. The poller must be started by calling `.start()` on the returned handle.
+
+**Live lap feed:** The "Last Lap" feed in `race_control.js` is driven by diffing `standings[n].laps` against a per-entrant counter on every poll. If a car completes multiple laps between polls (e.g., during a burst gap), the feed emits one entry per missed lap in sequence so no crossing is silently dropped from the display.
 
 **Connection status:** The UI footer displays connection health:
 - "OK" - receiving valid responses
