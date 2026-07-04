@@ -62,7 +62,21 @@
        * Opens the broadcast screen picker (tower, ticker, and future overlays).
        */
       function openBroadcastScreens() {
-        window.open('/ui/spectator/broadcast_select.html', '_blank');
+        const features = [
+          'popup=yes',
+          'width=1280',
+          'height=900',
+          'resizable=yes',
+          'scrollbars=yes',
+          'menubar=no',
+          'toolbar=no',
+          'location=no',
+          'status=no'
+        ].join(',');
+        const opened = window.open('/ui/spectator/broadcast_select.html', 'ccrsBroadcastSelect', features);
+        if (opened) {
+          opened.focus();
+        }
       }
     </script>
         <!-- BACK-compat shim for CCRS.apiUrl() -->

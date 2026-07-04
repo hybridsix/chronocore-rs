@@ -27,13 +27,13 @@
       <article class="broadcast-select-card">
         <h2>Tower</h2>
         <p>Left-side 16-row standings tower with flag rails and event-driven transitions.</p>
-        <button class="btn" type="button" onclick="window.open('/ui/spectator/broadcast_tower.html', '_blank')">Open Tower</button>
+        <button class="btn broadcast-launch-btn" type="button" onclick="openBroadcastWindow('/ui/spectator/broadcast_tower.html', 'ccrsBroadcastTower')">Open Tower</button>
       </article>
 
       <article class="broadcast-select-card">
         <h2>Ticker</h2>
         <p>Top horizontal intervals crawl for alternate broadcast style.</p>
-        <button class="btn" type="button" onclick="window.open('/ui/spectator/broadcast_ticker.html', '_blank')">Open Ticker</button>
+        <button class="btn broadcast-launch-btn" type="button" onclick="openBroadcastWindow('/ui/spectator/broadcast_ticker.html', 'ccrsBroadcastTicker')">Open Ticker</button>
       </article>
     </section>
 
@@ -49,6 +49,25 @@
   </footer>
 
   <script>
+    function openBroadcastWindow(path, windowName) {
+      const features = [
+        'popup=yes',
+        'width=1920',
+        'height=1080',
+        'resizable=yes',
+        'scrollbars=no',
+        'menubar=no',
+        'toolbar=no',
+        'location=no',
+        'status=no'
+      ].join(',');
+
+      const opened = window.open(path, windowName, features);
+      if (opened) {
+        opened.focus();
+      }
+    }
+
     window.addEventListener('DOMContentLoaded', () => {
       const { setNetStatus } = window.CCRS || {};
       if (typeof setNetStatus === 'function') {

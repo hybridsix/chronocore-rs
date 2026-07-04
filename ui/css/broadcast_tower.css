@@ -406,6 +406,17 @@ body {
   color: #d7e9ff;
 }
 
+.broadcast-launch-btn {
+  background: linear-gradient(180deg, #18a0ff, #0b7ec7);
+  border-color: #0a64a0;
+  color: #ffffff;
+  font-weight: 700;
+}
+
+.broadcast-launch-btn:hover {
+  filter: brightness(1.08);
+}
+
 .broadcast-select-note {
   margin-top: 14px;
   color: #8fb1c3;
