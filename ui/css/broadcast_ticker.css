@@ -1,0 +1,267 @@
+:root {
+  --bt-canvas-w: 1920px;
+  --bt-canvas-h: 1080px;
+  --ticker-brand-col: 196px;
+  --ticker-lap-col: 222px;
+  --ticker-label-col: 126px;
+
+  --bt-flag-pre: #99a6b6;
+  --bt-flag-green: #14d460;
+  --bt-flag-yellow: #ffe14f;
+  --bt-flag-red: #ef4444;
+  --bt-flag-white: #f8fafc;
+  --bt-flag-checkered: #f4f4f5;
+  --bt-flag-blue: #3b82f6;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+html.broadcast-overlay-root {
+  background: transparent !important;
+}
+
+html.broadcast-overlay-root body.broadcast-overlay {
+  background: transparent !important;
+  display: block;
+}
+
+body.broadcast-overlay {
+  overflow: hidden;
+  background: transparent;
+}
+
+body {
+  font-family: "Rajdhani", "Oswald", "Segoe UI", Tahoma, sans-serif;
+}
+
+.hidden {
+  display: none !important;
+}
+
+.tower-logo-fallback {
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: #e5e7eb;
+}
+
+.broadcast {
+  position: relative;
+  width: var(--bt-canvas-w);
+  height: var(--bt-canvas-h);
+  background: transparent;
+  transform-origin: top left;
+}
+
+.ticker-shell {
+  position: absolute;
+  left: 18px;
+  top: 12px;
+  width: 1884px;
+  display: grid;
+  grid-template-rows: 42px 58px;
+  border-radius: 0;
+  background: rgba(8, 11, 15, 0.92);
+  border-top: 3px solid #cbd5e1;
+  border-bottom: 1px solid #9ca3af;
+  overflow: hidden;
+}
+
+.ticker-top {
+  display: grid;
+  grid-template-columns: var(--ticker-brand-col) var(--ticker-lap-col) 1fr;
+  align-items: stretch;
+  background: linear-gradient(180deg, rgba(26, 32, 40, 0.98), rgba(10, 13, 17, 0.98));
+}
+
+.ticker-brand {
+  display: grid;
+  place-items: center;
+  padding: 2px 8px 4px;
+  border-right: 1px solid rgba(203, 213, 225, 0.3);
+}
+
+.ticker-brand img {
+  max-height: 40px;
+  max-width: 140px;
+  object-fit: contain;
+}
+
+.ticker-lap-box {
+  display: grid;
+  place-items: center;
+  height: calc(100% - 10px);
+  align-self: center;
+  margin: 2px 0 8px 8px;
+  font-size: 21px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  color: #1f2937;
+  background: linear-gradient(180deg, #cbd5e1, #94a3b8);
+  border-left: 1px solid rgba(255, 255, 255, 0.28);
+  border-right: 1px solid rgba(3, 20, 12, 0.24);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.28), inset 0 -1px 0 rgba(15, 23, 42, 0.38);
+}
+
+.broadcast--green .ticker-lap-box { color: #052e16; background: linear-gradient(180deg, #4ade80, #22c55e); }
+.broadcast--yellow .ticker-lap-box { color: #422006; background: linear-gradient(180deg, #fde047, #eab308); }
+.broadcast--red .ticker-lap-box { color: #fee2e2; background: linear-gradient(180deg, #f87171, #dc2626); }
+.broadcast--white .ticker-lap-box,
+.broadcast--checkered .ticker-lap-box { color: #111827; background: linear-gradient(180deg, #f8fafc, #dbe2ea); }
+.broadcast--blue .ticker-lap-box { color: #dbeafe; background: linear-gradient(180deg, #60a5fa, #2563eb); }
+
+.ticker-race-title {
+  display: grid;
+  align-items: center;
+  padding: 0 18px;
+  color: #f8fafc;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+  font-size: 19px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.ticker-bottom {
+  display: grid;
+  grid-template-columns: var(--ticker-label-col) 1fr;
+  align-items: center;
+  background: linear-gradient(180deg, #eef2f7, #cfd8e3);
+}
+
+.interval-label {
+  height: 64%;
+  width: calc(100% - 12px);
+  margin: 0 6px;
+  align-self: center;
+  justify-self: center;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  background: linear-gradient(180deg, #dfe5ee, #bfc9d8);
+  color: #111827;
+  letter-spacing: 0.04em;
+  border: 1px solid rgba(17, 24, 39, 0.2);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.interval-viewport {
+  position: relative;
+  height: 100%;
+  overflow: hidden;
+  background: linear-gradient(180deg, #eef2f7, #d5dee9);
+}
+
+.interval-track {
+  position: absolute;
+  left: 0;
+  top: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: 0;
+  white-space: nowrap;
+  padding: 0;
+  animation: intervalCrawl 34s linear infinite;
+}
+
+.interval-item {
+  display: grid;
+  grid-template-rows: 34px 24px;
+  align-content: stretch;
+  padding: 0;
+  min-height: 100%;
+  min-width: 250px;
+  border-radius: 0;
+  background: transparent;
+  border-right: 2px solid rgba(30, 41, 59, 0.3);
+}
+
+.interval-item .i-top {
+  display: grid;
+  grid-template-columns: auto auto auto;
+  align-items: center;
+  gap: 10px;
+  height: 100%;
+  padding: 0 11px;
+  background: linear-gradient(180deg, #1b232e, #0f141b);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+}
+
+.interval-item .i-bottom {
+  display: grid;
+  grid-template-columns: 1fr;
+  align-items: center;
+  height: 100%;
+  padding: 0 11px;
+  background: linear-gradient(180deg, #e6ebf2, #d2dbe7);
+}
+
+.interval-item .i-pos {
+  font-size: 14px;
+  font-weight: 700;
+  min-width: 20px;
+  text-align: right;
+  color: #d6dee9;
+}
+
+.interval-item .i-car {
+  position: relative;
+  font-size: 21px;
+  font-weight: 800;
+  font-style: italic;
+  min-width: 38px;
+  text-align: center;
+  color: #ffffff;
+  padding: 0 5px;
+  border-radius: 2px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.06));
+}
+
+.interval-item .i-car::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 2px;
+  background: var(--team-color, #475569);
+  opacity: 0.82;
+}
+
+.interval-item .i-car .i-car-text {
+  position: relative;
+  z-index: 1;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+}
+
+.interval-item .i-name {
+  font-size: 17px;
+  font-weight: 700;
+  max-width: 176px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #f8fafc;
+  text-transform: uppercase;
+}
+
+.interval-item .i-gap {
+  font-family: "SF Mono", Consolas, monospace;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: #3f4a5a;
+  text-align: center;
+  width: 100%;
+}
+
+@keyframes intervalCrawl {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}

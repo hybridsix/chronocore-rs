@@ -2129,6 +2129,11 @@ def get_ui_features():
               .get("scoring", {})
               .get("moxie", {})
     )
+    broadcast_config = (
+        CONFIG.get("app", {})
+              .get("ui", {})
+              .get("broadcast", {})
+    )
     
     return {
         "moxie_board": {
@@ -2136,6 +2141,9 @@ def get_ui_features():
             "auto_update": bool(moxie_config.get("auto_update", True)),
             "total_points": int(moxie_config.get("total_points", 300)),
             "board_positions": int(moxie_config.get("board_positions", 20))
+        },
+        "broadcast": {
+            "testing_mode": bool(broadcast_config.get("testing_mode", False))
         }
     }
 

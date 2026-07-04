@@ -1,20 +1,31 @@
 <!doctype html>
-<html lang="en">
+<html lang="en" class="broadcast-overlay-root">
 <head>
   <meta charset="utf-8" />
   <title>ChronoCore - Broadcast Ticker</title>
   <meta name="viewport" content="width=1920, height=1080, initial-scale=1, maximum-scale=1, user-scalable=no" />
-  <link rel="stylesheet" href="/ui/css/base.css?v=1" />
-  <link rel="stylesheet" href="/ui/css/broadcast_tower.css?v=1" />
-  <script src="/ui/js/base.js?v=1" defer></script>
-  <script src="/ui/js/broadcast_tower.js?v=1" defer></script>
+  <link rel="stylesheet" href="/ui/css/base.css?v=3" />
+  <link rel="stylesheet" href="/ui/css/broadcast_ticker.css?v=3" />
+  <script src="/ui/js/base.js?v=3" defer></script>
+  <script src="/ui/js/broadcast_tower.js?v=3" defer></script>
 </head>
 <body class="broadcast-overlay">
   <div id="broadcastRoot" class="broadcast broadcast--pre mode-ticker" data-mode="ticker">
-    <section id="intervalBar" class="interval-bar" aria-label="Intervals ticker">
-      <div class="interval-label">Intervals</div>
-      <div class="interval-viewport">
-        <div class="interval-track" id="intervalTrack"></div>
+    <section class="ticker-shell" aria-label="Intervals ticker">
+      <div class="ticker-top">
+        <div class="ticker-brand" id="tickerLogoWrap">
+          <img id="tickerLogo" src="/ui/img/PRS_Logo.svg" alt="PRS" />
+          <div id="tickerLogoFallback" class="tower-logo-fallback hidden">PRS</div>
+        </div>
+        <div class="ticker-lap-box" id="tickerLapMeta">LAP 0 OF 0</div>
+        <div class="ticker-race-title" id="tickerRaceName">Race</div>
+      </div>
+
+      <div class="ticker-bottom">
+        <div class="interval-label">Intervals</div>
+        <div class="interval-viewport">
+          <div class="interval-track" id="intervalTrack"></div>
+        </div>
       </div>
     </section>
   </div>

@@ -155,6 +155,8 @@ app:
   ui:
     theme: default-dark
     show_sim_pill: true          # Show simulation indicator
+    broadcast:
+      testing_mode: true         # Default behavior is off in code; enabled now for visual broadcast testing
     net_status_text:
       ok: OK
       connecting: Connecting…
