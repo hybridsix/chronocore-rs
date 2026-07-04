@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>ChronoCore - Broadcast Screens</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/ui/css/base.css?v=1" />
+  <link rel="stylesheet" href="/ui/css/operator.css?v=1" />
+  <link rel="stylesheet" href="/ui/css/broadcast_tower.css?v=1" />
+  <script src="/ui/js/base.js?v=1" defer></script>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <img src="/ui/img/PRS_Logo.svg" alt="PRS Logo" onerror="this.onerror=null;this.src='/ui/PRS_Logo.svg'">
+    </div>
+    <div class="title">Broadcast Screens</div>
+  </header>
+
+  <main class="broadcast-select-wrap">
+    <section class="broadcast-select-head">
+      <h1>Broadcast Screens</h1>
+      <p>Select a dedicated output page. Each screen is authored for a fixed 1920x1080 transparent overlay scene.</p>
+    </section>
+
+    <section class="broadcast-select-grid">
+      <article class="broadcast-select-card">
+        <h2>Tower</h2>
+        <p>Left-side 16-row standings tower with flag rails and event-driven transitions.</p>
+        <button class="btn" type="button" onclick="window.open('/ui/spectator/broadcast_tower.html', '_blank')">Open Tower</button>
+      </article>
+
+      <article class="broadcast-select-card">
+        <h2>Ticker</h2>
+        <p>Top horizontal intervals crawl for alternate broadcast style.</p>
+        <button class="btn" type="button" onclick="window.open('/ui/spectator/broadcast_ticker.html', '_blank')">Open Ticker</button>
+      </article>
+    </section>
+
+    <div class="broadcast-select-note">More screens can be added here later (e.g., lower-third, full leaderboard, pit board).</div>
+  </main>
+
+  <footer>
+    <div class="footer-left">
+      <div class="status-dot" id="netDot"></div>
+      <div id="netMsg">Ready</div>
+    </div>
+    <div id="wallClock" class="pill">--:--:--</div>
+  </footer>
+
+  <script>
+    window.addEventListener('DOMContentLoaded', () => {
+      const { setNetStatus } = window.CCRS || {};
+      if (typeof setNetStatus === 'function') {
+        setNetStatus(true, 'Ready');
+      }
+      const clock = document.getElementById('wallClock');
+      if (clock) {
+        const tick = () => {
+          const d = new Date();
+          const p2 = (n) => String(n).padStart(2, '0');
+          clock.textContent = `${p2(d.getHours())}:${p2(d.getMinutes())}:${p2(d.getSeconds())}`;
+        };
+        tick();
+        setInterval(tick, 1000);
+      }
+    });
+  </script>
+</body>
+</html>

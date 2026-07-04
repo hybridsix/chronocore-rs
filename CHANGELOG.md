@@ -5,6 +5,32 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [Unreleased] - 2026-07-04
+
+### Summary
+
+Started the broadcast graphics integration stream with new tower/ticker overlays,
+operator launch wiring, and supporting race-state payload fields for display use.
+
+### Added
+
+- Broadcast screen set and selector scaffolds:
+  - `ui/spectator/broadcast_tower.html`
+  - `ui/spectator/broadcast_ticker.html`
+  - `ui/spectator/broadcast_select.html`
+- Shared broadcast assets:
+  - `ui/js/broadcast_tower.js`
+  - `ui/css/broadcast_tower.css`
+- Operator utility scaffold: `ui/operator/health_status.html`
+
+### Changed
+
+- Operator home adds quick launch for broadcast screens (`ui/operator/index.html`).
+- Standings payload includes broadcast-friendly fields (`backend/server.py`):
+  `organization`, `color`, normalized `gap_s`, and consistent `position` stamping.
+
+---
+
 ## [0.9.1] - 2026-05-04
 
 ### Summary

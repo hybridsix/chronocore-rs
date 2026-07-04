@@ -714,6 +714,22 @@ def build_standings_payload(
         # Heuristic: treat large values as milliseconds.
         return val / 1000.0 if val > 600.0 else val
 
+    # Read entrant metadata once so standings can include broadcast-friendly fields.
+    entrant_meta: dict[int, dict[str, object]] = {}
+    try:
+        cur = conn.execute("SELECT entrant_id, organization, color FROM entrants")
+        for row in cur.fetchall():
+            try:
+                eid_meta = int(row[0])
+            except Exception:
+                continue
+            entrant_meta[eid_meta] = {
+                "organization": row[1],
+                "color": row[2],
+            }
+    except Exception:
+        entrant_meta = {}
+
     # Cache the live engine snapshot (if provided) so we reuse the computed laps/pace data.
     snapshot_rows: dict[int, dict] = {}
     if isinstance(engine_snapshot, dict):
@@ -753,6 +769,7 @@ def build_standings_payload(
             )
             best = _to_seconds(snap_row.get("best") or snap_row.get("best_s") or snap_row.get("best_ms"))
             lap_deficit = snap_row.get("lap_deficit")
+            gap_s = _to_seconds(snap_row.get("gap_s") or snap_row.get("gap") or snap_row.get("gap_ms"))
         else:
             laps = int(getattr(ent, "laps", getattr(ent, "total_laps", 0)) or 0)
             last = _to_seconds(
@@ -773,13 +790,19 @@ def build_standings_payload(
                 except ZeroDivisionError:
                     pace = None
             lap_deficit = None
+            gap_s = None
+
+        meta = entrant_meta.get(eid_i) or {}
 
         rows.append({
             "entrant_id": eid_i,
             "number": (str(number) if number is not None else None),
             "name": (str(name) if name is not None else f"Entrant {eid_i}"),
+            "organization": (str(meta.get("organization")) if meta.get("organization") else None),
+            "color": (str(meta.get("color")) if meta.get("color") else None),
             "laps": laps,
             "lap_deficit": lap_deficit,
+            "gap_s": gap_s,
             "last": last,
             "pace": pace,
             "best": best,
@@ -800,12 +823,16 @@ def build_standings_payload(
             eid = int(value)
         except (TypeError, ValueError):
             continue
+        meta = entrant_meta.get(eid) or {}
         rows.append({
             "entrant_id": eid,
             "number": (str(snap_row.get("number")) if snap_row.get("number") is not None else None),
             "name": (str(snap_row.get("name")) if snap_row.get("name") else f"Entrant {eid}"),
+            "organization": (str(meta.get("organization")) if meta.get("organization") else None),
+            "color": (str(meta.get("color")) if meta.get("color") else None),
             "laps": int(snap_row.get("laps") or snap_row.get("total_laps") or 0),
             "lap_deficit": snap_row.get("lap_deficit"),
+            "gap_s": _to_seconds(snap_row.get("gap_s") or snap_row.get("gap") or snap_row.get("gap_ms")),
             "last": _to_seconds(snap_row.get("last") or snap_row.get("last_s") or snap_row.get("last_ms")),
             "pace": _to_seconds(
                 snap_row.get("pace_5")
@@ -858,9 +885,9 @@ def build_standings_payload(
             (r["grid_index"] if r["grid_index"] is not None else 10**9),
         ))
 
-        # Stamp 1-based position for convenience (UI still free to compute)
-        for i, r in enumerate(rows, start=1):
-            r["position"] = i
+    # Stamp 1-based position for convenience (UI still free to compute).
+    for i, r in enumerate(rows, start=1):
+        r["position"] = i
 
     return rows
 

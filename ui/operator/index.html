@@ -56,6 +56,14 @@
         }
         window.open('/ui/spectator/spectator.html', '_blank');
       }
+
+      /**
+       * openBroadcastScreens()
+       * Opens the broadcast screen picker (tower, ticker, and future overlays).
+       */
+      function openBroadcastScreens() {
+        window.open('/ui/spectator/broadcast_select.html', '_blank');
+      }
     </script>
         <!-- BACK-compat shim for CCRS.apiUrl() -->
     <script>
@@ -116,6 +124,7 @@
             <!-- Separator between operator tools and spectator link -->
             <hr class="section-sep">
             <button class="btn" onclick="openSpectator()">Open Spectator View</button>
+            <button class="btn" onclick="openBroadcastScreens()">Open Broadcast Screens</button>
           </div>
         </div>
       </section>

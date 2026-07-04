@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>CCRS - Health Status</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="/ui/css/base.css?v=1" />
+  <link rel="stylesheet" href="/ui/css/operator.css?v=1" />
+  <script src="/ui/js/base.js?v=1" defer></script>
+  <style>
+    .health-wrap { max-width: 1200px; margin: 0 auto; }
+    .health-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; }
+    .health-card { padding: 14px; }
+    .health-card h3 { margin: 0 0 10px; font-size: 18px; color: #bfefff; }
+    .health-row { display: flex; justify-content: space-between; gap: 12px; padding: 6px 0; font-size: 15px; }
+    .health-key { color: #9fb6c6; }
+    .health-value { color: #e6f2f7; font-family: var(--mono); text-align: right; }
+    .health-pill { display: inline-block; padding: 4px 10px; border-radius: 999px; border: 1px solid #0b2230; font-weight: 700; font-size: 13px; }
+    .health-pill.ok { background: rgba(34,197,94,.16); color: #b9f8cf; border-color: rgba(34,197,94,.4); }
+    .health-pill.warn { background: rgba(234,179,8,.16); color: #fde68a; border-color: rgba(234,179,8,.4); }
+    .health-pill.bad { background: rgba(239,68,68,.16); color: #fecaca; border-color: rgba(239,68,68,.4); }
+    .health-head { margin-bottom: 12px; display: flex; align-items: center; gap: 12px; }
+    .health-note { margin-top: 12px; color: #86a3b7; font-size: 13px; }
+    .mono { font-family: var(--mono); }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="title">System Health Status</div>
+    <div class="pill" id="updatedAt">Updated: --</div>
+  </header>
+
+  <main class="health-wrap">
+    <div class="health-head">
+      <div id="overall" class="health-pill warn">Checking...</div>
+      <div class="mono" id="summary">Waiting for first poll...</div>
+    </div>
+
+    <section class="health-grid">
+      <article class="card health-card">
+        <h3>Server</h3>
+        <div class="health-row"><span class="health-key">/healthz</span><span class="health-value" id="healthz">-</span></div>
+        <div class="health-row"><span class="health-key">/readyz</span><span class="health-value" id="readyz">-</span></div>
+        <div class="health-row"><span class="health-key">API latency</span><span class="health-value" id="latency">-</span></div>
+      </article>
+
+      <article class="card health-card">
+        <h3>Race Engine</h3>
+        <div class="health-row"><span class="health-key">Phase</span><span class="health-value" id="phase">-</span></div>
+        <div class="health-row"><span class="health-key">Flag</span><span class="health-value" id="flag">-</span></div>
+        <div class="health-row"><span class="health-key">Running</span><span class="health-value" id="running">-</span></div>
+      </article>
+
+      <article class="card health-card">
+        <h3>Session</h3>
+        <div class="health-row"><span class="health-key">Session</span><span class="health-value" id="sessionLabel">-</span></div>
+        <div class="health-row"><span class="health-key">Event</span><span class="health-value" id="eventLabel">-</span></div>
+        <div class="health-row"><span class="health-key">Race ID</span><span class="health-value" id="raceId">-</span></div>
+      </article>
+
+      <article class="card health-card">
+        <h3>Timing Data</h3>
+        <div class="health-row"><span class="health-key">Standings rows</span><span class="health-value" id="standingsCount">-</span></div>
+        <div class="health-row"><span class="health-key">Seen (active/total)</span><span class="health-value" id="seenCount">-</span></div>
+        <div class="health-row"><span class="health-key">Clock (ms)</span><span class="health-value" id="clockMs">-</span></div>
+      </article>
+    </section>
+
+    <div class="health-note">Direct utility page for operations diagnostics. Not linked from main home screen by design.</div>
+  </main>
+
+  <script>
+    const { fetchJSON, makePoller } = window.CCRS;
+
+    function setText(id, value) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = value;
+    }
+
+    function statusTag(ok) {
+      return ok ? '<span class="health-pill ok">OK</span>' : '<span class="health-pill bad">FAIL</span>';
+    }
+
+    function setOverall(ok, text) {
+      const el = document.getElementById('overall');
+      if (!el) return;
+      el.className = `health-pill ${ok ? 'ok' : 'bad'}`;
+      el.textContent = ok ? 'HEALTHY' : 'DEGRADED';
+      setText('summary', text);
+    }
+
+    async function fetchStatus() {
+      const t0 = performance.now();
+      const [health, ready, race] = await Promise.allSettled([
+        fetchJSON('/healthz'),
+        fetchJSON('/readyz'),
+        fetchJSON('/race/state')
+      ]);
+      const dt = Math.round(performance.now() - t0);
+
+      const healthOk = health.status === 'fulfilled';
+      const readyOk = ready.status === 'fulfilled';
+      const raceOk = race.status === 'fulfilled' && race.value;
+
+      setText('healthz', healthOk ? 'OK' : 'FAIL');
+      setText('readyz', readyOk ? 'OK' : 'FAIL');
+      setText('latency', `${dt} ms`);
+
+      if (raceOk) {
+        const s = race.value;
+        setText('phase', String(s.phase || '-'));
+        setText('flag', String(s.flag || '-'));
+        setText('running', String(Boolean(s.running)));
+        setText('sessionLabel', String(s.session_label || '-'));
+        setText('eventLabel', String(s.event_label || '-'));
+        setText('raceId', String(s.race_id ?? '-'));
+        setText('standingsCount', String(Array.isArray(s.standings) ? s.standings.length : 0));
+        const seen = s.seen || {};
+        setText('seenCount', `${seen.count ?? 0}/${seen.total ?? 0}`);
+        setText('clockMs', String(s.clock_ms ?? '-'));
+      } else {
+        ['phase','flag','running','sessionLabel','eventLabel','raceId','standingsCount','seenCount','clockMs']
+          .forEach((id) => setText(id, '-'));
+      }
+
+      const ok = healthOk && readyOk;
+      setOverall(ok, ok ? 'Server and readiness endpoints are healthy.' : 'One or more health checks failed.');
+      setText('updatedAt', `Updated: ${new Date().toLocaleTimeString()}`);
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const poll = makePoller(fetchStatus, 1500, () => {
+        setOverall(false, 'Health poll failed to complete.');
+      });
+      poll.start();
+    });
+  </script>
+</body>
+</html>
