@@ -156,6 +156,7 @@ app:
     theme: default-dark
     show_sim_pill: true          # Show simulation indicator
     broadcast:
+      enabled: true              # Hide operator broadcast entry points when false
       testing_mode: true         # Default behavior is off in code; enabled now for visual broadcast testing
     net_status_text:
       ok: OK

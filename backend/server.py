@@ -2143,6 +2143,7 @@ def get_ui_features():
             "board_positions": int(moxie_config.get("board_positions", 20))
         },
         "broadcast": {
+            "enabled": bool(broadcast_config.get("enabled", True)),
             "testing_mode": bool(broadcast_config.get("testing_mode", False))
         }
     }

@@ -138,7 +138,7 @@
             <!-- Separator between operator tools and spectator link -->
             <hr class="section-sep">
             <button class="btn" onclick="openSpectator()">Open Spectator View</button>
-            <button class="btn" onclick="openBroadcastScreens()">Open Broadcast Screens</button>
+            <button class="btn broadcast-screens-btn" onclick="openBroadcastScreens()">Open Broadcast Screens</button>
           </div>
         </div>
       </section>
@@ -229,6 +229,12 @@
               const moxieBtn = document.querySelector('.moxie-board-btn');
               if (moxieBtn && config.moxie_board?.enabled) {
                 moxieBtn.style.display = 'block';
+              }
+
+              // Show/hide Broadcast Screens button based on config
+              const broadcastBtn = document.querySelector('.broadcast-screens-btn');
+              if (broadcastBtn && config.broadcast?.enabled === false) {
+                broadcastBtn.style.display = 'none';
               }
             }
           } catch (err) {
