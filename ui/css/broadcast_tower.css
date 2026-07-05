@@ -61,6 +61,8 @@ body {
   left: var(--bt-tower-x);
   top: var(--bt-tower-y);
   width: var(--bt-tower-w);
+  border-radius: 10px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
 .tower {
@@ -70,7 +72,6 @@ body {
   background: var(--bt-tower-bg);
   border-radius: 10px;
   overflow: hidden;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
 }
 
 .tower-header {

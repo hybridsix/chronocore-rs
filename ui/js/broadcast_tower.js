@@ -9,6 +9,7 @@
   const mode = String(root.dataset.mode || "tower").toLowerCase();
   const isTower = mode === "tower";
   const isTicker = mode === "ticker";
+  const isStatus = mode === "status";
 
   const rowsHost = document.getElementById("towerRows");
   const raceNameEl = document.getElementById("towerRaceName") || document.getElementById("tickerRaceName");
@@ -425,6 +426,7 @@
 
     root.classList.toggle("mode-tower", isTower);
     root.classList.toggle("mode-ticker", isTicker);
+    root.classList.toggle("mode-status", isStatus);
 
     const poll = makePoller(tick, 333, () => {});
     poll.start();

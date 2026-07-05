@@ -1976,9 +1976,10 @@ ChronoCore includes broadcast-quality transparent overlay pages intended for cap
 
 | Page | Path | Purpose |
 |---|---|---|
-| Selector | `/ui/spectator/broadcast_select.html` | Picker UI; opens tower or ticker in a dedicated popup |
+| Selector | `/ui/spectator/broadcast_select.html` | Picker UI; opens tower, ticker, or status in a dedicated popup |
 | Tower | `/ui/spectator/broadcast_tower.html` | 16-row standings tower; transparent 1920×1080 overlay |
 | Ticker | `/ui/spectator/broadcast_ticker.html` | Horizontal interval crawl; transparent 1920×1080 overlay |
+| Status | `/ui/spectator/broadcast_status.html` | Header-only overlay — logo, session name, lap count, event banner, flag rails; no standings rows |
 
 All three pages are served as static assets under `/ui/` and are accessible directly by URL regardless of the `broadcast.enabled` config flag. The flag only controls visibility of the **Open Broadcast Screens** button on the operator home (`ui/operator/index.html`).
 
@@ -2001,6 +2002,16 @@ The overlay pages call `GET /config/ui_features` on load to read:
 | `broadcast.testing_mode` | `app.ui.broadcast.testing_mode` | When `true`, overlays switch to built-in fake data mode — no live race needed. |
 
 Both flags default to safe values in code: `enabled` defaults `True`, `testing_mode` defaults `False`.
+
+### Page Modes
+
+`broadcast_tower.js` is shared by all three overlay pages. The page mode is set via `data-mode` on `#broadcastRoot`:
+
+| `data-mode` | Page | Behaviour |
+|---|---|---|
+| `tower` | broadcast_tower.html | Full 16-row standings tower with animated position transitions |
+| `ticker` | broadcast_ticker.html | Horizontal scrolling interval crawl |
+| `status` | broadcast_status.html | Header + event banner + flag rails only; `updateRows()` is skipped |
 
 ### Tower Page — Structure
 

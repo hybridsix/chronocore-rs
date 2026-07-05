@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en" class="broadcast-overlay-root">
+<head>
+  <meta charset="utf-8" />
+  <title>ChronoCore - Race Status</title>
+  <meta name="viewport" content="width=1920, height=1080, initial-scale=1, maximum-scale=1, user-scalable=no" />
+  <link rel="stylesheet" href="/ui/css/base.css?v=4" />
+  <link rel="stylesheet" href="/ui/css/broadcast_tower.css?v=4" />
+  <script src="/ui/js/base.js?v=4" defer></script>
+  <script src="/ui/js/broadcast_tower.js?v=4" defer></script>
+</head>
+<body class="broadcast-overlay">
+  <div id="broadcastRoot" class="broadcast broadcast--pre mode-status" data-mode="status">
+    <div class="tower-wrap">
+      <div class="tower-flag-rail tower-flag-rail--top"></div>
+
+      <section class="tower" aria-label="Broadcast race status">
+        <header class="tower-header">
+          <div class="tower-logo" id="towerLogoWrap">
+            <img id="towerLogo" src="/ui/img/PRS_Logo.svg" alt="PRS" />
+            <div id="towerLogoFallback" class="tower-logo-fallback hidden">PRS</div>
+          </div>
+          <div class="tower-title" id="towerRaceName">-</div>
+          <div class="tower-subtitle" id="towerRaceMeta">-</div>
+        </header>
+
+        <div class="tower-event-banner" id="towerEventBanner"></div>
+      </section>
+
+      <div class="tower-flag-rail tower-flag-rail--bottom"></div>
+    </div>
+  </div>
+</body>
+</html>

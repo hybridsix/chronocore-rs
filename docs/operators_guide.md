@@ -926,6 +926,10 @@ The tower always renders all 16 row slots — if fewer than 16 cars are in the r
 
 A horizontal crawl bar for the top of screen. Shows all running positions as a continuous scrolling strip of intervals. Intended as an alternate or complementary graphic to the tower.
 
+**Race Status** (`/ui/spectator/broadcast_status.html`)
+
+A compact header-only overlay — no standings rows. Shows the logo, session name, lap count, event name banner, and flag colour rails. Use this when you only need race identification and flag state on screen, without the full standings tower.
+
 ### Setting Up in OBS
 
 1. In OBS, add a **Browser Source** to your scene.
