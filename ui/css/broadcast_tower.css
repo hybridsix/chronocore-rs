@@ -15,7 +15,7 @@
   --bt-flag-checkered: #f4f4f5;
   --bt-flag-blue: #3b82f6;
 
-  --bt-tower-bg: rgba(0, 0, 0, 0.62);
+  --bt-tower-bg: rgba(0, 0, 0, 0.88);
   --bt-row-bg: rgba(12, 14, 19, 0.64);
   --bt-row-border: rgba(255, 255, 255, 0.14);
   --bt-text: #f8fafc;
@@ -56,11 +56,17 @@ body {
   transform-origin: top left;
 }
 
-.tower {
+.tower-wrap {
   position: absolute;
   left: var(--bt-tower-x);
   top: var(--bt-tower-y);
   width: var(--bt-tower-w);
+}
+
+.tower {
+  position: relative;
+  z-index: 1;
+  width: 100%;
   background: var(--bt-tower-bg);
   border-radius: 10px;
   overflow: hidden;
@@ -130,8 +136,24 @@ body {
 
 .tower-list {
   position: relative;
-  min-height: calc(var(--bt-row-h) * var(--bt-rows));
+  height: calc(var(--bt-row-h) * var(--bt-rows));
   background: rgba(0, 0, 0, 0.44);
+}
+
+.tower-event-banner {
+  margin: 6px 6px;
+  padding: 10px 20px;
+  border-radius: 3px;
+  background: linear-gradient(90deg, #b8b8b8 0%, #f0f0f0 30%, #ffffff 50%, #f0f0f0 70%, #b8b8b8 100%);
+  color: #0a0a0a;
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tower-row {
@@ -240,20 +262,21 @@ body {
 
 .tower-flag-rail {
   position: absolute;
-  left: var(--bt-tower-x);
-  width: var(--bt-tower-w);
-  height: 6px;
+  z-index: 0;
+  left: 0;
+  width: 100%;
+  height: 8px;
   border-radius: 999px;
   background: var(--bt-flag-pre);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22);
 }
 
 .tower-flag-rail--top {
-  top: calc(var(--bt-tower-y) - 10px);
+  top: -11px;
 }
 
 .tower-flag-rail--bottom {
-  top: calc(var(--bt-tower-y) + 10px + 112px + (var(--bt-row-h) * var(--bt-rows)));
+  bottom: -11px;
 }
 
 .broadcast--green .tower-flag-rail { background: var(--bt-flag-green); box-shadow: 0 0 12px rgba(20, 212, 96, 0.72); }

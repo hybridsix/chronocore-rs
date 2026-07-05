@@ -879,6 +879,74 @@ To turn on moxie board features:
 
 Once enabled, you'll see a **Moxie Board** button on the main operator page (between "Setup & Devices" and "Open Spectator View").
 
+---
+
+## 17. Broadcast Overlays (2026-07-05)
+
+ChronoCore includes broadcast-quality overlay screens designed to be captured in OBS, vMix, or similar production software as a **Browser Source** layer on top of race footage. These are separate pages from the spectator view — they have transparent backgrounds and are intended to sit on top of a video feed, not to be viewed standalone.
+
+### Enabling Broadcast Screens
+
+Broadcast entry points on the operator home are controlled by a config flag. If you don't use broadcast overlays, you can hide them entirely without affecting the spectator live timing view.
+
+In `config/config.yaml`:
+
+```yaml
+app:
+  ui:
+    broadcast:
+      enabled: true    # set false to hide broadcast launch buttons from operator home
+      testing_mode: false  # set true to populate overlays with fake race data for visual testing
+```
+
+- `enabled: false` hides the **Open Broadcast Screens** button from the operator home. The overlay pages themselves remain accessible by direct URL at all times.
+- `testing_mode: true` fills the overlays with simulated standings and cycling flag states. Turn this on before an event to visually test your OBS scene setup without needing a live race loaded.
+
+### Opening Broadcast Screens
+
+1. From the operator home, click **Open Broadcast Screens**.
+2. A picker window opens with the available overlay types.
+3. Click **Open Tower** or **Open Ticker** — each opens in a dedicated `1920×1080` popup window.
+
+### Available Overlays
+
+**Tower** (`/ui/spectator/broadcast_tower.html`)
+
+A vertical standings tower designed for the left side of the screen. Shows:
+- Event logo and session name in the header
+- Event name banner (e.g. "Maker Faire Orlando") below the header
+- Up to 16 positions with car number chip (team color), team name, and gap/laps-down
+- Flag-state color rails at top and bottom that glow green, yellow, red, white, or checkered to match the current race flag
+- Animated position transitions when standings change
+- New-entrant flash animation when a car appears for the first time
+
+The tower always renders all 16 row slots — if fewer than 16 cars are in the race the lower slots show as empty dark space. The tower height never collapses.
+
+**Ticker** (`/ui/spectator/broadcast_ticker.html`)
+
+A horizontal crawl bar for the top of screen. Shows all running positions as a continuous scrolling strip of intervals. Intended as an alternate or complementary graphic to the tower.
+
+### Setting Up in OBS
+
+1. In OBS, add a **Browser Source** to your scene.
+2. Set the URL to `http://127.0.0.1:8000/ui/spectator/broadcast_tower.html` (or ticker).
+3. Set width to **1920** and height to **1080**.
+4. Check **Transparent background** (the overlay pages have a fully transparent root background).
+5. The browser source stays active and renders continuously — it won't throttle like a regular browser tab.
+
+### Setting Up in vMix
+
+1. Add a **Web Browser** input.
+2. Set URL to the overlay page as above.
+3. The input will render the overlay continuously at full resolution.
+
+### Tips
+
+- The flag color rails update automatically with the race flag — no manual switching needed.
+- If the event label (`app.engine.event.name` in config) is set, it appears in the grey banner below the header. If it's empty the banner hides itself.
+- The tower polls the backend every ~333ms. Position updates animate smoothly.
+- Both overlay pages are safe to keep open for the full duration of an event.
+
 **Current Features:**
 - View moxie scores for all active teams
 - See which teams are displayed on the physical board

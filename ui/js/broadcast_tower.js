@@ -17,6 +17,7 @@
   const intervalTrack = document.getElementById("intervalTrack");
   const towerLogo = document.getElementById("towerLogo") || document.getElementById("tickerLogo");
   const towerLogoFallback = document.getElementById("towerLogoFallback") || document.getElementById("tickerLogoFallback");
+  const towerEventBannerEl = document.getElementById("towerEventBanner");
 
   const FLAG_CLASSES = new Set(["pre", "green", "yellow", "red", "white", "checkered", "blue"]);
   const MAX_ROWS = 16;
@@ -178,7 +179,7 @@
 
     return {
       race_id: 999,
-      event_label: "Broadcast Test",
+      event_label: "Maker Faire Orlando",
       session_label: "Visual Validation",
       phase: phaseBits.phase,
       flag: phaseBits.flag,
@@ -235,6 +236,12 @@
     if (!raceNameEl || !raceMetaEl) return;
     const name = state.session_label || state.event_label || "Race";
     raceNameEl.textContent = name;
+
+    if (towerEventBannerEl) {
+      const evtLabel = state.event_label || "";
+      towerEventBannerEl.textContent = evtLabel;
+      towerEventBannerEl.style.display = evtLabel ? "" : "none";
+    }
 
     const limit = state.limit || {};
     const type = String(limit.type || "").toLowerCase();

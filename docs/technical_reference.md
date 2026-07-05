@@ -1968,6 +1968,116 @@ When testing timing hardware without actual racing:
 
 ---
 
+## 18. Broadcast Overlay System (2026-07-05)
+
+ChronoCore includes broadcast-quality transparent overlay pages intended for capture in OBS, vMix, or similar production software. They poll `/race/state` and `/config/ui_features` directly and have no dependency on the operator UI.
+
+### Entry Points
+
+| Page | Path | Purpose |
+|---|---|---|
+| Selector | `/ui/spectator/broadcast_select.html` | Picker UI; opens tower or ticker in a dedicated popup |
+| Tower | `/ui/spectator/broadcast_tower.html` | 16-row standings tower; transparent 1920×1080 overlay |
+| Ticker | `/ui/spectator/broadcast_ticker.html` | Horizontal interval crawl; transparent 1920×1080 overlay |
+
+All three pages are served as static assets under `/ui/` and are accessible directly by URL regardless of the `broadcast.enabled` config flag. The flag only controls visibility of the **Open Broadcast Screens** button on the operator home (`ui/operator/index.html`).
+
+### Feature Flags (`/config/ui_features`)
+
+The overlay pages call `GET /config/ui_features` on load to read:
+
+```json
+{
+  "broadcast": {
+    "enabled": true,
+    "testing_mode": false
+  }
+}
+```
+
+| Flag | Source (`config.yaml`) | Effect |
+|---|---|---|
+| `broadcast.enabled` | `app.ui.broadcast.enabled` | Hides **Open Broadcast Screens** on operator home when `false`. Overlays still render. |
+| `broadcast.testing_mode` | `app.ui.broadcast.testing_mode` | When `true`, overlays switch to built-in fake data mode — no live race needed. |
+
+Both flags default to safe values in code: `enabled` defaults `True`, `testing_mode` defaults `False`.
+
+### Tower Page — Structure
+
+The tower DOM hierarchy (inside `broadcast_tower.html`):
+
+```
+.broadcast                    ← 1920×1080 transparent canvas
+  .tower-wrap                 ← positioned container (36px from left/top)
+    .tower-flag-rail--top     ← flag-colour accent bar (8px, above tower)
+    .tower                    ← dark panel; overflow:hidden; drop shadow
+      .tower-header           ← logo + session name + lap count
+      .tower-event-banner     ← event name strip (hidden when empty)
+      .tower-list             ← fixed-height row area (16 × 48px = 768px)
+        .tower-row (×16)      ← absolutely positioned; animated via translateY
+    .tower-flag-rail--bottom  ← flag-colour accent bar (8px, below tower)
+```
+
+Key CSS variables (in `:root`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `--bt-tower-x` | `36px` | Left offset of tower on canvas |
+| `--bt-tower-y` | `36px` | Top offset of tower on canvas |
+| `--bt-tower-w` | `440px` | Tower width |
+| `--bt-row-h` | `48px` | Row height |
+| `--bt-rows` | `16` | Fixed row count |
+| `--bt-tower-bg` | `rgba(0,0,0,0.88)` | Tower body background |
+
+### Row Rendering and Animation
+
+- Rows are rendered by `broadcast_tower.js` as `position:absolute` elements inside `.tower-list`, translated to their slot via `translateY(idx * ROW_H)`.
+- A CSS transition on `transform` (780ms ease) animates position swaps.
+- New rows get the `is-new` class, triggering a brief brightness flash.
+- When a car records a new personal best lap, the `is-best-lap` class triggers a green pulse animation.
+- `.tower-list` uses a fixed `height` (not `min-height`), so the tower body is always 768px tall regardless of how many entrants are loaded.
+
+### Flag Rail Behaviour
+
+The two accent bars (`.tower-flag-rail--top` and `.tower-flag-rail--bottom`) are children of `.tower-wrap` and positioned at `top: -11px` / `bottom: -11px` relative to the wrapper. They are `z-index: 0`; `.tower` is `z-index: 1`, so rail glow never overlaps row content.
+
+Flag colours are driven by a class on `.broadcast`:
+
+```
+.broadcast--green   → green rail + glow
+.broadcast--yellow  → yellow rail + glow
+.broadcast--red     → red rail + glow
+.broadcast--white   → white rail + glow
+.broadcast--checkered → light grey rail + glow
+.broadcast--blue    → blue rail + glow
+.broadcast--pre     → muted grey (default)
+```
+
+The class is applied by `setFlag()` in `broadcast_tower.js` based on the `flag` field from `/race/state`.
+
+### Fake Data Mode
+
+When `broadcast.testing_mode` is `true`, `broadcast_tower.js` substitutes `buildFakeState()` for all `/race/state` calls. The fake engine:
+
+- Pre-populates 16 named entrants with distinct team colours.
+- Simulates lap crossings on a variable-cadence timer (~2.3s base with random jitter).
+- Cycles through flag states (pre → green → yellow → white) on a ~90s loop.
+- Increments the leader's lap count and occasionally swaps adjacent positions.
+- Is bounded to catch up at most 4 missed events after tab inactivity.
+
+This mode is safe to leave running indefinitely in OBS/vMix for scene preview. It does not write to the database or affect the live engine.
+
+### Stylesheet Split
+
+| File | Scope |
+|---|---|
+| `ui/css/broadcast_tower.css` | Tower, tower-wrap, flag rails, selector page (`.broadcast-select-*`) |
+| `ui/css/broadcast_ticker.css` | Ticker shell, top/bottom bands, interval item layout |
+
+Broadcast pages do not import `operator.css` or other operator styles to prevent background bleed in transparent OBS sources.
+
+---
+
 ## 17. Appendices
 
 - Migration scripts (e.g., `migrate_add_car_num.py`)  
@@ -1977,4 +2087,4 @@ When testing timing hardware without actual racing:
 
 ---
 
-_Last updated: 2025-11-13_
+_Last updated: 2026-07-05_
