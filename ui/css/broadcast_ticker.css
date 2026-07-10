@@ -1,9 +1,26 @@
+/* ---------------------------------------------------------------------
+  BROADCAST OVERLAY - Intervals Ticker
+  - Transparent 1920×1080 canvas for OBS / vMix Browser Source capture
+  - Two-column layout: left static (logo + label), right data (lap + scroll)
+  - Left and right column row heights are independently adjustable via
+    --ticker-static-top-h / --ticker-static-bottom-h (left) and
+    --ticker-data-top-h / --ticker-data-bottom-h (right)
+  - NOTE: .interval-item grid-template-rows must sum to --ticker-data-bottom-h
+  --------------------------------------------------------------------- */
+
 :root {
   --bt-canvas-w: 1920px;
   --bt-canvas-h: 1080px;
-  --ticker-brand-col: 196px;
-  --ticker-lap-col: 222px;
-  --ticker-label-col: 126px;
+  --ticker-static-col: 200px;   /* unified left column width */
+  --ticker-lap-col: 220px;
+
+  /* Left column row heights — adjust independently */
+  --ticker-static-top-h: 76px;    /* logo area */
+  --ticker-static-bottom-h: 24px; /* "Intervals" label */
+
+  /* Right column row heights — adjust independently */
+  --ticker-data-top-h: 42px;    /* lap counter + race title */
+  --ticker-data-bottom-h: 58px; /* scrolling intervals */
 
   --bt-flag-pre: #99a6b6;
   --bt-flag-green: #14d460;
@@ -62,8 +79,9 @@ body {
   left: 18px;
   top: 12px;
   width: 1884px;
-  display: grid;
-  grid-template-rows: 42px 58px;
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
   border-radius: 0;
   background: rgba(8, 11, 15, 0.92);
   border-top: 3px solid #cbd5e1;
@@ -71,22 +89,38 @@ body {
   overflow: hidden;
 }
 
-.ticker-top {
+/* Left static column — logo + label, each with its own height */
+.ticker-static {
+  flex-shrink: 0;
+  width: var(--ticker-static-col);
   display: grid;
-  grid-template-columns: var(--ticker-brand-col) var(--ticker-lap-col) 1fr;
-  align-items: stretch;
-  background: linear-gradient(180deg, rgba(26, 32, 40, 0.98), rgba(10, 13, 17, 0.98));
+  grid-template-rows: var(--ticker-static-top-h) var(--ticker-static-bottom-h);
+  border-right: 1px solid rgba(225, 203, 204, 0.3);
+}
+
+/* Right data column — lap info + scroll, each with its own height */
+.ticker-data {
+  flex: 1;
+  display: grid;
+  grid-template-rows: var(--ticker-data-top-h) var(--ticker-data-bottom-h);
 }
 
 .ticker-brand {
   display: grid;
   place-items: center;
   padding: 2px 8px 4px;
-  border-right: 1px solid rgba(203, 213, 225, 0.3);
+  background: linear-gradient(180deg, rgba(26, 32, 40, 0.98), rgba(10, 13, 17, 0.98));
+}
+
+.ticker-top {
+  display: grid;
+  grid-template-columns: var(--ticker-lap-col) 1fr;
+  align-items: stretch;
+  background: linear-gradient(180deg, rgba(26, 32, 40, 0.98), rgba(10, 13, 17, 0.98));
 }
 
 .ticker-brand img {
-  max-height: 40px;
+  max-height: 65px;
   max-width: 140px;
   object-fit: contain;
 }
@@ -128,34 +162,19 @@ body {
   text-overflow: ellipsis;
 }
 
-.ticker-bottom {
-  display: grid;
-  grid-template-columns: var(--ticker-label-col) 1fr;
-  align-items: center;
-  background: linear-gradient(180deg, #eef2f7, #cfd8e3);
-}
-
 .interval-label {
-  height: 64%;
-  width: calc(100% - 12px);
-  margin: 0 6px;
-  align-self: center;
-  justify-self: center;
   display: grid;
   place-items: center;
-  font-size: 11px;
+  font-size: 16px;
   font-weight: 700;
   text-transform: uppercase;
   background: linear-gradient(180deg, #dfe5ee, #bfc9d8);
   color: #111827;
   letter-spacing: 0.04em;
-  border: 1px solid rgba(17, 24, 39, 0.2);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
 }
 
 .interval-viewport {
   position: relative;
-  height: 100%;
   overflow: hidden;
   background: linear-gradient(180deg, #eef2f7, #d5dee9);
 }
@@ -206,7 +225,7 @@ body {
 }
 
 .interval-item .i-pos {
-  font-size: 14px;
+  font-size: 24px;
   font-weight: 700;
   min-width: 20px;
   text-align: right;
@@ -253,10 +272,10 @@ body {
 
 .interval-item .i-gap {
   font-family: "SF Mono", Consolas, monospace;
-  font-size: 14px;
+  font-size: 16px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: #3f4a5a;
+  color: #3a3e46;
   text-align: center;
   width: 100%;
 }

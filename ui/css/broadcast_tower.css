@@ -1,3 +1,11 @@
+/* ---------------------------------------------------------------------
+  BROADCAST OVERLAY - Tower Standings
+  - Transparent 1920×1080 canvas for OBS / vMix Browser Source capture
+  - Standing tower: flag rails, header, event banner, 16 animated rows
+  - Shared flag-state classes (broadcast--green, --yellow, --red, etc.)
+  - Also contains .broadcast-select-* styles for the overlay picker page
+  --------------------------------------------------------------------- */
+
 :root {
   --bt-canvas-w: 1920px;
   --bt-canvas-h: 1080px;
@@ -143,11 +151,11 @@ body {
 
 .tower-event-banner {
   margin: 6px 6px;
-  padding: 10px 20px;
+  padding: 5px 20px;
   border-radius: 3px;
   background: linear-gradient(90deg, #b8b8b8 0%, #f0f0f0 30%, #ffffff 50%, #f0f0f0 70%, #b8b8b8 100%);
   color: #0a0a0a;
-  font-size: 17px;
+  font-size: 18px;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;

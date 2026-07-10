@@ -881,7 +881,7 @@ Once enabled, you'll see a **Moxie Board** button on the main operator page (bet
 
 ---
 
-## 17. Broadcast Overlays (2026-07-05)
+## 17. Broadcast Overlays (2026-07-10)
 
 ChronoCore includes broadcast-quality overlay screens designed to be captured in OBS, vMix, or similar production software as a **Browser Source** layer on top of race footage. These are separate pages from the spectator view — they have transparent backgrounds and are intended to sit on top of a video feed, not to be viewed standalone.
 
@@ -924,11 +924,27 @@ The tower always renders all 16 row slots — if fewer than 16 cars are in the r
 
 **Ticker** (`/ui/spectator/broadcast_ticker.html`)
 
-A horizontal crawl bar for the top of screen. Shows all running positions as a continuous scrolling strip of intervals. Intended as an alternate or complementary graphic to the tower.
+A horizontal crawl bar anchored to the top of screen. Divided into a left static column (PRS logo + "Intervals" label) and a right scrolling column (lap counter, race name, and a continuous strip of all running positions with intervals). Intended as an alternate or complementary graphic to the tower.
 
 **Race Status** (`/ui/spectator/broadcast_status.html`)
 
 A compact header-only overlay — no standings rows. Shows the logo, session name, lap count, event name banner, and flag colour rails. Use this when you only need race identification and flag state on screen, without the full standings tower.
+
+### Event Logo
+
+Any overlay page can display a sponsor or event logo in the grey event banner strip instead of plain text. To activate:
+
+1. Save your logo file as `ui/img/event_logo.png` (PNG) or `ui/img/event_logo.svg` (SVG). PNG is tried first; SVG is the fallback.
+2. Hard-refresh the overlay page in your browser source — the logo appears automatically.
+3. To revert to the event name text, delete or rename the file and refresh.
+
+**Logo guidelines:**
+- Transparent background recommended (the banner is a light grey gradient).
+- Horizontal / landscape orientation works best — the banner is short and wide.
+- Aim for roughly 300–600 px wide and under 50 px tall at native resolution so it renders crisply at 1080p.
+- Light or dark logos both work; test against the grey gradient before going live.
+
+No config changes are required — the feature is entirely file-based.
 
 ### Setting Up in OBS
 

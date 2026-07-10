@@ -1,3 +1,26 @@
+/* ============================================================================
+ * Broadcast Overlays — Shared Controller
+ * ----------------------------------------------------------------------------
+ * Responsibilities:
+ *  - Drive all three overlay pages (tower, ticker, status) from one script;
+ *    page mode is read from data-mode on #broadcastRoot.
+ *  - Poll /race/state every 333ms; update standings, flag state, and header.
+ *  - In testing_mode: substitute built-in fake race data (no live engine needed).
+ *  - On init: probe for a convention-based event logo (event_logo.png/.svg in
+ *    ui/img/) and render it in the event banner instead of the event name text.
+ *
+ * Dependencies:
+ *  - base.js  (window.CCRS: fetchJSON, makePoller)
+ *  - broadcast_tower.css / broadcast_ticker.css  (flag and layout classes)
+ *
+ * Notes:
+ *  - isTower / isTicker / isStatus gate mode-specific behaviour.
+ *  - Event logo: drop ui/img/event_logo.png (or .svg) to activate; delete to
+ *    revert to text. PNG is probed first; SVG is tried as a fallback.
+ *  - Flag state is applied as a broadcast--<flag> class on #broadcastRoot.
+ *  - testing_mode is read from GET /config/ui_features on page load.
+ * ============================================================================ */
+
 (function () {
   "use strict";
 
@@ -19,6 +42,8 @@
   const towerLogo = document.getElementById("towerLogo") || document.getElementById("tickerLogo");
   const towerLogoFallback = document.getElementById("towerLogoFallback") || document.getElementById("tickerLogoFallback");
   const towerEventBannerEl = document.getElementById("towerEventBanner");
+
+  let _eventLogo = null; // set by loadEventLogo(); null = show text, string URL = show image
 
   const FLAG_CLASSES = new Set(["pre", "green", "yellow", "red", "white", "checkered", "blue"]);
   const MAX_ROWS = 16;
@@ -239,9 +264,14 @@
     raceNameEl.textContent = name;
 
     if (towerEventBannerEl) {
-      const evtLabel = state.event_label || "";
-      towerEventBannerEl.textContent = evtLabel;
-      towerEventBannerEl.style.display = evtLabel ? "" : "none";
+      if (_eventLogo) {
+        // Logo replaces the event name text in the grey banner bar
+        towerEventBannerEl.style.display = "";
+      } else {
+        const evtLabel = state.event_label || "";
+        towerEventBannerEl.textContent = evtLabel;
+        towerEventBannerEl.style.display = evtLabel ? "" : "none";
+      }
     }
 
     const limit = state.limit || {};
@@ -411,6 +441,28 @@
     }
   }
 
+  // Probe for a convention-based event logo (PNG first, SVG fallback).
+  // Resolves immediately either way — no network error bubbles up.
+  function loadEventLogo() {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => { _eventLogo = img.src; resolve(); };
+      img.onerror = () => {
+        const svg = new Image();
+        svg.onload = () => { _eventLogo = svg.src; resolve(); };
+        svg.onerror = () => resolve(); // no logo file present — use text
+        svg.src = "/ui/img/event_logo.svg";
+      };
+      img.src = "/ui/img/event_logo.png";
+    });
+  }
+
+  function applyEventLogo() {
+    if (!towerEventBannerEl || !_eventLogo) return;
+    towerEventBannerEl.innerHTML = `<img src="${_eventLogo}" alt="Event"
+      style="max-height:42px;max-width:100%;object-fit:contain;vertical-align:middle;" />`;
+  }
+
   function initLogoFallback() {
     if (!towerLogo || !towerLogoFallback) return;
     towerLogo.addEventListener("error", () => {
@@ -421,6 +473,8 @@
 
   async function init() {
     await loadFeatureFlags();
+    await loadEventLogo();
+    applyEventLogo();
     initLogoFallback();
     root.style.transform = "none";
 

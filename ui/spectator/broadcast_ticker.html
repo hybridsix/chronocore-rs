@@ -12,17 +12,21 @@
 <body class="broadcast-overlay">
   <div id="broadcastRoot" class="broadcast broadcast--pre mode-ticker" data-mode="ticker">
     <section class="ticker-shell" aria-label="Intervals ticker">
-      <div class="ticker-top">
+      <!-- Static left column: logo (row 1) + label (row 2) -->
+      <div class="ticker-static">
         <div class="ticker-brand" id="tickerLogoWrap">
           <img id="tickerLogo" src="/ui/img/PRS_Logo.svg" alt="PRS" />
           <div id="tickerLogoFallback" class="tower-logo-fallback hidden">PRS</div>
         </div>
-        <div class="ticker-lap-box" id="tickerLapMeta">LAP 0 OF 0</div>
-        <div class="ticker-race-title" id="tickerRaceName">Race</div>
+        <div class="interval-label">Intervals</div>
       </div>
 
-      <div class="ticker-bottom">
-        <div class="interval-label">Intervals</div>
+      <!-- Data right column: lap/title (row 1) + scroll (row 2) -->
+      <div class="ticker-data">
+        <div class="ticker-top">
+          <div class="ticker-lap-box" id="tickerLapMeta">LAP 0 OF 0</div>
+          <div class="ticker-race-title" id="tickerRaceName">Race</div>
+        </div>
         <div class="interval-viewport">
           <div class="interval-track" id="intervalTrack"></div>
         </div>

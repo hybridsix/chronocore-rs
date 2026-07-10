@@ -1968,7 +1968,7 @@ When testing timing hardware without actual racing:
 
 ---
 
-## 18. Broadcast Overlay System (2026-07-05)
+## 18. Broadcast Overlay System (2026-07-10)
 
 ChronoCore includes broadcast-quality transparent overlay pages intended for capture in OBS, vMix, or similar production software. They poll `/race/state` and `/config/ui_features` directly and have no dependency on the operator UI.
 
@@ -1999,7 +1999,7 @@ The overlay pages call `GET /config/ui_features` on load to read:
 | Flag | Source (`config.yaml`) | Effect |
 |---|---|---|
 | `broadcast.enabled` | `app.ui.broadcast.enabled` | Hides **Open Broadcast Screens** on operator home when `false`. Overlays still render. |
-| `broadcast.testing_mode` | `app.ui.broadcast.testing_mode` | When `true`, overlays switch to built-in fake data mode — no live race needed. |
+| `broadcast.testing_mode` | `app.ui.broadcast.testing_mode` | When `true`, overlays switch to built-in fake data mode — no live race needed. Set `false` before going live. |
 
 Both flags default to safe values in code: `enabled` defaults `True`, `testing_mode` defaults `False`.
 
@@ -2012,6 +2012,47 @@ Both flags default to safe values in code: `enabled` defaults `True`, `testing_m
 | `tower` | broadcast_tower.html | Full 16-row standings tower with animated position transitions |
 | `ticker` | broadcast_ticker.html | Horizontal scrolling interval crawl |
 | `status` | broadcast_status.html | Header + event banner + flag rails only; `updateRows()` is skipped |
+
+### Ticker Page — Structure
+
+The ticker uses a `display:flex` two-column layout inside `.ticker-shell`:
+
+```
+.ticker-shell                 ← 1884px wide, anchored top-left; flex row
+  .ticker-static              ← fixed-width left column; independent row heights
+    .ticker-brand             ← PRS logo cell (--ticker-static-top-h)
+    .interval-label           ← "INTERVALS" label cell (--ticker-static-bottom-h)
+  .ticker-data                ← flex:1 right column; independent row heights
+    .ticker-top               ← lap counter + race title (--ticker-data-top-h)
+    .interval-viewport        ← scrolling interval strip (--ticker-data-bottom-h)
+      .interval-track         ← duplicated HTML for seamless CSS animation crawl
+```
+
+Key CSS variables (in `broadcast_ticker.css :root`):
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `--ticker-static-col` | `200px` | Width of the left static column |
+| `--ticker-static-top-h` | `76px` | Height of the logo cell (left, top) |
+| `--ticker-static-bottom-h` | `24px` | Height of the label cell (left, bottom) |
+| `--ticker-data-top-h` | `42px` | Height of the lap/title row (right, top) |
+| `--ticker-data-bottom-h` | `58px` | Height of the scrolling row (right, bottom) |
+| `--ticker-lap-col` | `220px` | Width of the lap counter box within the right top row |
+
+> **Note:** `.interval-item` uses hardcoded `grid-template-rows: 34px 24px` (= 58px). If `--ticker-data-bottom-h` is changed, update those row heights to match.
+
+### Event Logo
+
+All overlay pages support a convention-based event logo that replaces the event name text in the grey `.tower-event-banner` strip. Implemented in `broadcast_tower.js` — `loadEventLogo()` probes for the file on page load; no config or server changes required.
+
+**Convention:** Place the file at `ui/img/event_logo.png` (PNG checked first) or `ui/img/event_logo.svg` (SVG fallback). Delete the file to revert to text.
+
+**Behaviour:**
+- `loadEventLogo()` creates a hidden `Image` object and sets `src = /ui/img/event_logo.png`. If it loads, `_eventLogo` is set to that URL.
+- If it 404s, an SVG probe is attempted. If both fail, `_eventLogo` stays `null`.
+- `applyEventLogo()` is called once after init; it injects an `<img>` into `.tower-event-banner`.
+- In `updateHeader()`, the event name text assignment is skipped when `_eventLogo` is set — no flicker on the 333ms poll cycle.
+- The banner is always shown (`display:""`) when a logo is active, even when `event_label` is empty.
 
 ### Tower Page — Structure
 
