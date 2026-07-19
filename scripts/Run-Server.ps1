@@ -98,9 +98,9 @@ if (-not $ExistingInbound -or -not $ExistingOutbound) {
                                 -Program $VenvPython `
                                 -Action Allow `
                                 -Profile Any `
-                                -Description "Allow ChronoCoreRS server to accept network connections (HTTP/spectator displays)" `
+                                -Description "Allow ChronoCoreRS server to accept network connections" `
                                 -ErrorAction Stop | Out-Null
-            Write-Host "  ✓ Inbound rule created (HTTP server)" -ForegroundColor Green
+            Write-Host "  ✓ Inbound rule created" -ForegroundColor Green
             $RulesCreated = $true
         } catch {
             Write-Host "  ✗ Could not create inbound rule" -ForegroundColor Red
@@ -144,7 +144,7 @@ Write-Host ""
 # Launch lap logger in a separate PowerShell window
 Write-Host "Starting lap logger in separate window..." -ForegroundColor Cyan
 $LapLoggerCmd = "Set-Location '$Root'; & '$VenvPython' -m backend.lap_logger; Read-Host 'Press Enter to close'"
-Start-Process pwsh -ArgumentList "-NoExit", "-Command", $LapLoggerCmd
+Start-Process powershell -ArgumentList "-NoExit", "-Command", $LapLoggerCmd
 
 # Give lap logger a moment to start
 Start-Sleep -Seconds 2

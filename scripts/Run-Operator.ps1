@@ -7,28 +7,43 @@ param(
 )
 
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path | Split-Path -Parent
+$VenvPath = "$Root\.venv"
+$VenvPython = "$VenvPath\Scripts\python.exe"
 
-Write-Host "=== ChronoCore Operator Console ===" -ForegroundColor Cyan
-Write-Host "Starting desktop application..." -ForegroundColor Green
-Write-Host ""
-
-# Check/create venv if it doesn't exist
-$VenvPython = "$Root\.venv\Scripts\python.exe"
-if (-not (Test-Path $VenvPython)) {
-    Write-Host "Virtual environment not found. Creating..." -ForegroundColor Yellow
-    
-    # Check if Python is available
+function Get-SystemPython {
     $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-    if (-not $pythonCmd) {
+    if ($pythonCmd) {
+        return @{ Exe = "python"; Args = @() }
+    }
+
+    $pyCmd = Get-Command py -ErrorAction SilentlyContinue
+    if ($pyCmd) {
+        return @{ Exe = "py"; Args = @("-3") }
+    }
+
+    return $null
+}
+
+function Test-PythonUsable([string]$ExePath) {
+    if (-not (Test-Path $ExePath)) {
+        return $false
+    }
+
+    & $ExePath -c "import sys; print(sys.executable)" 2>$null | Out-Null
+    return ($LASTEXITCODE -eq 0)
+}
+
+function New-ProjectVenv {
+    $systemPython = Get-SystemPython
+    if (-not $systemPython) {
         Write-Host "ERROR: Python not found in PATH!" -ForegroundColor Red
         Write-Host "Please install Python 3.12 or above and ensure it's in your PATH." -ForegroundColor Yellow
         exit 1
     }
-    
-    # Verify Python version is 3.12 or above
-    $pythonVersion = & python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
+
+    $pythonVersion = & $systemPython.Exe @($systemPython.Args) -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
     if ($pythonVersion) {
-        $versionParts = $pythonVersion -split '\.'
+        $versionParts = $pythonVersion.Trim() -split '\.'
         $major = [int]$versionParts[0]
         $minor = [int]$versionParts[1]
         if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 12)) {
@@ -38,26 +53,48 @@ if (-not (Test-Path $VenvPython)) {
         }
         Write-Host "Using Python $pythonVersion" -ForegroundColor Green
     }
-    
-    Write-Host "Creating virtual environment at: $Root\.venv" -ForegroundColor Cyan
-    & python -m venv "$Root\.venv"
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERROR: Failed to create virtual environment" -ForegroundColor Red
+
+    if (Test-Path $VenvPath) {
+        Write-Host "Removing broken virtual environment..." -ForegroundColor Yellow
+        Remove-Item -Recurse -Force $VenvPath
+    }
+
+    Write-Host "Creating virtual environment at: $VenvPath" -ForegroundColor Cyan
+    & $systemPython.Exe @($systemPython.Args) -m venv $VenvPath
+
+    if ($LASTEXITCODE -ne 0 -or -not (Test-PythonUsable $VenvPython)) {
+        Write-Host "ERROR: Failed to create a working virtual environment" -ForegroundColor Red
         exit 1
     }
-    
+
     Write-Host "Installing dependencies from backend/requirements.txt..." -ForegroundColor Cyan
     & "$VenvPython" -m pip install --upgrade pip
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to upgrade pip" -ForegroundColor Red
+        exit 1
+    }
+
     & "$VenvPython" -m pip install -r "$Root\backend\requirements.txt"
-    
     if ($LASTEXITCODE -ne 0) {
         Write-Host "ERROR: Failed to install dependencies" -ForegroundColor Red
         exit 1
     }
-    
+
     Write-Host "Virtual environment created successfully!" -ForegroundColor Green
     Write-Host ""
+}
+
+Write-Host "=== ChronoCore Operator Console ===" -ForegroundColor Cyan
+Write-Host "Starting desktop application..." -ForegroundColor Green
+Write-Host ""
+
+# Check/create venv if it doesn't exist or is broken
+if (-not (Test-Path $VenvPython)) {
+    Write-Host "Virtual environment not found. Creating..." -ForegroundColor Yellow
+    New-ProjectVenv
+} elseif (-not (Test-PythonUsable $VenvPython)) {
+    Write-Host "Detected broken virtual environment Python launcher." -ForegroundColor Yellow
+    New-ProjectVenv
 }
 
 # Check for config file
@@ -78,6 +115,10 @@ try {
 } catch {
     Write-Host "Installing pywebview..." -ForegroundColor Yellow
     & $pythonExe -m pip install -q "pywebview>=4.4,<5"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to install pywebview" -ForegroundColor Red
+        exit 1
+    }
 }
 
 # Check if PySide6 is installed (required GUI backend for pywebview on Windows)
@@ -89,6 +130,10 @@ try {
 } catch {
     Write-Host "Installing PySide6..." -ForegroundColor Yellow
     & $pythonExe -m pip install -q "PySide6>=6.6,<7"
+    if ($LASTEXITCODE -ne 0) {
+        Write-Host "ERROR: Failed to install PySide6" -ForegroundColor Red
+        exit 1
+    }
 }
 
 Write-Host "Configuration: $Root\config\config.yaml" -ForegroundColor Gray
