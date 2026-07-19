@@ -20,57 +20,13 @@ param(
 
 $ErrorActionPreference = "Stop"
 $Root = Split-Path $PSScriptRoot -Parent
-$VenvPython = "$Root\.venv\Scripts\python.exe"
+. "$PSScriptRoot\lib\Ensure-Venv.ps1"
 
 Write-Host "=== ChronoCoreRS Server Startup ===" -ForegroundColor Cyan
 Write-Host ""
 
-# Check/create venv if it doesn't exist
-if (-not (Test-Path $VenvPython)) {
-    Write-Host "Virtual environment not found. Creating..." -ForegroundColor Yellow
-    
-    # Check if Python is available
-    $pythonCmd = Get-Command python -ErrorAction SilentlyContinue
-    if (-not $pythonCmd) {
-        Write-Host "ERROR: Python not found in PATH!" -ForegroundColor Red
-        Write-Host "Please install Python 3.12 or above and ensure it's in your PATH." -ForegroundColor Yellow
-        exit 1
-    }
-    
-    # Verify Python version is 3.12 or above
-    $pythonVersion = & python -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')" 2>$null
-    if ($pythonVersion) {
-        $versionParts = $pythonVersion -split '\.'
-        $major = [int]$versionParts[0]
-        $minor = [int]$versionParts[1]
-        if ($major -lt 3 -or ($major -eq 3 -and $minor -lt 12)) {
-            Write-Host "ERROR: Python $pythonVersion detected, but Python 3.12 or above is required!" -ForegroundColor Red
-            Write-Host "Please install Python 3.12+ from https://www.python.org/downloads/" -ForegroundColor Yellow
-            exit 1
-        }
-        Write-Host "Using Python $pythonVersion" -ForegroundColor Green
-    }
-    
-    Write-Host "Creating virtual environment at: $Root\.venv" -ForegroundColor Cyan
-    & python -m venv "$Root\.venv"
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERROR: Failed to create virtual environment" -ForegroundColor Red
-        exit 1
-    }
-    
-    Write-Host "Installing dependencies from backend/requirements.txt..." -ForegroundColor Cyan
-    & "$VenvPython" -m pip install --upgrade pip
-    & "$VenvPython" -m pip install -r "$Root\backend\requirements.txt"
-    
-    if ($LASTEXITCODE -ne 0) {
-        Write-Host "ERROR: Failed to install dependencies" -ForegroundColor Red
-        exit 1
-    }
-    
-    Write-Host "Virtual environment created successfully!" -ForegroundColor Green
-    Write-Host ""
-}
+# Check/create/repair venv (shared logic in scripts/lib/Ensure-Venv.ps1)
+$VenvPython = Invoke-EnsureVenv -Root $Root
 
 # Check config file exists
 $ConfigPath = "$Root\config\config.yaml"

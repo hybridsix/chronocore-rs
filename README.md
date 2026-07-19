@@ -11,17 +11,21 @@ Designed for Power Racing Series (PRS) and adaptable to karts, RC cars, boats, a
 
 ## Quick Start
 
+**Requirements:** Python 3.12+ on PATH (either the `python` or `py` launcher works).
+No manual venv setup needed on Windows — `scripts\Run-Server.ps1` and
+`scripts\Run-Operator.ps1` (and `ChronoCore.bat`) create and repair `.venv` automatically,
+including recovering from a broken venv (e.g. after moving/syncing the project folder to
+a different machine).
+
 **Windows (Recommended):**
 ```powershell
 git clone https://github.com/hybridsix/chronocore-rs
 cd chronocore-rs
-python -m venv .venv
-.\.venv\Scripts\pip install -r backend/requirements.txt
 
-# Browser-based (multi-device access)
+# Browser-based (multi-device access) - sets up .venv on first run
 .\scripts\Run-Server.ps1
 
-# Desktop app (single operator station)
+# Desktop app (single operator station) - sets up .venv on first run
 .\scripts\Run-Operator.ps1
 ```
 
@@ -75,6 +79,7 @@ python -m uvicorn backend.server:app --reload --port 8000
 - **Browser-Based:** Multi-device access via web browser
 - **Desktop Application:** Native Windows app with splash screen (pywebview)
 - **Remote Spectator:** Fullscreen Chrome display for separate screens (Windows/Linux)
+- **Broadcast Overlays:** Transparent 1920×1080 OBS/vMix browser-source graphics — standings tower, interval ticker, and a header-only race status bar
 
 ### Integration
 - **OSC Output:** Real-time Open Sound Control messages for lighting systems (QLC+, etc.)

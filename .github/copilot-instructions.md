@@ -4,6 +4,12 @@ Short, actionable guidance for an AI coding agent working on ChronoCoreRS.
 Focus on discoverable, implementation-level details so an agent can make safe, useful
 changes without asking for basic facts.
 
+## Long-term roadmap
+
+Before starting work each day/session, read `.github/PROJECT_ROADMAP.md` for the current
+long-term plan and priority order of upcoming workstreams. Keep it updated as items are
+completed or re-prioritized.
+
 ## Quick start (developer workflow)
 
 - Install and activate a venv, then install deps:
