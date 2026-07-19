@@ -28,6 +28,20 @@ operator launch wiring, and supporting race-state payload fields for display use
 - Operator home adds quick launch for broadcast screens (`ui/operator/index.html`).
 - Standings payload includes broadcast-friendly fields (`backend/server.py`):
   `organization`, `color`, normalized `gap_s`, and consistent `position` stamping.
+- Tower and ticker car-number chips are now fixed-width (tower `56px`, ticker `46px`)
+  instead of stretching to fill their parent cell/min-width, so 1–2 digit numbers no
+  longer look loose in an oversized box; both still comfortably fit 3-digit numbers.
+- Ticker now inserts a couple of blank slots immediately before the leader's card each
+  lap of the crawl (`TICKER_LEADER_GAP` in `ui/js/broadcast_tower.js`), making the leader
+  easy to spot as it scrolls around. Only the slot touching the leader keeps the normal
+  item divider line.
+- Added `app.ui.broadcast.ticker_rows` config option (default `16`) to control how many
+  standings rows the ticker crawls through, independent of the tower's fixed 16 rows.
+  Exposed via `/config/ui_features`.
+- Consolidated stray planning/handoff markdown files into `docs/technical_reference.md`
+  and `docs/operators_guide.md`; removed `docs/broadcast_graphics_plan.md`,
+  `docs/broadcast_handoff_2026-07-04.md`, and the stale `.github/copilot-todo.md`.
+  Fixed duplicated/misnumbered sections in both docs along the way.
 
 ---
 

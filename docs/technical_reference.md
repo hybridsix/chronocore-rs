@@ -1068,9 +1068,9 @@ When deleting frozen results via `DELETE /results/{race_id}`:
 
 ---
 
-## 10. Frontend Clients
+## 9. Frontend Clients
 
-### 10.1 Polling Strategy
+### 9.1 Polling Strategy
 
 The Operator and Spectator UIs are static HTML/CSS/JS clients that poll the `/race/state` endpoint for live updates.
 
@@ -1087,7 +1087,7 @@ The Operator and Spectator UIs are static HTML/CSS/JS clients that poll the `/ra
 - "Connecting..." - initial startup
 - "Disconnected - retrying..." - network error or server unreachable
 
-### 10.2 State Synchronization
+### 9.2 State Synchronization
 
 Both UIs consume the same `/race/state` snapshot which includes:
 - `flag` - current race flag (PRE, GREEN, YELLOW, RED, BLUE, WHITE, CHECKERED)
@@ -1099,7 +1099,7 @@ Both UIs consume the same `/race/state` snapshot which includes:
 - `features` - capability flags (e.g., `pit_timing`)
 - `limit` - race limit configuration (type: time|laps, value, remaining_ms)
 
-### 10.3 Flag Banner Logic
+### 9.3 Flag Banner Logic
 
 The flag banner uses CSS classes derived from the snapshot:
 
@@ -1114,7 +1114,7 @@ The flag banner uses CSS classes derived from the snapshot:
 
 **Accessibility:** Banner includes `aria-label` with format: `"{Color} - {Meaning}"` (e.g., "White - Final Lap", "Blue - Driver Swap")
 
-### 10.4 Leaderboard Updates
+### 9.4 Leaderboard Updates
 
 Standings are rendered directly from the `/race/state` response:
 - **PRE/COUNTDOWN**: Sorted by qualifying grid order (frozen grid from event config)
@@ -1134,11 +1134,11 @@ Each standing row includes:
 
 ---
 
-## 9. OSC Lighting Integration
+## 10. OSC Lighting Integration
 
 The system provides bidirectional Open Sound Control (OSC) integration with QLC+ lighting software, enabling synchronized race flag lighting and operator-assisted flag controls.
 
-### 9.1 Architecture Overview
+### 10.1 Architecture Overview
 
 **Protocol:** UDP-based OSC (Open Sound Control)  
 **Direction:** Bidirectional (CCRS ↔ QLC+)  
@@ -1155,7 +1155,7 @@ The system provides bidirectional Open Sound Control (OSC) integration with QLC+
 - `backend/osc_in.py` - Receives flag/blackout signals from QLC+ operator buttons
 - `backend/server.py` - Integration points and lifecycle management
 
-### 9.2 OSC Output (osc_out.py)
+### 10.2 OSC Output (osc_out.py)
 
 **Purpose:** Send real-time lighting commands from CCRS to QLC+ based on race state changes.
 
@@ -1200,7 +1200,7 @@ integrations:
 - Race setup screen → blackout
 - Open results screen → blackout
 
-### 9.3 OSC Input (osc_in.py)
+### 10.3 OSC Input (osc_in.py)
 
 **Purpose:** Receive flag and blackout commands from QLC+ operator buttons, enabling lighting operator to assist with flag changes without controlling race timing.
 
@@ -1240,7 +1240,7 @@ integrations:
       debounce_off_ms: 500     # Blackout-off debounce delay
 ```
 
-### 9.4 Server Integration Points
+### 10.4 Server Integration Points
 
 **Lifecycle Management (server.py):**
 
@@ -1278,7 +1278,7 @@ async def stop_osc_lighting():
 **Frontend Integration:**
 - `ui/js/race_control.js` (~1324-1338): Results button calls `/race/control/open_results` before navigation to ensure blackout triggers before page transition
 
-### 9.5 Safety Mechanisms
+### 10.5 Safety Mechanisms
 
 **Phase-Based Guards (in `_handle_flag_from_qlc`):**
 
@@ -1306,7 +1306,7 @@ if flag == "CHECKERED" and engine.phase not in ("green", "white"):
 - Lighting becomes "best-effort" if QLC+ unreachable
 - Diagnostics SSE streams report OSC errors for troubleshooting
 
-### 9.6 Configuration Reference
+### 10.6 Configuration Reference
 
 **Complete YAML Block:**
 ```yaml
@@ -1347,7 +1347,7 @@ integrations:
 - Blackout widget sends to `/ccrs/blackout` with values 0/1
 - See operators guide section 8.2 for complete QLC+ setup instructions
 
-### 9.7 Message Timing and Performance
+### 10.7 Message Timing and Performance
 
 **Latency Characteristics:**
 - OSC output: <5ms per command (blocking UDP send × repeat count)
@@ -1366,11 +1366,11 @@ integrations:
 
 ---
 
-## 10. Moxie Board Scoring Integration (2025-11-13)
+## 11. Moxie Board Scoring Integration (2025-11-13)
 
 ChronoCore includes integration support for wireless Moxie Board scoring systems used at Power Racing Series events. Moxie scoring is **purely button-press based** - it tracks crowd votes via wireless button presses on the physical moxie board, independent of race performance metrics.
 
-### 10.1 Overview
+### 11.1 Overview
 
 The Moxie Board is a physical display showing entrant positions and scores based on button presses from spectators and officials. The scoring is a simple count - each button press adds to an entrant's moxie score. The system distributes a fixed total number of points (typically 300) among all active entrants based on their button press counts.
 
@@ -1380,7 +1380,7 @@ The Moxie Board is a physical display showing entrant positions and scores based
 - **Configurable positions**: Boards typically support 18, 20, or 24 display positions
 - **Fixed point pool**: Total points (typically 300) are distributed proportionally among entrants
 
-### 10.2 Configuration
+### 11.2 Configuration
 
 Moxie Board integration is controlled via `config/config.yaml`:
 
@@ -1405,7 +1405,7 @@ app:
 - `total_points` (integer): The pool of points to be distributed among entrants based on button press ratios
 - `board_positions` (integer): How many top entrants can be displayed on the physical moxie board
 
-### 10.3 API Endpoint
+### 11.3 API Endpoint
 
 The backend exposes moxie configuration to frontends via:
 
@@ -1425,7 +1425,7 @@ Response:
 
 This endpoint is polled by the operator UI on startup to determine whether to show the moxie board navigation button.
 
-### 10.4 UI Integration
+### 11.4 UI Integration
 
 When `moxie.enabled = true`:
 - Operator index page displays a "Moxie Board" button in the main navigation
@@ -1438,7 +1438,7 @@ The moxie board page (currently in development) will provide:
 - Top-N display showing which entrants appear on the physical board (based on `board_positions`)
 - Manual score adjustment controls for operator overrides
 
-### 10.5 Scoring Algorithm
+### 11.5 Scoring Algorithm
 
 The moxie score for each entrant is calculated as:
 
@@ -1457,7 +1457,7 @@ With `total_points: 300` and 3 entrants:
 - Entrant B: 30 presses → (30/100) × 300 = 90 points
 - Entrant C: 20 presses → (20/100) × 300 = 60 points
 
-### 10.6 Physical Board Display
+### 11.6 Physical Board Display
 
 The `board_positions` parameter determines how many entrants can be shown on the physical moxie board hardware. Common values:
 - **18 positions**: Smaller events or compact boards
@@ -1466,7 +1466,7 @@ The `board_positions` parameter determines how many entrants can be shown on the
 
 Only the top N entrants (by moxie score) are sent to the physical display hardware. The operator UI shows all entrants with their scores and indicates which ones are currently displayed on the board.
 
-### 10.7 Implementation Status
+### 11.7 Implementation Status
 
 **Currently Available (v0.1.1):**
 - Configuration framework in `config.yaml`
@@ -1484,11 +1484,11 @@ Only the top N entrants (by moxie score) are sent to the physical display hardwa
 
 ---
 
-## 11. Configuration (YAML keys of interest)
+## 12. Configuration (YAML keys of interest)
 
 The system uses a single unified configuration file: `config/config.yaml`
 
-### 11.1 Core Structure
+### 12.1 Core Structure
 
 ```yaml
 app:
@@ -1594,14 +1594,14 @@ journaling:
   table: passes_journal                 # table name for raw pass log
 ```
 
-### 11.2 Path Resolution
+### 12.2 Path Resolution
 
 - Relative paths resolve against repo root
 - `sqlite_path` is **required** - engine will not start without it
 - Sound files searched in: `config/sounds/` then `assets/sounds/` (fallback)
 - Static UI assets served from: `ui/` directory
 
-### 11.3 Important Defaults
+### 12.3 Important Defaults
 
 - **Minimum lap time**: 10s (rejects faster laps as duplicates or errors)
 - **Duplicate window**: 0.5s (same tag ignored if seen within 500ms)
@@ -1611,9 +1611,9 @@ journaling:
 
 ---
 
-## 12. Simulation Tools
+## 13. Simulation Tools
 
-### 12.1 Mock Decoder
+### 13.1 Mock Decoder
 
 The system includes a built-in mock decoder for testing without hardware:
 
@@ -1630,7 +1630,7 @@ The mock decoder emits a fixed tag at regular intervals, useful for:
 - CI/CD integration testing
 - Demo modes at events
 
-### 11.2 Startup Scripts
+### 13.2 Startup Scripts
 
 ChronoCore provides production-ready startup scripts for different deployment scenarios:
 
@@ -1705,7 +1705,7 @@ ChronoCore provides production-ready startup scripts for different deployment sc
 **Venv Path Workaround:**
 All scripts use `python.exe -m <module>` pattern instead of wrapper executables to handle broken venv shebang paths. This allows using existing venvs without recreation.
 
-### 11.3 Simulator Scripts
+### 13.3 Simulator Scripts
 
 **Sprint Simulator** (`scripts/Run-SimSprint.ps1`):
 - Simulates a time-limited sprint race
@@ -1717,7 +1717,7 @@ All scripts use `python.exe -m <module>` pattern instead of wrapper executables 
 - Tests pit timing features
 - Demonstrates multi-hour race scenarios
 
-### 11.4 Dummy Data Loader
+### 13.4 Dummy Data Loader
 
 **`backend/tools/load_dummy_from_xlsx.py`**:
 - Imports entrant rosters from Excel spreadsheets
@@ -1729,7 +1729,7 @@ All scripts use `python.exe -m <module>` pattern instead of wrapper executables 
 python backend/tools/load_dummy_from_xlsx.py roster.xlsx
 ```
 
-### 11.5 Feed Simulator
+### 13.5 Feed Simulator
 
 **`backend/tools/sim_feed.py`**:
 - Generates synthetic timing passes
@@ -1742,7 +1742,7 @@ python backend/tools/load_dummy_from_xlsx.py roster.xlsx
 python backend/tools/sim_feed.py --entrants 10 --duration 300 --mean-lap 45
 ```
 
-### 11.5 Testing Strategy
+### 13.6 Testing Strategy
 
 **Unit Tests**: Test individual components (engine, decoders, parsers)
 
@@ -1754,7 +1754,7 @@ python backend/tools/sim_feed.py --entrants 10 --duration 300 --mean-lap 45
 
 ---
 
-## 13. Engine Host Discovery
+## 14. Engine Host Discovery
 
 ## Background
 
@@ -1828,7 +1828,7 @@ app:
 
 ---
 
-## 14. Requirements & Runtime
+## 15. Requirements & Runtime
 
 - **Python**: 3.12
 - **Core deps**: fastapi, starlette, uvicorn[standard], httpx, aiosqlite, pyyaml, pyserial, pandas, openpyxl
@@ -1968,7 +1968,7 @@ When testing timing hardware without actual racing:
 
 ---
 
-## 18. Broadcast Overlay System (2026-07-10)
+## 17. Broadcast Overlay System (2026-07-10)
 
 ChronoCore includes broadcast-quality transparent overlay pages intended for capture in OBS, vMix, or similar production software. They poll `/race/state` and `/config/ui_features` directly and have no dependency on the operator UI.
 
@@ -1991,7 +1991,8 @@ The overlay pages call `GET /config/ui_features` on load to read:
 {
   "broadcast": {
     "enabled": true,
-    "testing_mode": false
+    "testing_mode": false,
+    "ticker_rows": 16
   }
 }
 ```
@@ -2000,8 +2001,11 @@ The overlay pages call `GET /config/ui_features` on load to read:
 |---|---|---|
 | `broadcast.enabled` | `app.ui.broadcast.enabled` | Hides **Open Broadcast Screens** on operator home when `false`. Overlays still render. |
 | `broadcast.testing_mode` | `app.ui.broadcast.testing_mode` | When `true`, overlays switch to built-in fake data mode — no live race needed. Set `false` before going live. |
+| `broadcast.ticker_rows` | `app.ui.broadcast.ticker_rows` | Number of standings rows the ticker crawls through. Defaults to `16`. Tower row count is not affected — it is always `MAX_ROWS` (16). |
 
-Both flags default to safe values in code: `enabled` defaults `True`, `testing_mode` defaults `False`.
+All three flags default to safe values in code: `enabled` defaults `True`, `testing_mode` defaults `False`, `ticker_rows` defaults `16`.
+
+In `broadcast_tower.js`, `loadFeatureFlags()` reads `ticker_rows` into a mutable `TICKER_MAX_ROWS` variable (separate from the const `MAX_ROWS` used by the tower and by fake-data generation) and `updateTicker()` slices `state.standings` to that length.
 
 ### Page Modes
 
@@ -2040,6 +2044,10 @@ Key CSS variables (in `broadcast_ticker.css :root`):
 | `--ticker-lap-col` | `220px` | Width of the lap counter box within the right top row |
 
 > **Note:** `.interval-item` uses hardcoded `grid-template-rows: 34px 24px` (= 58px). If `--ticker-data-bottom-h` is changed, update those row heights to match.
+
+**Car number chip (`.i-car`):** Fixed `width: 46px` (not `min-width`), sized to comfortably fit 3-digit numbers without stretching for shorter ones. Team color renders via a `::before` overlay driven by the inline `--team-color` custom property, matching the tower chip treatment.
+
+**Leader gap:** To make the leader easy to spot as the ticker crawls, `updateTicker()` inserts `TICKER_LEADER_GAP` (default `2`) blank `.interval-spacer` slots immediately before the leader's card (`idx === 0`) each time the row list is built — before the `html + html` duplication used for the seamless crawl loop. Only the spacer slot directly adjacent to the leader carries the `.interval-spacer--divider` modifier (the same `border-right` divider used between normal `.interval-item` cards); the other spacer slot(s) are borderless so no divider line appears mid-gap.
 
 ### Event Logo
 
@@ -2080,6 +2088,8 @@ Key CSS variables (in `:root`):
 | `--bt-row-h` | `48px` | Row height |
 | `--bt-rows` | `16` | Fixed row count |
 | `--bt-tower-bg` | `rgba(0,0,0,0.88)` | Tower body background |
+
+**Car number chip (`.tower-car`):** Fixed `width: 56px` (set both directly on `.tower-car` and via the 2nd `.tower-row` grid column, `grid-template-columns: 50px 56px 1fr 104px`), sized to comfortably fit 3-digit numbers at the 26px chip font-size without the box stretching wider than the digits for 1– or 2-digit cars.
 
 ### Row Rendering and Animation
 
@@ -2128,9 +2138,17 @@ This mode is safe to leave running indefinitely in OBS/vMix for scene preview. I
 
 Broadcast pages do not import `operator.css` or other operator styles to prevent background bleed in transparent OBS sources.
 
+### Roadmap / Backlog
+
+Carried forward from the original broadcast graphics planning notes. Foundation, data correctness, and visual polish milestones are done; remaining work:
+
+- **Operational reliability** — watchdog/fallback UX for fetch failures, verified reconnect behavior across backend restarts, and a check for memory/DOM growth from long-running row churn and ticker rebuilds.
+- **Feature expansion** — lower-third single-driver highlight card, full-screen leaderboard page, pit board / incident strip page, and URL query-string params for style variants and per-page row limits (beyond the existing `ticker_rows` config option).
+- **QA pass** — multi-hour soak test in Chromium and an OBS/vMix browser source, covering both sprint and endurance race modes.
+
 ---
 
-## 17. Appendices
+## 18. Appendices
 
 - Migration scripts (e.g., `migrate_add_car_num.py`)  
 - Dummy loaders (`load_dummy_from_xlsx.py`)  
