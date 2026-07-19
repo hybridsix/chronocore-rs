@@ -158,6 +158,7 @@ app:
     broadcast:
       enabled: true              # Hide operator broadcast entry points when false
       testing_mode: true         # Default behavior is off in code; enabled now for visual broadcast testing
+      ticker_rows: 16            # Number of standings rows shown in the broadcast ticker crawl
     net_status_text:
       ok: OK
       connecting: Connecting…

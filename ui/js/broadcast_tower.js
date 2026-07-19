@@ -47,6 +47,8 @@
 
   const FLAG_CLASSES = new Set(["pre", "green", "yellow", "red", "white", "checkered", "blue"]);
   const MAX_ROWS = 16;
+  let TICKER_MAX_ROWS = MAX_ROWS; // overridden from /config/ui_features (broadcast.ticker_rows)
+  const TICKER_LEADER_GAP = 2; // blank ticker slots inserted before the leader each lap
   const ROW_H = 48;
 
   const prevStateByEntrant = new Map();
@@ -385,7 +387,7 @@
 
   function updateTicker(state) {
     if (!intervalTrack || !isTicker) return;
-    const rows = (Array.isArray(state.standings) ? state.standings : []).slice(0, MAX_ROWS);
+    const rows = (Array.isArray(state.standings) ? state.standings : []).slice(0, TICKER_MAX_ROWS);
     if (!rows.length) {
       intervalTrack.innerHTML = "";
       return;
@@ -398,7 +400,12 @@
         const name = row.name || "Entrant";
         const gap = fmtTickerInterval(row);
         const color = row.color || "#475569";
+        const leaderGap = idx === 0
+          ? `<div class="interval-spacer"></div>`.repeat(Math.max(0, TICKER_LEADER_GAP - 1)) +
+            `<div class="interval-spacer interval-spacer--divider"></div>`
+          : "";
         return [
+          leaderGap,
           `<div class="interval-item">`,
           `<div class="i-top">`,
           `<span class="i-pos">${pos}</span>`,
@@ -436,8 +443,11 @@
     try {
       const features = await fetchJSON("/config/ui_features");
       fakeCtx.enabled = Boolean(features && features.broadcast && features.broadcast.testing_mode);
+      const configuredTickerRows = Number(features && features.broadcast && features.broadcast.ticker_rows);
+      TICKER_MAX_ROWS = Number.isFinite(configuredTickerRows) && configuredTickerRows > 0 ? configuredTickerRows : MAX_ROWS;
     } catch (_err) {
       fakeCtx.enabled = false;
+      TICKER_MAX_ROWS = MAX_ROWS;
     }
   }
 

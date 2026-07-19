@@ -172,7 +172,7 @@ body {
   top: 0;
   height: var(--bt-row-h);
   display: grid;
-  grid-template-columns: 50px 78px 1fr 104px;
+  grid-template-columns: 50px 56px 1fr 104px;
   align-items: center;
   gap: 8px;
   padding: 0 10px;
@@ -224,6 +224,7 @@ body {
   position: relative;
   display: grid;
   place-items: center;
+  width: 56px;
   height: 30px;
   border-radius: 4px;
   font-size: 26px;

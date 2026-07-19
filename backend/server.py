@@ -2144,7 +2144,8 @@ def get_ui_features():
         },
         "broadcast": {
             "enabled": bool(broadcast_config.get("enabled", True)),
-            "testing_mode": bool(broadcast_config.get("testing_mode", False))
+            "testing_mode": bool(broadcast_config.get("testing_mode", False)),
+            "ticker_rows": int(broadcast_config.get("ticker_rows", 16))
         }
     }
 

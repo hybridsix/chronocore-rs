@@ -204,6 +204,19 @@ body {
   border-right: 2px solid rgba(30, 41, 59, 0.3);
 }
 
+/* Blank slot(s) inserted before the leader so it's easy to spot as it crawls by. */
+.interval-spacer {
+  min-height: 100%;
+  min-width: 250px;
+  background: transparent;
+  border-right: none;
+}
+
+/* Only the slot directly adjacent to the leader gets the divider line. */
+.interval-spacer--divider {
+  border-right: 2px solid rgba(30, 41, 59, 0.3);
+}
+
 .interval-item .i-top {
   display: grid;
   grid-template-columns: auto auto auto;
@@ -237,7 +250,7 @@ body {
   font-size: 21px;
   font-weight: 800;
   font-style: italic;
-  min-width: 38px;
+  width: 46px;
   text-align: center;
   color: #ffffff;
   padding: 0 5px;
